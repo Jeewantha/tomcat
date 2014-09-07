@@ -36,7 +36,7 @@ import org.apache.tomcat.util.descriptor.web.ErrorPage;
 public class TestJspServlet  extends TomcatBaseTest {
 
     @Test
-    public void testBug56568() throws Exception {
+    public void testBug56568a() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // Use the test web application so JSP support is available and the
@@ -45,7 +45,7 @@ public class TestJspServlet  extends TomcatBaseTest {
         Context context = tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
 
         // Create a servlet that always throws an exception for a PUT request
-        Tomcat.addServlet(context, "Bug56568Servlet", new Bug56568Servlet());
+        Tomcat.addServlet(context, "Bug56568Servlet", new Bug56568aServlet());
         context.addServletMapping("/bug56568", "Bug56568Servlet");
 
         // Configure a JSP page to handle the 500 error response
@@ -53,7 +53,6 @@ public class TestJspServlet  extends TomcatBaseTest {
         // PUT requests are normally blocked for JSPs
         ErrorPage ep = new ErrorPage();
         ep.setErrorCode(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-        // Note this location doesn't actually exist
         ep.setLocation("/WEB-INF/jsp/error.jsp");
         context.addErrorPage(ep);
 
@@ -68,7 +67,49 @@ public class TestJspServlet  extends TomcatBaseTest {
         Assert.assertEquals(500, rc);
     }
 
-    private static class Bug56568Servlet extends HttpServlet {
+
+    @Test
+    public void testBug56568b() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // Use the test web application so JSP support is available and the
+        // default JSP error page can be used.
+        File appDir = new File("test/webapp");
+        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
+
+        tomcat.start();
+
+        int rc = methodUrl("http://localhost:" + getPort() + "/test/jsp/error.jsp",
+                new ByteChunk(), 500000, null, null, "PUT");
+
+        // Make sure we get a 200 response and not a 405 response
+        // which would indicate that error.jsp is complaining about being called
+        // with the PUT method.
+        Assert.assertEquals(200, rc);
+    }
+
+
+    @Test
+    public void testBug56568c() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // Use the test web application so JSP support is available and the
+        // default JSP error page can be used.
+        File appDir = new File("test/webapp");
+        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
+
+        tomcat.start();
+
+        int rc = methodUrl("http://localhost:" + getPort() + "/test/jsp/test.jsp",
+                new ByteChunk(), 500000, null, null, "PUT");
+
+        // Make sure we get a 405 response which indicates that test.jsp is
+        // complaining about being called with the PUT method.
+        Assert.assertEquals(405, rc);
+    }
+
+
+    private static class Bug56568aServlet extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
 

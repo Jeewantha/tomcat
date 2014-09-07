@@ -111,20 +111,20 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
     @Override
     public void scan(File file, String webappPath, boolean isWebapp) throws IOException {
 
-        InputStream stream = null;
         WebXml fragment = new WebXml();
         fragment.setWebappJar(isWebapp);
         fragment.setDelegate(delegate);
 
+        File fragmentFile = new File(file, FRAGMENT_LOCATION);
         try {
-            File fragmentFile = new File(file, FRAGMENT_LOCATION);
             if (fragmentFile.isFile()) {
-                stream = new FileInputStream(fragmentFile);
-                InputSource source =
-                    new InputSource(fragmentFile.toURI().toURL().toString());
-                source.setByteStream(stream);
-                if (!webXmlParser.parseWebXml(source, fragment, true)) {
-                    ok = false;
+                try (InputStream stream = new FileInputStream(fragmentFile)) {
+                    InputSource source =
+                        new InputSource(fragmentFile.toURI().toURL().toString());
+                    source.setByteStream(stream);
+                    if (!webXmlParser.parseWebXml(source, fragment, true)) {
+                        ok = false;
+                    }
                 }
             } else {
                 // If there is no web.xml, normal folder no impact on

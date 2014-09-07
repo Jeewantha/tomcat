@@ -746,30 +746,20 @@ public class ConnectionPool {
         boolean setToNull = false;
         try {
             con.lock();
-            boolean usercheck = con.checkUser(username, password);
-
             if (con.isReleased()) {
                 return null;
             }
 
+            //evaluate username/password change as well as max age functionality
+            boolean forceReconnect = con.shouldForceReconnect(username, password) || con.isMaxAgeExpired();
+
             if (!con.isDiscarded() && !con.isInitialized()) {
-                //attempt to connect
-                try {
-                    con.connect();
-                } catch (Exception x) {
-                    release(con);
-                    setToNull = true;
-                    if (x instanceof SQLException) {
-                        throw (SQLException)x;
-                    } else {
-                        SQLException ex  = new SQLException(x.getMessage());
-                        ex.initCause(x);
-                        throw ex;
-                    }
-                }
+                //here it states that the connection not discarded, but the connection is null
+                //don't attempt a connect here. It will be done during the reconnect.
+                forceReconnect = true;
             }
 
-            if (usercheck) {
+            if (!forceReconnect) {
                 if ((!con.isDiscarded()) && con.validate(PooledConnection.VALIDATE_BORROW)) {
                     //set the timestamp
                     con.setTimestamp(now);
@@ -790,7 +780,11 @@ public class ConnectionPool {
             //the connection shouldn't have to poll again.
             try {
                 con.reconnect();
-                if (con.validate(PooledConnection.VALIDATE_INIT)) {
+                int validationMode = getPoolProperties().isTestOnConnect() || getPoolProperties().getInitSQL()!=null ?
+                    PooledConnection.VALIDATE_INIT :
+                    PooledConnection.VALIDATE_BORROW;
+
+                if (con.validate(validationMode)) {
                     //set the timestamp
                     con.setTimestamp(now);
                     if (getPoolProperties().isLogAbandoned()) {
@@ -862,11 +856,8 @@ public class ConnectionPool {
         if (isClosed()) return true;
         if (!con.validate(action)) return true;
         if (!terminateTransaction(con)) return true;
-        if (getPoolProperties().getMaxAge()>0 ) {
-            return (System.currentTimeMillis()-con.getLastConnected()) > getPoolProperties().getMaxAge();
-        } else {
-            return false;
-        }
+        if (con.isMaxAgeExpired()) return true;
+        else return false;
     }
 
     /**
@@ -1278,7 +1269,7 @@ public class ConnectionPool {
             ClassLoader loader = Thread.currentThread().getContextClassLoader();
             try {
                 Thread.currentThread().setContextClassLoader(ConnectionPool.class.getClassLoader());
-                poolCleanTimer = new Timer("PoolCleaner["+ System.identityHashCode(ConnectionPool.class.getClassLoader()) + ":"+
+                poolCleanTimer = new Timer("Tomcat JDBC Pool Cleaner["+ System.identityHashCode(ConnectionPool.class.getClassLoader()) + ":"+
                                            System.currentTimeMillis() + "]", true);
             }finally {
                 Thread.currentThread().setContextClassLoader(loader);

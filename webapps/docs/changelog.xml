@@ -32,7 +32,7 @@
 <!--
   Subsection ordering:
   General, Catalina, Coyote, Jasper, Cluster, WebSocket, Web applications,
-  Extras, Tribes, Other
+  Extras, Tribes, jdbc-pool, Other
 
   Item Ordering:
 
@@ -44,7 +44,185 @@
   They eventually become mixed with the numbered issues. (I.e., numbered
   issues to not "pop up" wrt. others).
 -->
-<section name="Tomcat 8.0.11 (markt)">
+<section name="Tomcat 8.0.13 (markt)">
+  <subsection name="Catalina">
+    <changelog>
+      <fix>
+        <bug>55917</bug>: Allow bytes in the range 0x80 to 0xFF to appear in
+        cookie values if the cookie is a V1 (RFC2109) cookie and the value is
+        correctly quoted. The new RFC6265 based cookie parser must be enabled to
+        correctly handle these cookies. (markt)
+      </fix>
+      <fix>
+        <bug>55918</bug>: Do not permit control characters to appear in quoted
+        V1 (RFC2109) cookie values. The new RFC6265 based cookie parser must be
+        enabled to correctly handle these cookies. (markt)
+      </fix>
+      <fix>
+        <bug>55921</bug>: Correctly handle (ignore the cookie) unescaped JSON in
+        a cookie value. The new RFC6265 based cookie parser must be enabled to
+        correctly handle these cookies. (markt)
+      </fix>
+      <fix>
+        <bug>56900</bug>: Fix some potential resource leaks when reading
+        property files reported by Coverity Scan. Based on patches provided by
+        Felix Schumacher. (markt)
+      </fix>
+      <fix>
+        <bug>56902</bug>: Fix a potential resource leak in the Default Servlet
+        reported by Coverity Scan. Based on a patch provided by Felix
+        Schumacher. (markt)
+      </fix>
+      <fix>
+        <bug>56903</bug>: Correct the return value for
+        <code>StandardContext.getResourceOnlyServlets()</code> so that multiple
+        names are separated by commas. Identified by Coverity Scan and fixed
+        based on a patch by Felix Schumacher. (markt)
+      </fix>
+      <add>
+        Add an additional implementation of a RFC6265 based cookie parser along
+        with new Context options to select and configure it. This parser is
+        currently considered experiemental and is not used by default. (markt)
+      </add>
+      <fix>
+        Fixed the multipart elements merge operation performed during web
+        application deployment. Identified by Coverity Scan. (violetagg)
+      </fix>
+      <fix>
+        Correct the information written by
+        <code>ExtendedAccessLogValve</code> when a format token x-O(XXX) is
+        used so that multiple values for a header XXX are separated by commas.
+        Identified by Coverity Scan. (violetagg)
+      </fix>
+      <fix>
+        Fix a potential resource leak when reading MANIFEST.MF file for
+        extension dependencies reported by Coverity Scan. (violetagg)
+      </fix>
+      <fix>
+        Fix some potential resource leaks when reading properties, files and
+        other resources. Reported by Coverity Scan. (violetagg)
+      </fix>
+      <fix>
+        Correct the previous fix for <bug>56825</bug> that enabled pre-emptive
+        authentication to work with the SSL authenticator. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Coyote">
+    <changelog>
+      <fix>
+        <bug>56910</bug>: Prevent the invalid value of <code>-1</code> being
+        used for <code>maxConnections</code> with APR connectors. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Jasper">
+    <changelog>
+      <fix>
+        Ensure that the implementation of
+        <code>javax.servlet.jsp.PageContext.include(String)</code>
+        and
+        <code>javax.servlet.jsp.PageContext.include(String, boolean)</code>
+        will throw <code>IOException</code> when an I/O error occur during
+        the operation. (violetagg)
+      </fix>
+      <fix>
+        <bug>56908</bug>: Fix some potential resource leaks when reading
+        jar files. Reported by Coverity Scan. Patch provided by Felix
+        Schumacher. (violetagg)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="WebSocket">
+    <changelog>
+      <fix>
+        <bug>56905</bug>: Make destruction on web application stop of thread
+        group used for WebSocket connections more robust. (kkolinko/markt)
+      </fix>
+      <fix>
+        <bug>56907</bug>: Ensure that client IO threads are stopped if a secure
+        WebSocket client connection fails. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Web applications">
+    <changelog>
+      <add>
+        Add <code>JarScanner</code> to the nested components listed for a
+        Context. (markt)
+      </add>
+    </changelog>
+  </subsection>
+  <subsection name="Other">
+    <changelog>
+      <fix>
+        <bug>56895</bug>: Correctly compose <code>JAVA_OPTS</code> in
+        <code>catalina.bat</code> so that escape sequences are preserved. Patch
+        by Lucas Theisen. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+</section>
+<section name="Tomcat 8.0.12 (markt)" rtext="2014-09-03">
+  <subsection name="Catalina">
+    <changelog>
+      <add>
+        Make the session id generator extensible by adding a
+        <code>SessionIdGenerator</code> interface, an abstract
+        base class and a standard implementation. (rjung)
+      </add>
+      <fix>
+        <bug>56882</bug>: Fix regression in processing of includes and forwards
+        when Context have been reloaded. Tomcat was responding with HTTP Status
+        503 (Servlet xxx is currently unavailable). (kkolinko)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Coyote">
+    <changelog>
+      <fix>
+        When building a list of JSSE ciphers from an OpenSSL cipher defintiion,
+        ignore unknown criteria rather than throwing a
+        <code>NullPointerException</code>. (markt)
+      </fix>
+      <add>
+        Add support for the EECDH alias when using the OpenSSL cipher syntax to
+        define JSSE ciphers. (markt)
+      </add>
+    </changelog>
+  </subsection>
+  <subsection name="Jasper">
+    <changelog>
+      <fix>
+        Correct a logic error in the <code>JasperElResolver</code>. There was no
+        functional impact but the code was less efficient as a result of the
+        error. Based on a patch by martinschaef. (markt)
+      </fix>
+      <fix>
+        <bug>56568</bug>: Enable any HTTP method to be used to request a JSP
+        page that has the <code>isErrorPage</code> page directive set to
+        <code>true</code>. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="WebSocket">
+    <changelog>
+      <add>
+        Extend support for the <code>permessage-deflate</code> extension to
+        compression of outgoing messages on the server side. (markt)
+      </add>
+    </changelog>
+  </subsection>
+  <subsection name="Other">
+    <changelog>
+      <add>
+        <bug>56323</bug>: Include the <code>*.bat</code> files when installing
+        Tomcat via the Windows installer. (markt)
+      </add>
+    </changelog>
+  </subsection>
+</section>
+<section name="Tomcat 8.0.11 (markt)" rtext="2014-08-22">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -59,6 +237,96 @@
         <bug>56712</bug>: Fix session idle time calculations in
         <code>PersistenceManager</code>. (kkolinko)
       </fix>
+      <fix>
+        <bug>56717</bug>: Fix duplicate registration of
+        <code>MapperListener</code> during repeated starts of embedded Tomcat.
+        (kkolinko)
+      </fix>
+      <add>
+        <bug>56724</bug>: Write an error message to Tomcat logs if container
+        background thread is aborted unexpectedly. (kkolinko)
+      </add>
+      <fix>
+        When scanning class files (e.g. for annotations) and reading the number
+        of parameters in a <code>MethodParameters</code> structure only read a
+        single byte (rather than two bytes) as per the JVM specification. Patch
+        provided by Francesco Komauli. (markt)
+      </fix>
+      <fix>
+        Allow the JNDI Realm to start even if the directory is not available.
+        The directory not being available is not fatal once the Realm is started
+        and it need not be fatal when the Realm starts. Based on a patch by
+        Cédric Couralet. (markt)
+      </fix>
+      <fix>
+        <bug>56736</bug>: Avoid an incorrect <code>IllegalStateException</code>
+        if the async timeout fires after a non-container thread has called
+        <code>AsyncContext.dispatch()</code> but before a container thread
+        starts processing the dispatch. (markt)
+      </fix>
+      <fix>
+        <bug>56739</bug>: If an application handles an error on an application
+        thread during asynchronous processing by calling
+        <code>HttpServletResponse.sendError()</code>, then ensure that the
+        application is given an opportunity to report that error via an
+        appropriate application defined error page if one is configured. (markt)
+      </fix>
+      <fix>
+        <bug>56784</bug>: Fix a couple of rare but theoretically possible
+        atomicity bugs. (markt)
+      </fix>
+      <fix>
+        <bug>56785</bug>: Avoid <code>NullPointerException</code> if directory
+        exists on the class path that is not readable by the Tomcat user.
+        (markt)
+      </fix>
+      <fix>
+        <bug>56796</bug>: Remove unnecessary sleep when stopping a web
+        application. (markt)
+      </fix>
+      <fix>
+        <bug>56801</bug>: Improve performance of
+        <code>org.apache.tomcat.util.file.Matcher</code> which is to filter JARs
+        for scanning during web application start. Based on a patch by Sheldon
+        Shao. (markt)
+      </fix>
+      <fix>
+        <bug>56815</bug>: When the <code>gzip</code> option is enabled for the
+        <code>DefaultServlet</code> ensure that a suitable <code>Vary</code>
+        header is returned for resources that might be returned directly in
+        compressed form. (markt)
+      </fix>
+      <fix>
+        Do not mark threads from the container thread pool as container threads
+        when being used to process <code>AsyncContext.start(Runnable)</code> so
+        processing is correctly transferred back to a genuine container thread
+        when necessary. (markt)
+      </fix>
+      <add>
+        Add simple caching for calls to <code>StandardRoot.getResources()</code>
+        in the new (for 8.0.x) resources implementation. (markt)
+      </add>
+      <fix>
+        <bug>56825</bug>: Enable pre-emptive authentication to work with the
+        SSL authenticator. Based on a patch by jlmonteiro. (markt)
+      </fix>
+      <fix>
+        <bug>56840</bug>: Avoid NPE when the rewrite valve is mapped to
+        a context. (remm)
+      </fix>
+      <fix>
+        Correctly handle multiple <code>accept-language</code> headers rather
+        than just using the first header to determine the user&apos;s preferred
+        Locale. (markt)
+      </fix>
+      <fix>
+        <bug>56848</bug>: Improve handling of <code>accept-language</code>
+        headers. (markt)
+      </fix>
+      <fix>
+        <bug>56857</bug>: Fix thread safety issue when calling ServletContext
+        methods while running under a security manager. (markt)
+      </fix>
     </changelog>
   </subsection>
   <subsection name="Coyote">
@@ -66,6 +334,9 @@
       <fix>
         Fix NIO2 sendfile state tracking and error handling to fix
         various corruption issues. (remm)
+      </fix>
+      <fix>
+        Missing timeout for NIO2 sendfile writes. (remm)
       </fix>
       <fix>
         Allow inline processing for NIO2 sendfile and optimize keepalive
@@ -82,10 +353,17 @@
         the forthcoming mod_jk 1.2.41. (rjung)
       </fix>
       <fix>
-        Add new <code>tomcat.ssl.ciphers</code> system property to define
-        default ciphers, and add it in <code>conf/catalina.properties</code>
-        defined as <code>HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5</code> so
+        Use default ciphers defined as
+        <code>HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5</code> so
         that no weak ciphers are enabled by default. (remm)
+      </fix>
+      <fix>
+        <bug>56780</bug>: Enable Tomcat to start when using SSL with an IBM JRE
+        in strict SP800-131a mode. (markt)
+      </fix>
+      <fix>
+        <bug>56810</bug>: Remove use of Java 8 specific API calls in unit tests
+        for OpenSSL to JSSE cipher conversion. (markt)
       </fix>
     </changelog>
   </subsection>
@@ -95,6 +373,89 @@
         <bug>56709</bug>: Fix system property name in a log message. Submitted
         by Robert Kish. (remm)
       </fix>
+      <fix>
+        <bug>56797</bug>: When matching a method in an EL expression, do not
+        treat bridge methods as duplicates of the method they bridge to. In this
+        case always call the target of the bridge method. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="WebSocket">
+    <changelog>
+      <fix>
+        <bug>56746</bug>: Allow secure WebSocket client threads to use the
+        current context class loader rather than explicitly setting it to the
+        class loader that loaded the WebSocket implementation. This allows
+        WebSocket client connections from within web applications to access,
+        amongst other things, the JNDI resources associated with the web
+        application. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Web applications">
+    <changelog>
+      <fix>
+        Correct the label in the list of sessions by idle time for the bin that
+        represents the idle time immediately below the maximum permitted idle
+        time when using the expire command of the Manager application. (markt)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="jdbc-pool">
+    <changelog>
+      <fix>
+        <bug>53088</bug>: More identifiable thread name. (fhanik)
+      </fix>
+      <fix>
+        <bug>53200</bug>: Selective logging for slow versus failed queries.
+        (fhanik)
+      </fix>
+      <fix>
+        <bug>53853</bug>: More flexible classloading. (fhanik)
+      </fix>
+      <fix>
+        <bug>54225</bug>: Disallow empty init SQL. (fhanik)
+      </fix>
+      <fix>
+        <bug>54227</bug>: Evaluate max age upon borrow. (fhanik)
+      </fix>
+      <fix>
+        <bug>54235</bug>: Disallow nested pools exploitating using data source.
+        (fhanik)
+      </fix>
+      <fix>
+        <bug>54395</bug>: Fix JDBC interceptor parsing bug. (fhanik)
+      </fix>
+      <fix>
+        <bug>54537</bug>: Performance improvement in
+        <code>StatementFinalizer</code>. (fhanik)
+      </fix>
+      <fix>
+        <bug>54978</bug>: Make sure proper connection validation always happens,
+        regardless of config. (fhanik)
+      </fix>
+      <fix>
+        <bug>56318</bug>: Ability to trace statement creation in
+        <code>StatementFinalizer</code>. (fhanik)
+      </fix>
+      <fix>
+        <bug>56789</bug>: getPool() returns the actual pool, always. (fhanik)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Other">
+    <changelog>
+      <add>
+        <bug>56788</bug>: Display the full version in the list of installed
+        applications when installed via the Windows installer package. Patch
+        provided by Alexandre Garnier. (markt)
+      </add>
+      <add>
+        <bug>56829</bug>: Add the ability for users to define their own values
+        for <code>_RUNJAVA</code> and <code>_RUNJDB</code> environment
+        variables. Be more strict with executable filename on Windows
+        (s/java/java.exe/). Based on a patch by Neeme Praks. (markt/kkolinko)
+      </add>
     </changelog>
   </subsection>
 </section>
@@ -286,7 +647,7 @@
     </changelog>
   </subsection>
 </section>
-<section name="Tomcat 8.0.9 (markt)">
+<section name="Tomcat 8.0.9 (markt)" rtext="2014-06-24">
   <subsection name="Catalina">
     <changelog>
       <fix>
@@ -444,7 +805,8 @@
       </fix>
       <add>
         Add a new limit, defaulting to 2MB, for the amount of data Tomcat will
-        swallow for an aborted upload. (markt)
+        swallow for an aborted upload. The limit is configurable by
+        <code>maxSwallowSize</code> attribute of an HTTP connector. (markt)
       </add>
     </changelog>
   </subsection>

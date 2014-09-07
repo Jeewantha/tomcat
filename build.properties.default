@@ -25,7 +25,7 @@
 # ----- Version Control Flags -----
 version.major=8
 version.minor=0
-version.build=10
+version.build=13
 version.patch=0
 version.suffix=-dev
 
@@ -47,6 +47,12 @@ test.cobertura=false
 
 # Location of GPG executable (used only for releases)
 gpg.exec=/path/to/gpg
+
+# Code signing of Windows installer
+do.codesigning=false
+codesigning.user=request-via-pmc
+codesigning.pwd=request-via-pmc
+codesigning.partnercode=request-via-pmc
 
 # ----- Settings to use when downloading files -----
 trydownload.httpusecaches=true
@@ -129,6 +135,7 @@ wsdl4j-lib.loc=${base-maven.loc}/wsdl4j/wsdl4j/${wsdl4j-lib.version}/wsdl4j-${ws
 wsdl4j-lib.jar=${wsdl4j-lib.home}/wsdl4j-${wsdl4j-lib.version}.jar
 
 # ----- Eclipse JDT, version 4.4 or later -----#
+# See https://wiki.apache.org/tomcat/JDTCoreBatchCompiler before updating
 jdt.version=4.4
 jdt.release=R-4.4-201406061215
 jdt.home=${base.path}/ecj-${jdt.version}

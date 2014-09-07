@@ -110,30 +110,41 @@ final class StandardHostValve extends ValveBase {
         // Select the Context to be used for this Request
         Context context = request.getContext();
         if (context == null) {
-            response.sendError
-                (HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+            response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                  sm.getString("standardHost.noContext"));
             return;
         }
-
-        context.bind(Globals.IS_SECURITY_ENABLED, MY_CLASSLOADER);
 
         if (request.isAsyncSupported()) {
             request.setAsyncSupported(context.getPipeline().isAsyncSupported());
         }
 
-        // Don't fire listeners during async processing
-        // If a request init listener throws an exception, the request is
-        // aborted
         boolean asyncAtStart = request.isAsync();
+        boolean asyncDispatching = request.isAsyncDispatching();
         // An async error page may dispatch to another resource. This flag helps
         // ensure an infinite error handling loop is not entered
         boolean errorAtStart = response.isError();
-        if (asyncAtStart || context.fireRequestInitEvent(request)) {
+
+        try {
+            context.bind(Globals.IS_SECURITY_ENABLED, MY_CLASSLOADER);
+
+            if (!asyncAtStart && !context.fireRequestInitEvent(request)) {
+                // Don't fire listeners during async processing (the listener
+                // fired for the request that called startAsync()).
+                // If a request init listener throws an exception, the request
+                // is aborted.
+                return;
+            }
 
             // Ask this Context to process this request
             try {
-                context.getPipeline().getFirst().invoke(request, response);
+                if (!asyncAtStart || asyncDispatching) {
+                    context.getPipeline().getFirst().invoke(request, response);
+                } else {
+                    if (!errorAtStart) {
+                        throw new IllegalStateException(sm.getString("standardHost.asyncStateError"));
+                    }
+                }
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
                 if (errorAtStart) {
@@ -145,22 +156,19 @@ final class StandardHostValve extends ValveBase {
                 }
             }
 
-            // If the request was async at the start and an error occurred then
-            // the async error handling will kick-in and that will fire the
-            // request destroyed event *after* the error handling has taken
-            // place
-            if (!(request.isAsync() || (asyncAtStart &&
-                    request.getAttribute(
-                            RequestDispatcher.ERROR_EXCEPTION) != null))) {
+            Throwable t = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+
+            // If the request was async at the start and an error occurred
+            // then the async error handling will kick-in and that will fire
+            // the request destroyed event *after* the error handling has
+            // taken place.
+            if (!(request.isAsync() || (asyncAtStart && t != null))) {
                 // Protect against NPEs if context was destroyed during a
                 // long running request.
                 if (context.getState().isAvailable()) {
                     if (!errorAtStart) {
                         // Error page processing
                         response.setSuspended(false);
-
-                        Throwable t = (Throwable) request.getAttribute(
-                                RequestDispatcher.ERROR_EXCEPTION);
 
                         if (t != null) {
                             throwable(request, response, t);
@@ -172,15 +180,15 @@ final class StandardHostValve extends ValveBase {
                     context.fireRequestDestroyEvent(request);
                 }
             }
-        }
+        } finally {
+            // Access a session (if present) to update last accessed time, based
+            // on a strict interpretation of the specification
+            if (ACCESS_SESSION) {
+                request.getSession(false);
+            }
 
-        // Access a session (if present) to update last accessed time, based on a
-        // strict interpretation of the specification
-        if (ACCESS_SESSION) {
-            request.getSession(false);
+            context.unbind(Globals.IS_SECURITY_ENABLED, MY_CLASSLOADER);
         }
-
-        context.unbind(Globals.IS_SECURITY_ENABLED, MY_CLASSLOADER);
     }
 
 
@@ -265,7 +273,7 @@ final class StandardHostValve extends ValveBase {
             // Look for a default error page
             errorPage = context.findErrorPage(0);
         }
-        if (errorPage != null) {
+        if (errorPage != null && response.setErrorReported()) {
             response.setAppCommitted(false);
             request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE,
                               Integer.valueOf(statusCode));
@@ -344,31 +352,33 @@ final class StandardHostValve extends ValveBase {
         }
 
         if (errorPage != null) {
-            response.setAppCommitted(false);
-            request.setAttribute(Globals.DISPATCHER_REQUEST_PATH_ATTR,
-                    errorPage.getLocation());
-            request.setAttribute(Globals.DISPATCHER_TYPE_ATTR,
-                    DispatcherType.ERROR);
-            request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE,
-                    new Integer(HttpServletResponse.SC_INTERNAL_SERVER_ERROR));
-            request.setAttribute(RequestDispatcher.ERROR_MESSAGE,
-                              throwable.getMessage());
-            request.setAttribute(RequestDispatcher.ERROR_EXCEPTION,
-                              realError);
-            Wrapper wrapper = request.getWrapper();
-            if (wrapper != null) {
-                request.setAttribute(RequestDispatcher.ERROR_SERVLET_NAME,
-                                  wrapper.getName());
-            }
-            request.setAttribute(RequestDispatcher.ERROR_REQUEST_URI,
-                                 request.getRequestURI());
-            request.setAttribute(RequestDispatcher.ERROR_EXCEPTION_TYPE,
-                              realError.getClass());
-            if (custom(request, response, errorPage)) {
-                try {
-                    response.finishResponse();
-                } catch (IOException e) {
-                    container.getLogger().warn("Exception Processing " + errorPage, e);
+            if (response.setErrorReported()) {
+                response.setAppCommitted(false);
+                request.setAttribute(Globals.DISPATCHER_REQUEST_PATH_ATTR,
+                        errorPage.getLocation());
+                request.setAttribute(Globals.DISPATCHER_TYPE_ATTR,
+                        DispatcherType.ERROR);
+                request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE,
+                        new Integer(HttpServletResponse.SC_INTERNAL_SERVER_ERROR));
+                request.setAttribute(RequestDispatcher.ERROR_MESSAGE,
+                                  throwable.getMessage());
+                request.setAttribute(RequestDispatcher.ERROR_EXCEPTION,
+                                  realError);
+                Wrapper wrapper = request.getWrapper();
+                if (wrapper != null) {
+                    request.setAttribute(RequestDispatcher.ERROR_SERVLET_NAME,
+                                      wrapper.getName());
+                }
+                request.setAttribute(RequestDispatcher.ERROR_REQUEST_URI,
+                                     request.getRequestURI());
+                request.setAttribute(RequestDispatcher.ERROR_EXCEPTION_TYPE,
+                                  realError.getClass());
+                if (custom(request, response, errorPage)) {
+                    try {
+                        response.finishResponse();
+                    } catch (IOException e) {
+                        container.getLogger().warn("Exception Processing " + errorPage, e);
+                    }
                 }
             }
         } else {

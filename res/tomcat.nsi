@@ -184,6 +184,7 @@ Section "Core" SecTomcatCore
   SetOutPath $INSTDIR\bin
   File bin\bootstrap.jar
   File bin\tomcat-juli.jar
+  File bin\*.bat
   SetOutPath $INSTDIR\conf
   File conf\*.*
   SetOutPath $INSTDIR\webapps\ROOT
@@ -344,6 +345,8 @@ Section -post
   WriteRegStr HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName" "Version" @VERSION@
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName" \
                    "DisplayName" "Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName (remove only)"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName" \
+                   "DisplayVersion" @VERSION@
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName" \
                    "DisplayIcon" "$\"$INSTDIR\tomcat.ico$\""
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName" \

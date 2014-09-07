@@ -218,7 +218,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
     /**
      * SSL cipher suite.
      */
-    protected String SSLCipherSuite = System.getProperty("tomcat.ssl.ciphers", "ALL");
+    protected String SSLCipherSuite = DEFAULT_CIPHERS;
     public String getSSLCipherSuite() { return SSLCipherSuite; }
     public void setSSLCipherSuite(String SSLCipherSuite) { this.SSLCipherSuite = SSLCipherSuite; }
 
@@ -352,6 +352,28 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
         // TODO : Investigate if it is possible to extract the current list of
         //        available ciphers. Native code changes will be required.
         return new String[] { getSSLCipherSuite() };
+    }
+
+
+    /**
+     * This endpoint does not support <code>-1</code> for unlimited connections,
+     * nor does it support setting this attribute while the endpoint is running.
+     *
+     * {@inheritDoc}
+     */
+    @Override
+    public void setMaxConnections(int maxConnections) {
+        if (maxConnections == -1) {
+            log.warn(sm.getString("endpoint.apr.maxConnections.unlimited",
+                    Integer.valueOf(getMaxConnections())));
+            return;
+        }
+        if (running) {
+            log.warn(sm.getString("endpoint.apr.maxConnections.running",
+                    Integer.valueOf(getMaxConnections())));
+            return;
+        }
+        super.setMaxConnections(maxConnections);
     }
 
 

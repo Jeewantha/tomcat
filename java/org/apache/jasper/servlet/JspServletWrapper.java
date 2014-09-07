@@ -399,7 +399,6 @@ public class JspServletWrapper {
         }
 
         try {
-
             /*
              * (3) Handle limitation of number of loaded Jsps
              */
@@ -419,6 +418,7 @@ public class JspServletWrapper {
                     }
                 }
             }
+
             /*
              * (4) Service request
              */
@@ -456,8 +456,8 @@ public class JspServletWrapper {
             }
             throw ex;
         } catch (IOException ex) {
-            if(options.getDevelopment()) {
-                throw handleJspException(ex);
+            if (options.getDevelopment()) {
+                throw new IOException(handleJspException(ex).getMessage(), ex);
             }
             throw ex;
         } catch (IllegalStateException ex) {
@@ -585,5 +585,4 @@ public class JspServletWrapper {
             return new JasperException(ex);
         }
     }
-
 }

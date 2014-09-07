@@ -21,8 +21,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
@@ -41,6 +44,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -114,6 +118,7 @@ import org.apache.tomcat.InstanceManager;
 import org.apache.tomcat.JarScanner;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.IntrospectionUtils;
+import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.UDecoder;
 import org.apache.tomcat.util.descriptor.XmlIdentifiers;
 import org.apache.tomcat.util.descriptor.web.ApplicationParameter;
@@ -469,7 +474,7 @@ public class StandardContext extends ContainerBase
      * The context initialization parameters for this web application,
      * keyed by name.
      */
-    private HashMap<String, String> parameters = new HashMap<>();
+    private final ConcurrentHashMap<String, String> parameters = new ConcurrentHashMap<>();
 
 
     /**
@@ -820,8 +825,48 @@ public class StandardContext extends ContainerBase
 
     private final Object namingToken = new Object();
 
+    private boolean useRfc6265 = false;
+    private Charset cookieEncoding = StandardCharsets.UTF_8;
+
 
     // ----------------------------------------------------- Context Properties
+
+
+    @Override
+    public void setUseRfc6265(boolean useRfc6265) {
+        this.useRfc6265 = useRfc6265;
+    }
+
+
+    @Override
+    public boolean getUseRfc6265() {
+        return useRfc6265;
+    }
+
+
+    @Override
+    public void setCookieEncoding(String encoding) {
+        try {
+            Charset charset = B2CConverter.getCharset(encoding);
+            cookieEncoding = charset;
+        } catch (UnsupportedEncodingException uee) {
+            cookieEncoding = StandardCharsets.UTF_8;
+            log.warn(sm.getString("standardContext.unknownCookieEncoding"), uee);
+        }
+    }
+
+
+    @Override
+    public String getCookieEncoding() {
+        return cookieEncoding.name();
+    }
+
+
+    @Override
+    public Charset getCookieEncodingCharset() {
+        return cookieEncoding;
+    }
+
 
     @Override
     public Object getNamingToken() {
@@ -917,7 +962,9 @@ public class StandardContext extends ContainerBase
         StringBuilder result = new StringBuilder();
         boolean first = true;
         for (String servletName : resourceOnlyServlets) {
-            if (!first) {
+            if (first) {
+                first = false;
+            } else {
                 result.append(',');
             }
             result.append(servletName);
@@ -3009,19 +3056,20 @@ public class StandardContext extends ContainerBase
     @Override
     public void addParameter(String name, String value) {
         // Validate the proposed context initialization parameter
-        if ((name == null) || (value == null))
+        if ((name == null) || (value == null)) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.parameter.required"));
-        if (parameters.get(name) != null)
-            throw new IllegalArgumentException
-                (sm.getString("standardContext.parameter.duplicate", name));
-
-        // Add this parameter to our defined set
-        synchronized (parameters) {
-            parameters.put(name, value);
         }
-        fireContainerEvent("addParameter", name);
 
+        // Add this parameter to our defined set if not already present
+        String oldValue = parameters.putIfAbsent(name, value);
+
+        if (oldValue != null) {
+            throw new IllegalArgumentException(
+                    sm.getString("standardContext.parameter.duplicate", name));
+        }
+
+        fireContainerEvent("addParameter", name);
     }
 
 
@@ -3515,11 +3563,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String findParameter(String name) {
-
-        synchronized (parameters) {
-            return (parameters.get(name));
-        }
-
+        return parameters.get(name);
     }
 
 
@@ -3530,12 +3574,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findParameters() {
-
-        synchronized (parameters) {
-            String results[] = new String[parameters.size()];
-            return (parameters.keySet().toArray(results));
-        }
-
+        List<String> parameterNames = new ArrayList<>(parameters.size());
+        parameterNames.addAll(parameters.keySet());
+        return parameterNames.toArray(new String[parameterNames.size()]);
     }
 
 
@@ -4079,12 +4120,8 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public void removeParameter(String name) {
-
-        synchronized (parameters) {
-            parameters.remove(name);
-        }
+        parameters.remove(name);
         fireContainerEvent("removeParameter", name);
-
     }
 
 

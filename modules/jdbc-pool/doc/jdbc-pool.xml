@@ -171,6 +171,25 @@
     </attributes>
   </subsection>
 
+  <subsection name="System Properties">
+    <p>System properties are JVM wide, affect all pools created in the JVM</p>
+    <attributes>
+      <attribute name="org.apache.tomcat.jdbc.pool.onlyAttemptCurrentClassLoader" required="false">
+        <p>(boolean) Controls classloading of dynamic classes, such as
+           JDBC drivers, interceptors and validators. If set to
+           <code>false</code>, default value, the pool will first attempt
+           to load using the current loader (i.e. the class loader that
+           loaded the pool classes) and if class loading fails attempt to
+           load using the thread context loader. Set this value to
+           <code>true</code>, if you wish to remain backwards compatible
+           with Apache Tomcat 8.0.8 and earlier, and only attempt the
+           current loader.
+           If not set then the default value is <code>false</code>.
+        </p>
+      </attribute>
+    </attributes>
+  </subsection>
+
   <subsection name="Common Attributes">
   <p>These attributes are shared between commons-dbcp and tomcat-jdbc-pool, in some cases default values are different.</p>
   <attributes>
@@ -592,6 +611,13 @@
        and closes these statements when the connection is returned to the pool.
     </p>
     <attributes>
+      <attribute name="trace" required="false">
+        <p>(boolean as String) Enable tracing of unclosed statements.
+           When enabled and a connection is closed, and statements are not closed,
+           the interceptor will log all stack traces.
+           The default value is <code>false</code>.
+        </p>
+      </attribute>
     </attributes>
   </subsection>
   <subsection name="org.apache.tomcat.jdbc.pool.interceptor.StatementCache">
@@ -654,8 +680,18 @@
         </p>
       </attribute>
       <attribute name="maxQueries" required="false">
-        <p>(int as String) The maximum number of queries to keep track of in order to preserve memory space
+        <p>(int as String) The maximum number of queries to keep track of in order to preserve memory space.
            The default value is <code>1000</code>.
+        </p>
+      </attribute>
+      <attribute name="logSlow" required="false">
+        <p>(boolean as String) Set to <code>true</code> if you wish to log slow queries.
+            The default value is <code>true</code>.
+        </p>
+      </attribute>
+      <attribute name="logFailed" required="false">
+        <p>(boolean as String) Set to <code>true</code> if you wish to log failed queries.
+            The default value is <code>true</code>.
         </p>
       </attribute>
     </attributes>

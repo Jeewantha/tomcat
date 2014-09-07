@@ -17,6 +17,7 @@
 package org.apache.tomcat.jdbc.pool;
 
 
+import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
@@ -133,8 +134,26 @@ public class PooledConnection {
         return connectionVersion;
     }
 
+    /**
+     * @deprecated use {@link #shouldForceReconnect(String, String)}
+     * method kept since it was public, to avoid changing interface. name was pooo
+     */
+    @Deprecated
     public boolean checkUser(String username, String password) {
-        if (!getPoolProperties().isAlternateUsernameAllowed()) return true;
+        return !shouldForceReconnect(username, password);
+    }
+
+    /**
+     * Returns true if we must force reconnect based on credentials passed in.
+     * Returns false if {@link PoolConfiguration#isAlternateUsernameAllowed()} method returns false.
+     * Returns false if the username/password has not changed since this connection was connected
+     * @param username the username you wish to connect with, pass in null to accept the default username from {@link PoolConfiguration#getUsername()}
+     * @param password the password you wish to connect with, pass in null to accept the default username from {@link org.apache.tomcat.jdbc.pool.PoolConfiguration#getPassword()}
+     * @return true is the pool must reconnect
+     */
+    public boolean shouldForceReconnect(String username, String password) {
+
+        if (!getPoolProperties().isAlternateUsernameAllowed()) return false;
 
         if (username==null) username = poolProperties.getUsername();
         if (password==null) password = poolProperties.getPassword();
@@ -142,15 +161,15 @@ public class PooledConnection {
         String storedUsr = (String)getAttributes().get(PROP_USER);
         String storedPwd = (String)getAttributes().get(PROP_PASSWORD);
 
-        boolean result = (username==null && storedUsr==null);
-        result = (result || (username!=null && username.equals(storedUsr)));
+        boolean noChangeInCredentials = (username==null && storedUsr==null);
+        noChangeInCredentials = (noChangeInCredentials || (username!=null && username.equals(storedUsr)));
 
-        result = result && ((password==null && storedPwd==null) || (password!=null && password.equals(storedPwd)));
+        noChangeInCredentials = noChangeInCredentials && ((password==null && storedPwd==null) || (password!=null && password.equals(storedPwd)));
 
         if (username==null)  getAttributes().remove(PROP_USER); else getAttributes().put(PROP_USER, username);
         if (password==null)  getAttributes().remove(PROP_PASSWORD); else getAttributes().put(PROP_PASSWORD, password);
 
-        return result;
+        return !noChangeInCredentials;
     }
 
     /**
@@ -242,9 +261,17 @@ public class PooledConnection {
                 if (log.isDebugEnabled()) {
                     log.debug("Instantiating driver using class: "+poolProperties.getDriverClassName()+" [url="+poolProperties.getUrl()+"]");
                 }
-                driver = (java.sql.Driver) Class.forName(poolProperties.getDriverClassName(),
-                                                         true, PooledConnection.class.getClassLoader()
-                                                         ).newInstance();
+                if (poolProperties.getDriverClassName()==null) {
+                    //rely on DriverManager
+                    log.warn("Not loading a JDBC driver as driverClassName property is null.");
+                } else {
+                    driver = (java.sql.Driver)
+                        ClassLoaderUtil.loadClass(
+                            poolProperties.getDriverClassName(),
+                            PooledConnection.class.getClassLoader(),
+                            Thread.currentThread().getContextClassLoader()
+                        ).newInstance();
+                }
             }
         } catch (java.lang.Exception cn) {
             if (log.isDebugEnabled()) {
@@ -274,7 +301,11 @@ public class PooledConnection {
         if (pwd != null) properties.setProperty(PROP_PASSWORD, pwd);
 
         try {
-            connection = driver.connect(driverURL, properties);
+            if (driver==null) {
+                connection = DriverManager.getConnection(driverURL, properties);
+            } else {
+                connection = driver.connect(driverURL, properties);
+            }
         } catch (Exception x) {
             if (log.isDebugEnabled()) {
                 log.debug("Unable to connect to database.", x);
@@ -304,6 +335,19 @@ public class PooledConnection {
         return connection!=null;
     }
 
+    /**
+     * Returns true if the connection has been connected more than
+     * {@link PoolConfiguration#getMaxAge()} milliseconds. false otherwise.
+     * @return Returns true if the connection has been connected more than
+     * {@link PoolConfiguration#getMaxAge()} milliseconds. false otherwise.
+     */
+    public boolean isMaxAgeExpired() {
+        if (getPoolProperties().getMaxAge()>0 ) {
+            return (System.currentTimeMillis() - getLastConnected()) > getPoolProperties().getMaxAge();
+        } else {
+            return false;
+        }
+    }
     /**
      * Issues a call to {@link #disconnect(boolean)} with the argument false followed by a call to
      * {@link #connect()}

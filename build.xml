@@ -179,6 +179,9 @@
   <available file="/dev/urandom" property="test.jvmarg.egd" value="-Djava.security.egd=file:/dev/./urandom"/>
   <property name="test.jvmarg.egd" value="" />
 
+  <!-- Location of OpenSSL binary -->
+  <property name="test.openssl.path" value="" />
+
   <!-- Include .gitignore in src distributions. -->
   <!-- .git and .gitignore are in defaultexcludes since Ant 1.8.2 -->
   <defaultexcludes add="**/.git" />
@@ -1336,25 +1339,25 @@
   </target>
 
   <target name="test-bio" description="Runs the JUnit test cases for BIO. Does not stop on errors."
-          depends="test-compile,deploy,cobertura-instrument" if="${execute.test.bio}">
+          depends="test-compile,deploy,cobertura-instrument,test-openssl-exists" if="${execute.test.bio}">
     <runtests protocol="org.apache.coyote.http11.Http11Protocol"
               extension=".BIO" />
   </target>
 
   <target name="test-nio" description="Runs the JUnit test cases for NIO. Does not stop on errors."
-          depends="test-compile,deploy,cobertura-instrument" if="${execute.test.nio}">
+          depends="test-compile,deploy,cobertura-instrument,test-openssl-exists" if="${execute.test.nio}">
     <runtests protocol="org.apache.coyote.http11.Http11NioProtocol"
               extension=".NIO" />
   </target>
 
   <target name="test-nio2" description="Runs the JUnit test cases for NIO2. Does not stop on errors."
-          depends="test-compile,deploy,cobertura-instrument" if="${execute.test.nio2}">
+          depends="test-compile,deploy,cobertura-instrument,test-openssl-exists" if="${execute.test.nio2}">
     <runtests protocol="org.apache.coyote.http11.Http11Nio2Protocol"
               extension=".NIO2" />
   </target>
 
   <target name="test-apr" description="Runs the JUnit test cases for APR. Does not stop on errors."
-          depends="test-compile,deploy,test-apr-exists,cobertura-instrument"
+          depends="test-compile,deploy,test-apr-exists,cobertura-instrument,test-openssl-exists"
           if="${apr.exists}">
     <runtests protocol="org.apache.coyote.http11.Http11AprProtocol"
               extension=".APR" />
@@ -1363,6 +1366,22 @@
   <target name="test-apr-exists" description="Checks for APR lib"
           if="${execute.test.apr}">
     <available file="${test.apr.loc}" property="apr.exists" />
+  </target>
+
+  <target name="test-openssl-exists" description="Checks for the OpenSSL binary">
+    <property environment="env" />
+    <condition property="test.openssl.exists">
+      <or>
+        <and>
+          <length string="${test.openssl.path}" trim="true" length="0" when="gt"/>
+          <available file="${test.openssl.path}" property="test.openssl.exists"/>
+        </and>
+        <and>
+          <length string="${test.openssl.path}" trim="true" length="0" when="eq"/>
+          <available file="openssl" filepath="${env.PATH}" property="test.openssl.exists"/>
+        </and>
+      </or>
+    </condition>
   </target>
 
   <macrodef name="runtests"
@@ -1393,6 +1412,7 @@
         <sysproperty key="tomcat.test.protocol" value="@{protocol}" />
         <sysproperty key="tomcat.test.accesslog" value="${test.accesslog}" />
         <sysproperty key="tomcat.test.reports" value="${test.reports}" />
+        <sysproperty key="tomcat.test.openssl.path" value="${test.openssl.path}" />
         <!-- File for Cobertura to write coverage results to -->
         <sysproperty key="net.sourceforge.cobertura.datafile" file="${cobertura.datafile}" />
 
@@ -1415,6 +1435,8 @@
             <exclude name="**/Tester*.java" />
             <!-- Exclude the tests known to fail -->
             <exclude name="org/apache/catalina/tribes/test/**" />
+            <!-- Exclude the OpenSSL tests unless OpenSSL is available -->
+            <exclude name="org/apache/tomcat/util/net/jsse/openssl/**" unless="${test.openssl.exists}"/>
           </fileset>
         </batchtest>
       </junit>
@@ -2097,18 +2119,19 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
     </antcall>
   </target>
 
-  <target name="sign-windows-binaries" depends="installer" unless="skip.codesigning">
+  <target name="sign-windows-binaries" depends="installer" if="${do.codesigning}" >
 
     <taskdef name="signcode"
              classname="org.apache.tomcat.buildutil.SignCode"
              classpath="${tomcat.classes}" />
 
-    <signcode>
+    <signcode userName="${codesigning.user}" password="${codesigning.pwd}"
+              partnerCode="${codesigning.partnercode}"
+              applicationName="Apache Tomcat ${version.major.minor}"
+              applicationversion="${version}"
+              signingService="Microsoft Signing">
       <fileset dir="${tomcat.release}">
         <filename name="v${version}/bin/${final.name}.exe"/>
-      </fileset>
-      <fileset dir="${tomcat.dist}/bin">
-        <include name="**/*.exe"/>
       </fileset>
     </signcode>
 

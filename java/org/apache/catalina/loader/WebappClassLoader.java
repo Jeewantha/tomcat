@@ -878,10 +878,6 @@ public class WebappClassLoader extends URLClassLoader
                 log.trace("      findClassInternal(" + name + ")");
             try {
                 clazz = findClassInternal(name);
-            } catch(ClassNotFoundException cnfe) {
-                if (!hasExternalRepositories) {
-                    throw cnfe;
-                }
             } catch(AccessControlException ace) {
                 log.warn("WebappClassLoader.findClassInternal(" + name
                         + ") security exception: " + ace.getMessage(), ace);
@@ -2396,11 +2392,11 @@ public class WebappClassLoader extends URLClassLoader
      *
      * @return the loaded class, or null if the class isn't found
      */
-    protected Class<?> findClassInternal(String name)
-        throws ClassNotFoundException {
+    protected Class<?> findClassInternal(String name) {
 
-        if (!validate(name))
-            throw new ClassNotFoundException(name);
+        if (!validate(name)) {
+            return null;
+        }
 
         String path = binaryNameToPath(name, true);
 
@@ -2414,8 +2410,9 @@ public class WebappClassLoader extends URLClassLoader
             entry = findResourceInternal(name, path);
         }
 
-        if (entry == null)
-            throw new ClassNotFoundException(name);
+        if (entry == null) {
+            return null;
+        }
 
         Class<?> clazz = entry.loadedClass;
         if (clazz != null)
@@ -2426,8 +2423,9 @@ public class WebappClassLoader extends URLClassLoader
             if (clazz != null)
                 return clazz;
 
-            if (entry.binaryContent == null)
-                throw new ClassNotFoundException(name);
+            if (entry.binaryContent == null) {
+                return null;
+            }
 
             // Looking up the package
             String packageName = null;
@@ -2501,8 +2499,8 @@ public class WebappClassLoader extends URLClassLoader
 
 
     private String binaryNameToPath(String binaryName, boolean withLeadingSlash) {
-        StringBuilder path = new StringBuilder(
-                1 + binaryName.length() + CLASS_FILE_SUFFIX.length());
+        // 1 for leading '/', 6 for ".class"
+        StringBuilder path = new StringBuilder(7 + binaryName.length());
         if (withLeadingSlash) {
             path.append('/');
         }

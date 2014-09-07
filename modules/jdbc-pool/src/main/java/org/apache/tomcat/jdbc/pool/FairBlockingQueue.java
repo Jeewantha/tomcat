@@ -133,9 +133,9 @@ public class FairBlockingQueue<E> implements BlockingQueue<E> {
     public E poll(long timeout, TimeUnit unit) throws InterruptedException {
         E result = null;
         final ReentrantLock lock = this.lock;
+        //acquire the global lock until we know what to do
+        lock.lock();
         try {
-            //acquire the global lock until we know what to do
-            lock.lock();
             //check to see if we have objects
             result = items.poll();
             if (result==null && timeout>0) {
@@ -145,15 +145,36 @@ public class FairBlockingQueue<E> implements BlockingQueue<E> {
                 waiters.addLast(c);
                 //unlock the global lock
                 lock.unlock();
-                //wait for the specified timeout
-                if (!c.await(timeout, unit)) {
-                    //if we timed out, remove ourselves from the waitlist
+                boolean didtimeout = true;
+                InterruptedException interruptedException = null;
+                try {
+                    //wait for the specified timeout
+                    didtimeout = !c.await(timeout, unit);
+                } catch (InterruptedException ix) {
+                    interruptedException = ix;
+                }
+                if (didtimeout) {
+                    //if we timed out, or got interrupted
+                    // remove ourselves from the waitlist
                     lock.lock();
-                    waiters.remove(c);
-                    lock.unlock();
+                    try {
+                        waiters.remove(c);
+                    } finally {
+                        lock.unlock();
+                    }
                 }
                 //return the item we received, can be null if we timed out
                 result = c.getItem();
+                if (null!=interruptedException) {
+                    //we got interrupted
+                    if ( null!=result) {
+                        //we got a result - clear the interrupt status
+                        //don't propagate cause we have removed a connection from pool
+                        Thread.interrupted();
+                    } else {
+                        throw interruptedException;
+                    }
+                }
             } else {
                 //we have an object, release
                 lock.unlock();
@@ -173,9 +194,9 @@ public class FairBlockingQueue<E> implements BlockingQueue<E> {
     public Future<E> pollAsync() {
         Future<E> result = null;
         final ReentrantLock lock = this.lock;
+        //grab the global lock
+        lock.lock();
         try {
-            //grab the global lock
-            lock.lock();
             //check to see if we have objects in the queue
             E item = items.poll();
             if (item==null) {

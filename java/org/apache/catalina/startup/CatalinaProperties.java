@@ -18,6 +18,7 @@ package org.apache.catalina.startup;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.Enumeration;
@@ -59,7 +60,7 @@ public class CatalinaProperties {
         Throwable error = null;
 
         try {
-            String configUrl = getConfigUrl();
+            String configUrl = System.getProperty("catalina.config");
             if (configUrl != null) {
                 is = (new URL(configUrl)).openStream();
             }
@@ -91,10 +92,15 @@ public class CatalinaProperties {
             try {
                 properties = new Properties();
                 properties.load(is);
-                is.close();
             } catch (Throwable t) {
                 handleThrowable(t);
                 error = t;
+            } finally {
+                try {
+                    is.close();
+                } catch (IOException ioe) {
+                    log.warn("Could not close catalina.properties", ioe);
+                }
             }
         }
 
@@ -102,7 +108,7 @@ public class CatalinaProperties {
             // Do something
             log.warn("Failed to load catalina.properties", error);
             // That's fine - we have reasonable defaults.
-            properties=new Properties();
+            properties = new Properties();
         }
 
         // Register the properties as system properties
@@ -114,14 +120,6 @@ public class CatalinaProperties {
                 System.setProperty(name, value);
             }
         }
-    }
-
-
-    /**
-     * Get the value of the configuration URL.
-     */
-    private static String getConfigUrl() {
-        return System.getProperty("catalina.config");
     }
 
 

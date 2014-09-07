@@ -329,11 +329,6 @@ public abstract class AbstractReplicatedMap<K,V>
     }
 
     public void breakdown() {
-        finalize();
-    }
-
-    @Override
-    public void finalize() {
         if (this.rpcChannel != null) {
             this.rpcChannel.breakdown();
         }
@@ -349,6 +344,15 @@ public abstract class AbstractReplicatedMap<K,V>
         innerMap.clear();
         this.stateTransferred = false;
         this.externalLoaders = null;
+    }
+
+    @Override
+    public void finalize() throws Throwable {
+        try {
+            breakdown();
+        } finally {
+            super.finalize();
+        }
     }
 
     @Override

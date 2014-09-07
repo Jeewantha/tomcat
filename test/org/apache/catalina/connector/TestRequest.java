@@ -27,6 +27,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Locale;
 import java.util.TreeMap;
 
 import javax.servlet.ServletException;
@@ -39,6 +40,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -658,7 +661,7 @@ public class TestRequest extends TomcatBaseTest {
             writer.append("Content-Disposition: form-data; name=\"part\"\r\n");
             writer.append("Content-Type: text/plain; charset=UTF-8\r\n");
             writer.append("\r\n");
-            writer.append("��").append("\r\n");
+            writer.append("äö").append("\r\n");
             writer.flush();
 
             writer.append("\r\n");
@@ -679,7 +682,7 @@ public class TestRequest extends TomcatBaseTest {
                 while ((line = reader.readLine()) != null) {
                     response.add(line);
                 }
-                assertTrue(response.contains("Part ��"));
+                assertTrue(response.contains("Part äö"));
             }
         } else {
             fail("OK status was expected: " + status);
@@ -794,5 +797,56 @@ public class TestRequest extends TomcatBaseTest {
             resp.setContentType("text/plain");
             resp.getWriter().print(req.getContextPath());
         }
+    }
+
+    @Test
+    public void getLocaleMultipleHeaders01() throws Exception {
+        TesterRequest req = new TesterRequest();
+
+        req.addHeader("accept-language", "en;q=0.5");
+        req.addHeader("accept-language", "en-gb");
+
+        Locale actual = req.getLocale();
+        Locale expected = Locale.forLanguageTag("en-gb");
+
+        Assert.assertEquals(expected, actual);
+    }
+
+    /*
+     * Reverse header order of getLocaleMultipleHeaders01() and make sure the
+     * result is the same.
+     */
+    @Test
+    public void getLocaleMultipleHeaders02() throws Exception {
+        TesterRequest req = new TesterRequest();
+
+        req.addHeader("accept-language", "en-gb");
+        req.addHeader("accept-language", "en;q=0.5");
+
+        Locale actual = req.getLocale();
+        Locale expected = Locale.forLanguageTag("en-gb");
+
+        Assert.assertEquals(expected, actual);
+    }
+
+
+    @Test
+    @Ignore("Used to check performance of different parsing approaches")
+    public void localeParsePerformance() throws Exception {
+        TesterRequest req = new TesterRequest();
+        req.addHeader("accept-encoding", "en-gb,en");
+
+        long start = System.nanoTime();
+
+        // Takes about 0.3s on a quad core 2.7Ghz 2013 MacBook
+        for (int i = 0; i < 10000000; i++) {
+            req.parseLocales();
+            req.localesParsed = false;
+            req.locales.clear();
+        }
+
+        long time = System.nanoTime() - start;
+
+        System.out.println(time);
     }
 }

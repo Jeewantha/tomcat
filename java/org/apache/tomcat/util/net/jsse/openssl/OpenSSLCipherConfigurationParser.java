@@ -40,11 +40,6 @@ public class OpenSSLCipherConfigurationParser {
     private static final StringManager sm =
             StringManager.getManager("org.apache.tomcat.util.net.jsse.res");
 
-    /**
-     * System property key to define the DEFAULT ciphers.
-     */
-    public static final String DEFAULT_EXPRESSION_KEY = "openssl.default.ciphers";
-
     private static boolean initialized = false;
 
     private static final String SEPARATOR = ":|,| ";
@@ -72,7 +67,7 @@ public class OpenSSLCipherConfigurationParser {
     /**
      * All ciphers by their openssl alias name.
      */
-    private static final Map<String, List<Ciphers>> aliases = new LinkedHashMap<>();
+    private static final Map<String, List<Cipher>> aliases = new LinkedHashMap<>();
 
     /**
      * the 'NULL' ciphers that is those offering no encryption. Because these offer no encryption at all and are a security risk
@@ -120,7 +115,8 @@ public class OpenSSLCipherConfigurationParser {
      */
     private static final String aRSA = "aRSA";
     /**
-     * Cipher suites using RSA for key exchange or for authentication.
+     * Cipher suites using RSA for key exchange
+     * Despite what the docs say, RSA is equivalent to kRSA.
      */
     private static final String RSA = "RSA";
     /**
@@ -167,6 +163,11 @@ public class OpenSSLCipherConfigurationParser {
      * Cipher suites using ephemeral ECDH key agreement, including anonymous cipher suites.
      */
     private static final String kEECDH = "kEECDH";
+    /**
+     * Cipher suites using ephemeral ECDH key agreement, excluding anonymous cipher suites.
+     * Same as "kEECDH:-AECDH"
+     */
+    private static final String EECDH = "EECDH";
     /**
      * Cipher suitesusing ECDH key exchange, including anonymous, ephemeral and fixed ECDH.
      */
@@ -226,7 +227,7 @@ public class OpenSSLCipherConfigurationParser {
     /**
      * TLS v1.2 cipher suites. Note: there are no cipher suites specific to TLS v1.1.
      */
-    private static final String TLSv1_2 = "TLSv1_2";
+    private static final String TLSv1_2 = "TLSv1.2";
     /**
      * TLS v1.0 cipher suites.
      */
@@ -361,154 +362,161 @@ public class OpenSSLCipherConfigurationParser {
 
     private static final void init() {
 
-        for (Ciphers cipher : Ciphers.values()) {
+        for (Cipher cipher : Cipher.values()) {
             String alias = cipher.getOpenSSLAlias();
             if (aliases.containsKey(alias)) {
                 aliases.get(alias).add(cipher);
             } else {
-                List<Ciphers> list = new ArrayList<>();
+                List<Cipher> list = new ArrayList<>();
                 list.add(cipher);
                 aliases.put(alias, list);
             }
             aliases.put(cipher.name(), Collections.singletonList(cipher));
         }
-        List<Ciphers> allCiphers = Arrays.asList(Ciphers.values());
-        Collections.reverse(allCiphers);
-        LinkedHashSet<Ciphers> all = defaultSort(new LinkedHashSet<>(allCiphers));
+        List<Cipher> allCiphersList = Arrays.asList(Cipher.values());
+        Collections.reverse(allCiphersList);
+        LinkedHashSet<Cipher> allCiphers = defaultSort(new LinkedHashSet<>(allCiphersList));
+        addListAlias(eNULL, filterByEncryption(allCiphers, Collections.singleton(Encryption.eNULL)));
+        LinkedHashSet<Cipher> all = new LinkedHashSet<>(allCiphers);
+        remove(all, eNULL);
         addListAlias(ALL, all);
-        addListAlias(HIGH, filterByEncryptionLevel(all, Collections.singleton(EncryptionLevel.HIGH)));
-        addListAlias(MEDIUM, filterByEncryptionLevel(all, Collections.singleton(EncryptionLevel.MEDIUM)));
-        addListAlias(LOW, filterByEncryptionLevel(all, Collections.singleton(EncryptionLevel.LOW)));
-        addListAlias(EXPORT, filterByEncryptionLevel(all, new HashSet<>(Arrays.asList(EncryptionLevel.EXP40, EncryptionLevel.EXP56))));
+        addListAlias(HIGH, filterByEncryptionLevel(allCiphers, Collections.singleton(EncryptionLevel.HIGH)));
+        addListAlias(MEDIUM, filterByEncryptionLevel(allCiphers, Collections.singleton(EncryptionLevel.MEDIUM)));
+        addListAlias(LOW, filterByEncryptionLevel(allCiphers, Collections.singleton(EncryptionLevel.LOW)));
+        addListAlias(EXPORT, filterByEncryptionLevel(allCiphers, new HashSet<>(Arrays.asList(EncryptionLevel.EXP40, EncryptionLevel.EXP56))));
         aliases.put("EXP", aliases.get(EXPORT));
-        addListAlias(EXPORT40, filterByEncryptionLevel(all, Collections.singleton(EncryptionLevel.EXP40)));
-        addListAlias(EXPORT56, filterByEncryptionLevel(all, Collections.singleton(EncryptionLevel.EXP56)));
-        addListAlias(eNULL, filterByEncryption(all, Collections.singleton(Encryption.eNULL)));
+        addListAlias(EXPORT40, filterByEncryptionLevel(allCiphers, Collections.singleton(EncryptionLevel.EXP40)));
+        addListAlias(EXPORT56, filterByEncryptionLevel(allCiphers, Collections.singleton(EncryptionLevel.EXP56)));
         aliases.put("NULL", aliases.get(eNULL));
         aliases.put(COMPLEMENTOFALL, aliases.get(eNULL));
-        addListAlias(aNULL, filterByAuthentication(all, Collections.singleton(Authentication.aNULL)));
-        addListAlias(kRSA, filterByKeyExchange(all, Collections.singleton(KeyExchange.RSA)));
-        addListAlias(aRSA, filterByAuthentication(all, Collections.singleton(Authentication.RSA)));
-        addListAlias(RSA, filter(all, null, Collections.singleton(KeyExchange.RSA), Collections.singleton(Authentication.RSA), null, null, null));
-        addListAlias(kEDH, filterByKeyExchange(all, Collections.singleton(KeyExchange.EDH)));
-        addListAlias(kDHE, filterByKeyExchange(all, Collections.singleton(KeyExchange.EDH)));
-        Set<Ciphers> edh = filterByKeyExchange(all, Collections.singleton(KeyExchange.EDH));
-        edh.removeAll(filterByAuthentication(all, Collections.singleton(Authentication.DH)));
+        addListAlias(aNULL, filterByAuthentication(allCiphers, Collections.singleton(Authentication.aNULL)));
+        addListAlias(kRSA, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.RSA)));
+        addListAlias(aRSA, filterByAuthentication(allCiphers, Collections.singleton(Authentication.RSA)));
+        // Despite what the docs say, RSA is equivalent to kRSA
+        aliases.put(RSA, aliases.get(kRSA));
+        addListAlias(kEDH, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EDH)));
+        addListAlias(kDHE, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EDH)));
+        Set<Cipher> edh = filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EDH));
+        edh.removeAll(filterByAuthentication(allCiphers, Collections.singleton(Authentication.aNULL)));
         addListAlias(EDH, edh);
         addListAlias(DHE, edh);
-        addListAlias(kDHr, filterByKeyExchange(all, Collections.singleton(KeyExchange.DHr)));
-        addListAlias(kDHd, filterByKeyExchange(all, Collections.singleton(KeyExchange.DHd)));
-        addListAlias(kDH, filterByKeyExchange(all, new HashSet<>(Arrays.asList(KeyExchange.DHr, KeyExchange.DHd))));
+        addListAlias(kDHr, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.DHr)));
+        addListAlias(kDHd, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.DHd)));
+        addListAlias(kDH, filterByKeyExchange(allCiphers, new HashSet<>(Arrays.asList(KeyExchange.DHr, KeyExchange.DHd))));
 
-        addListAlias(kECDHr, filterByKeyExchange(all, Collections.singleton(KeyExchange.ECDHr)));
-        addListAlias(kECDHe, filterByKeyExchange(all, Collections.singleton(KeyExchange.ECDHe)));
-        addListAlias(kECDH, filterByKeyExchange(all, new HashSet<>(Arrays.asList(KeyExchange.ECDHe, KeyExchange.ECDHr))));
-        aliases.put(ECDH, aliases.get(kECDH));
-        addListAlias(kECDHE, filterByKeyExchange(all, Collections.singleton(KeyExchange.ECDHe)));
+        addListAlias(kECDHr, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.ECDHr)));
+        addListAlias(kECDHe, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.ECDHe)));
+        addListAlias(kECDH, filterByKeyExchange(allCiphers, new HashSet<>(Arrays.asList(KeyExchange.ECDHe, KeyExchange.ECDHr))));
+        addListAlias(ECDH, filterByKeyExchange(allCiphers, new HashSet<>(Arrays.asList(KeyExchange.ECDHe, KeyExchange.ECDHr, KeyExchange.EECDH))));
+        addListAlias(kECDHE, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.ECDHe)));
         aliases.put(ECDHE, aliases.get(kECDHE));
-        addListAlias(kEECDH, filterByKeyExchange(all, Collections.singleton(KeyExchange.EECDH)));
+        addListAlias(kEECDH, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EECDH)));
         aliases.put(EECDHE, aliases.get(kEECDH));
-        addListAlias(aDSS, filterByAuthentication(all, Collections.singleton(Authentication.DSS)));
+        Set<Cipher> eecdh = filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EECDH));
+        eecdh.removeAll(filterByAuthentication(allCiphers, Collections.singleton(Authentication.aNULL)));
+        addListAlias(EECDH, eecdh);
+        addListAlias(aDSS, filterByAuthentication(allCiphers, Collections.singleton(Authentication.DSS)));
         aliases.put("DSS", aliases.get(aDSS));
-        addListAlias(aDH, filterByAuthentication(all, Collections.singleton(Authentication.DH)));
-        Set<Ciphers> aecdh = filterByKeyExchange(all, new HashSet<>(Arrays.asList(KeyExchange.ECDHe, KeyExchange.ECDHr)));
-        aecdh.removeAll(filterByAuthentication(all, Collections.singleton(Authentication.aNULL)));
-        addListAlias(AECDH, aecdh);
-        addListAlias(aECDH, filterByAuthentication(all, Collections.singleton(Authentication.ECDH)));
-        addListAlias(ECDSA, filterByAuthentication(all, Collections.singleton(Authentication.ECDSA)));
+        addListAlias(aDH, filterByAuthentication(allCiphers, Collections.singleton(Authentication.DH)));
+        Set<Cipher> aecdh = filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EECDH));
+        addListAlias(AECDH, filterByAuthentication(aecdh, Collections.singleton(Authentication.aNULL)));
+        addListAlias(aECDH, filterByAuthentication(allCiphers, Collections.singleton(Authentication.ECDH)));
+        addListAlias(ECDSA, filterByAuthentication(allCiphers, Collections.singleton(Authentication.ECDSA)));
         aliases.put(aECDSA, aliases.get(ECDSA));
-        addListAlias(kFZA, filterByKeyExchange(all, Collections.singleton(KeyExchange.FZA)));
-        addListAlias(aFZA, filterByAuthentication(all, Collections.singleton(Authentication.FZA)));
-        addListAlias(eFZA, filterByEncryption(all, Collections.singleton(Encryption.FZA)));
-        addListAlias(FZA, filter(all, null, Collections.singleton(KeyExchange.FZA), Collections.singleton(Authentication.FZA), Collections.singleton(Encryption.FZA), null, null));
-        addListAlias(TLSv1_2, filterByProtocol(all, Collections.singleton(Protocol.TLSv1_2)));
-        addListAlias("TLSv1.1", filterByProtocol(all, Collections.singleton(Protocol.SSLv3)));
-        addListAlias(TLSv1, filterByProtocol(all, Collections.singleton(Protocol.TLSv1)));
-        addListAlias(SSLv3, filterByProtocol(all, Collections.singleton(Protocol.SSLv3)));
-        addListAlias(SSLv2, filterByProtocol(all, Collections.singleton(Protocol.SSLv2)));
-        addListAlias(DH, filterByKeyExchange(all, new HashSet<>(Arrays.asList(KeyExchange.DHr, KeyExchange.DHd, KeyExchange.EDH))));
-        Set<Ciphers> adh = filterByKeyExchange(all, Collections.singleton(KeyExchange.EDH));
-        adh.retainAll(filterByAuthentication(all, Collections.singleton(Authentication.aNULL)));
+        addListAlias(kFZA, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.FZA)));
+        addListAlias(aFZA, filterByAuthentication(allCiphers, Collections.singleton(Authentication.FZA)));
+        addListAlias(eFZA, filterByEncryption(allCiphers, Collections.singleton(Encryption.FZA)));
+        addListAlias(FZA, filter(allCiphers, null, Collections.singleton(KeyExchange.FZA), Collections.singleton(Authentication.FZA), Collections.singleton(Encryption.FZA), null, null));
+        addListAlias(TLSv1_2, filterByProtocol(allCiphers, Collections.singleton(Protocol.TLSv1_2)));
+        addListAlias("TLSv1.1", filterByProtocol(allCiphers, Collections.singleton(Protocol.SSLv3)));
+        addListAlias(TLSv1, filterByProtocol(allCiphers, new HashSet<>(Arrays.asList(Protocol.TLSv1, Protocol.SSLv3))));
+        aliases.put(SSLv3, aliases.get(TLSv1));
+        addListAlias(SSLv2, filterByProtocol(allCiphers, Collections.singleton(Protocol.SSLv2)));
+        addListAlias(DH, filterByKeyExchange(allCiphers, new HashSet<>(Arrays.asList(KeyExchange.DHr, KeyExchange.DHd, KeyExchange.EDH))));
+        Set<Cipher> adh = filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EDH));
+        adh.retainAll(filterByAuthentication(allCiphers, Collections.singleton(Authentication.aNULL)));
         addListAlias(ADH, adh);
-        addListAlias(AES128, filterByEncryption(all, new HashSet<>(Arrays.asList(Encryption.AES128, Encryption.AES128GCM))));
-        addListAlias(AES256, filterByEncryption(all, new HashSet<>(Arrays.asList(Encryption.AES256, Encryption.AES256GCM))));
-        addListAlias(AES, filterByEncryption(all, new HashSet<>(Arrays.asList(Encryption.AES128, Encryption.AES128GCM, Encryption.AES256, Encryption.AES256GCM))));
-        addListAlias(AESGCM, filterByEncryption(all, new HashSet<>(Arrays.asList(Encryption.AES128GCM, Encryption.AES256GCM))));
-        addListAlias(CAMELLIA, filterByEncryption(all, new HashSet<>(Arrays.asList(Encryption.CAMELLIA128, Encryption.CAMELLIA256))));
-        addListAlias(CAMELLIA128, filterByEncryption(all, Collections.singleton(Encryption.CAMELLIA128)));
-        addListAlias(CAMELLIA256, filterByEncryption(all, Collections.singleton(Encryption.CAMELLIA256)));
-        addListAlias(TRIPLE_DES, filterByEncryption(all, Collections.singleton(Encryption.TRIPLE_DES)));
-        addListAlias(DES, filterByEncryption(all, Collections.singleton(Encryption.DES)));
-        addListAlias(RC4, filterByEncryption(all, Collections.singleton(Encryption.RC4)));
-        addListAlias(RC2, filterByEncryption(all, Collections.singleton(Encryption.RC2)));
-        addListAlias(IDEA, filterByEncryption(all, Collections.singleton(Encryption.IDEA)));
-        addListAlias(SEED, filterByEncryption(all, Collections.singleton(Encryption.SEED)));
-        addListAlias(MD5, filterByMessageDigest(all, Collections.singleton(MessageDigest.MD5)));
-        addListAlias(SHA1, filterByMessageDigest(all, Collections.singleton(MessageDigest.SHA1)));
+        addListAlias(AES128, filterByEncryption(allCiphers, new HashSet<>(Arrays.asList(Encryption.AES128, Encryption.AES128GCM))));
+        addListAlias(AES256, filterByEncryption(allCiphers, new HashSet<>(Arrays.asList(Encryption.AES256, Encryption.AES256GCM))));
+        addListAlias(AES, filterByEncryption(allCiphers, new HashSet<>(Arrays.asList(Encryption.AES128, Encryption.AES128GCM, Encryption.AES256, Encryption.AES256GCM))));
+        addListAlias(AESGCM, filterByEncryption(allCiphers, new HashSet<>(Arrays.asList(Encryption.AES128GCM, Encryption.AES256GCM))));
+        addListAlias(CAMELLIA, filterByEncryption(allCiphers, new HashSet<>(Arrays.asList(Encryption.CAMELLIA128, Encryption.CAMELLIA256))));
+        addListAlias(CAMELLIA128, filterByEncryption(allCiphers, Collections.singleton(Encryption.CAMELLIA128)));
+        addListAlias(CAMELLIA256, filterByEncryption(allCiphers, Collections.singleton(Encryption.CAMELLIA256)));
+        addListAlias(TRIPLE_DES, filterByEncryption(allCiphers, Collections.singleton(Encryption.TRIPLE_DES)));
+        addListAlias(DES, filterByEncryption(allCiphers, Collections.singleton(Encryption.DES)));
+        addListAlias(RC4, filterByEncryption(allCiphers, Collections.singleton(Encryption.RC4)));
+        addListAlias(RC2, filterByEncryption(allCiphers, Collections.singleton(Encryption.RC2)));
+        addListAlias(IDEA, filterByEncryption(allCiphers, Collections.singleton(Encryption.IDEA)));
+        addListAlias(SEED, filterByEncryption(allCiphers, Collections.singleton(Encryption.SEED)));
+        addListAlias(MD5, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.MD5)));
+        addListAlias(SHA1, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.SHA1)));
         aliases.put(SHA, aliases.get(SHA1));
-        addListAlias(SHA256, filterByMessageDigest(all, Collections.singleton(MessageDigest.SHA256)));
-        addListAlias(SHA384, filterByMessageDigest(all, Collections.singleton(MessageDigest.SHA384)));
-        addListAlias(aGOST, filterByAuthentication(all, new HashSet<>(Arrays.asList(Authentication.GOST01, Authentication.GOST94))));
-        addListAlias(aGOST01, filterByAuthentication(all, Collections.singleton(Authentication.GOST01)));
-        addListAlias(aGOST94, filterByAuthentication(all, Collections.singleton(Authentication.GOST94)));
-        addListAlias(kGOST, filterByKeyExchange(all, Collections.singleton(KeyExchange.GOST)));
-        addListAlias(GOST94, filterByMessageDigest(all, Collections.singleton(MessageDigest.GOST94)));
-        addListAlias(GOST89MAC, filterByMessageDigest(all, Collections.singleton(MessageDigest.GOST89MAC)));
-        addListAlias(PSK, filter(all, null, Collections.singleton(KeyExchange.PSK), Collections.singleton(Authentication.PSK), null, null, null));
-        addListAlias(KRB5, filter(all, null, Collections.singleton(KeyExchange.KRB5), Collections.singleton(Authentication.KRB5), null, null, null));
+        addListAlias(SHA256, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.SHA256)));
+        addListAlias(SHA384, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.SHA384)));
+        addListAlias(aGOST, filterByAuthentication(allCiphers, new HashSet<>(Arrays.asList(Authentication.GOST01, Authentication.GOST94))));
+        addListAlias(aGOST01, filterByAuthentication(allCiphers, Collections.singleton(Authentication.GOST01)));
+        addListAlias(aGOST94, filterByAuthentication(allCiphers, Collections.singleton(Authentication.GOST94)));
+        addListAlias(kGOST, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.GOST)));
+        addListAlias(GOST94, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.GOST94)));
+        addListAlias(GOST89MAC, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.GOST89MAC)));
+        addListAlias(PSK, filter(allCiphers, null, Collections.singleton(KeyExchange.PSK), Collections.singleton(Authentication.PSK), null, null, null));
+        addListAlias(KRB5, filter(allCiphers, null, Collections.singleton(KeyExchange.KRB5), Collections.singleton(Authentication.KRB5), null, null, null));
         initialized = true;
-        String defaultExpression = System.getProperty(DEFAULT_EXPRESSION_KEY, "ALL:!eNULL:!aNULL");
-        addListAlias(DEFAULT, parse(defaultExpression));
-        LinkedHashSet<Ciphers> complementOfDefault = new LinkedHashSet<>(all);
-        complementOfDefault.removeAll(aliases.get(DEFAULT));
+        // Despite what the OpenSSL docs say, DEFAULT also excludes SSLv2
+        addListAlias(DEFAULT, parse("ALL:!eNULL:!aNULL:!SSLv2"));
+        // COMPLEMENTOFDEFAULT is also not exactly as defined by the docs
+        Set<Cipher> complementOfDefault = filterByKeyExchange(all, new HashSet<>(Arrays.asList(KeyExchange.EDH,KeyExchange.EECDH)));
+        complementOfDefault = filterByAuthentication(complementOfDefault, Collections.singleton(Authentication.aNULL));
+        complementOfDefault.removeAll(aliases.get(eNULL));
         addListAlias(COMPLEMENTOFDEFAULT, complementOfDefault);
     }
 
-    static void addListAlias(String alias, Set<Ciphers> ciphers) {
+    static void addListAlias(String alias, Set<Cipher> ciphers) {
         aliases.put(alias, new ArrayList<>(ciphers));
     }
 
-    static void moveToEnd(final LinkedHashSet<Ciphers> ciphers, final String alias) {
+    static void moveToEnd(final LinkedHashSet<Cipher> ciphers, final String alias) {
         moveToEnd(ciphers, aliases.get(alias));
     }
 
-    static void moveToEnd(final LinkedHashSet<Ciphers> ciphers, final Collection<Ciphers> toBeMovedCiphers) {
-        List<Ciphers> movedCiphers = new ArrayList<>(toBeMovedCiphers);
+    static void moveToEnd(final LinkedHashSet<Cipher> ciphers, final Collection<Cipher> toBeMovedCiphers) {
+        List<Cipher> movedCiphers = new ArrayList<>(toBeMovedCiphers);
         movedCiphers.retainAll(ciphers);
         ciphers.removeAll(movedCiphers);
         ciphers.addAll(movedCiphers);
     }
 
-    static void add(final LinkedHashSet<Ciphers> ciphers, final String alias) {
+    static void add(final LinkedHashSet<Cipher> ciphers, final String alias) {
         ciphers.addAll(aliases.get(alias));
     }
 
-    static void remove(final LinkedHashSet<Ciphers> ciphers, final String alias) {
+    static void remove(final LinkedHashSet<Cipher> ciphers, final String alias) {
         ciphers.removeAll(aliases.get(alias));
     }
 
-    static LinkedHashSet<Ciphers> strengthSort(final LinkedHashSet<Ciphers> ciphers) {
+    static LinkedHashSet<Cipher> strengthSort(final LinkedHashSet<Cipher> ciphers) {
         /*
          * This routine sorts the ciphers with descending strength. The sorting
          * must keep the pre-sorted sequence, so we apply the normal sorting
          * routine as '+' movement to the end of the list.
          */
         Set<Integer> keySizes = new HashSet<>();
-        for (Ciphers cipher : ciphers) {
+        for (Cipher cipher : ciphers) {
             keySizes.add(Integer.valueOf(cipher.getStrength_bits()));
         }
         List<Integer> strength_bits = new ArrayList<>(keySizes);
         Collections.sort(strength_bits);
         Collections.reverse(strength_bits);
-        final LinkedHashSet<Ciphers> result = new LinkedHashSet<>(ciphers);
+        final LinkedHashSet<Cipher> result = new LinkedHashSet<>(ciphers);
         for (int strength : strength_bits) {
             moveToEnd(result, filterByStrengthBits(ciphers, strength));
         }
         return result;
     }
 
-    static LinkedHashSet<Ciphers> defaultSort(final LinkedHashSet<Ciphers> ciphers) {
-        final LinkedHashSet<Ciphers> result = new LinkedHashSet<>(ciphers.size());
+    static LinkedHashSet<Cipher> defaultSort(final LinkedHashSet<Cipher> ciphers) {
+        final LinkedHashSet<Cipher> result = new LinkedHashSet<>(ciphers.size());
         /* Now arrange all ciphers by preference: */
 
         /* Everything else being equal, prefer ephemeral ECDH over other key exchange mechanisms */
@@ -519,6 +527,8 @@ public class OpenSSLCipherConfigurationParser {
         /* Temporarily enable everything else for sorting */
         result.addAll(ciphers);
 
+        /* Low priority for SSLv2 */
+        moveToEnd(result, filterByProtocol(result, Collections.singleton(Protocol.SSLv2)));
 
         /* Low priority for MD5 */
         moveToEnd(result, filterByMessageDigest(result, Collections.singleton(MessageDigest.MD5)));
@@ -538,9 +548,9 @@ public class OpenSSLCipherConfigurationParser {
         return strengthSort(result);
     }
 
-    static Set<Ciphers> filterByStrengthBits(Set<Ciphers> ciphers, int strength_bits) {
-        Set<Ciphers> result = new LinkedHashSet<>(ciphers.size());
-        for (Ciphers cipher : ciphers) {
+    static Set<Cipher> filterByStrengthBits(Set<Cipher> ciphers, int strength_bits) {
+        Set<Cipher> result = new LinkedHashSet<>(ciphers.size());
+        for (Cipher cipher : ciphers) {
             if (cipher.getStrength_bits() == strength_bits) {
                 result.add(cipher);
             }
@@ -548,34 +558,34 @@ public class OpenSSLCipherConfigurationParser {
         return result;
     }
 
-    static Set<Ciphers> filterByProtocol(Set<Ciphers> ciphers, Set<Protocol> protocol) {
+    static Set<Cipher> filterByProtocol(Set<Cipher> ciphers, Set<Protocol> protocol) {
         return filter(ciphers, protocol, null, null, null, null, null);
     }
 
-    static Set<Ciphers> filterByKeyExchange(Set<Ciphers> ciphers, Set<KeyExchange> kx) {
+    static Set<Cipher> filterByKeyExchange(Set<Cipher> ciphers, Set<KeyExchange> kx) {
         return filter(ciphers, null, kx, null, null, null, null);
     }
 
-    static Set<Ciphers> filterByAuthentication(Set<Ciphers> ciphers, Set<Authentication> au) {
+    static Set<Cipher> filterByAuthentication(Set<Cipher> ciphers, Set<Authentication> au) {
         return filter(ciphers, null, null, au, null, null, null);
     }
 
-    static Set<Ciphers> filterByEncryption(Set<Ciphers> ciphers, Set<Encryption> enc) {
+    static Set<Cipher> filterByEncryption(Set<Cipher> ciphers, Set<Encryption> enc) {
         return filter(ciphers, null, null, null, enc, null, null);
     }
 
-    static Set<Ciphers> filterByEncryptionLevel(Set<Ciphers> ciphers, Set<EncryptionLevel> level) {
+    static Set<Cipher> filterByEncryptionLevel(Set<Cipher> ciphers, Set<EncryptionLevel> level) {
         return filter(ciphers, null, null, null, null, level, null);
     }
 
-    static Set<Ciphers> filterByMessageDigest(Set<Ciphers> ciphers, Set<MessageDigest> mac) {
+    static Set<Cipher> filterByMessageDigest(Set<Cipher> ciphers, Set<MessageDigest> mac) {
         return filter(ciphers, null, null, null, null, null, mac);
     }
 
-    static Set<Ciphers> filter(Set<Ciphers> ciphers, Set<Protocol> protocol, Set<KeyExchange> kx,
+    static Set<Cipher> filter(Set<Cipher> ciphers, Set<Protocol> protocol, Set<KeyExchange> kx,
             Set<Authentication> au, Set<Encryption> enc, Set<EncryptionLevel> level, Set<MessageDigest> mac) {
-        Set<Ciphers> result = new LinkedHashSet<>(ciphers.size());
-        for (Ciphers cipher : ciphers) {
+        Set<Cipher> result = new LinkedHashSet<>(ciphers.size());
+        for (Cipher cipher : ciphers) {
             if (protocol != null && protocol.contains(cipher.getProtocol())) {
                 result.add(cipher);
             }
@@ -598,13 +608,13 @@ public class OpenSSLCipherConfigurationParser {
         return result;
     }
 
-    static LinkedHashSet<Ciphers> parse(String expression) {
+    static LinkedHashSet<Cipher> parse(String expression) {
         if (!initialized) {
             init();
         }
         String[] elements = expression.split(SEPARATOR);
-        LinkedHashSet<Ciphers> ciphers = new LinkedHashSet<>();
-        Set<Ciphers> removedCiphers = new HashSet<>();
+        LinkedHashSet<Cipher> ciphers = new LinkedHashSet<>();
+        Set<Cipher> removedCiphers = new HashSet<>();
         for (String element : elements) {
             if (element.startsWith(DELETE)) {
                 String alias = element.substring(1);
@@ -630,8 +640,8 @@ public class OpenSSLCipherConfigurationParser {
                 add(ciphers, element);
             } else if (element.contains(AND)) {
                 String[] intersections = element.split("\\" + AND);
-                if(intersections.length > 0) {
-                    List<Ciphers> result = new ArrayList<>(aliases.get(intersections[0]));
+                if(intersections.length > 0 && aliases.containsKey(intersections[0])) {
+                    List<Cipher> result = new ArrayList<>(aliases.get(intersections[0]));
                     for(int i = 1; i < intersections.length; i++) {
                         if(aliases.containsKey(intersections[i])) {
                             result.retainAll(aliases.get(intersections[i]));
@@ -645,10 +655,10 @@ public class OpenSSLCipherConfigurationParser {
         return defaultSort(ciphers);
     }
 
-    static List<String> convertForJSSE(Collection<Ciphers> ciphers) {
+    static List<String> convertForJSSE(Collection<Cipher> ciphers) {
         List<String> result = new ArrayList<>(ciphers.size());
-        for (Ciphers cipher : ciphers) {
-            result.add(cipher.name());
+        for (Cipher cipher : ciphers) {
+            result.addAll(cipher.getJsseNames());
         }
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("jsse.openssl.effectiveCiphers", displayResult(ciphers, true, ",")));
@@ -666,14 +676,17 @@ public class OpenSSLCipherConfigurationParser {
         return convertForJSSE(parse(expression));
     }
 
-    static String displayResult(Collection<Ciphers> ciphers, boolean useJSSEFormat, String separator) {
+    static String displayResult(Collection<Cipher> ciphers, boolean useJSSEFormat, String separator) {
         if (ciphers.isEmpty()) {
             return "";
         }
         StringBuilder builder = new StringBuilder(ciphers.size() * 16);
-        for (Ciphers cipher : ciphers) {
+        for (Cipher cipher : ciphers) {
             if (useJSSEFormat) {
-                builder.append(cipher.name());
+                for (String name : cipher.getJsseNames()) {
+                    builder.append(name);
+                    builder.append(separator);
+                }
             } else {
                 builder.append(cipher.getOpenSSLAlias());
             }

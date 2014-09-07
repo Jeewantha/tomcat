@@ -20,18 +20,32 @@ import java.nio.ByteBuffer;
 
 import javax.websocket.SendHandler;
 
-public class MessagePart {
+class MessagePart {
+    private final boolean fin;
+    private final int rsv;
     private final byte opCode;
     private final ByteBuffer payload;
-    private final boolean last;
-    private final SendHandler handler;
+    private final SendHandler intermediateHandler;
+    private volatile SendHandler endHandler;
 
-    public MessagePart(byte opCode, ByteBuffer payload, boolean last,
-            SendHandler handler) {
+    public MessagePart( boolean fin, int rsv, byte opCode, ByteBuffer payload,
+            SendHandler intermediateHandler, SendHandler endHandler) {
+        this.fin = fin;
+        this.rsv = rsv;
         this.opCode = opCode;
         this.payload = payload;
-        this.last = last;
-        this.handler = handler;
+        this.intermediateHandler = intermediateHandler;
+        this.endHandler = endHandler;
+    }
+
+
+    public boolean isFin() {
+        return fin;
+    }
+
+
+    public int getRsv() {
+        return rsv;
     }
 
 
@@ -45,13 +59,17 @@ public class MessagePart {
     }
 
 
-    public boolean isLast() {
-        return last;
+    public SendHandler getIntermediateHandler() {
+        return intermediateHandler;
     }
 
 
-    public SendHandler getHandler() {
-        return handler;
+    public SendHandler getEndHandler() {
+        return endHandler;
+    }
+
+    public void setEndHandler(SendHandler endHandler) {
+        this.endHandler = endHandler;
     }
 }
 

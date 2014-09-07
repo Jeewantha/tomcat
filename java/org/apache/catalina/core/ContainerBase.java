@@ -1267,16 +1267,15 @@ public abstract class ContainerBase extends LifecycleMBeanBase
     }
 
     public ObjectName[] getChildren() {
-        ObjectName result[]=new ObjectName[children.size()];
-        Iterator<Container> it=children.values().iterator();
-        int i=0;
-        while( it.hasNext() ) {
-            Object next=it.next();
-            if( next instanceof ContainerBase ) {
-                result[i++]=((ContainerBase)next).getObjectName();
+        List<ObjectName> names = new ArrayList<>(children.size());
+        Iterator<Container>  it = children.values().iterator();
+        while (it.hasNext()) {
+            Object next = it.next();
+            if (next instanceof ContainerBase) {
+                names.add(((ContainerBase)next).getObjectName());
             }
         }
-        return result;
+        return names.toArray(new ObjectName[names.size()]);
     }
 
 
@@ -1335,14 +1334,27 @@ public abstract class ContainerBase extends LifecycleMBeanBase
 
         @Override
         public void run() {
-            while (!threadDone) {
-                try {
-                    Thread.sleep(backgroundProcessorDelay * 1000L);
-                } catch (InterruptedException e) {
-                    // Ignore
+            Throwable t = null;
+            String unexpectedDeathMessage = sm.getString(
+                    "containerBase.backgroundProcess.unexpectedThreadDeath",
+                    Thread.currentThread().getName());
+            try {
+                while (!threadDone) {
+                    try {
+                        Thread.sleep(backgroundProcessorDelay * 1000L);
+                    } catch (InterruptedException e) {
+                        // Ignore
+                    }
+                    if (!threadDone) {
+                        processChildren(ContainerBase.this);
+                    }
                 }
+            } catch (RuntimeException|Error e) {
+                t = e;
+                throw e;
+            } finally {
                 if (!threadDone) {
-                    processChildren(ContainerBase.this);
+                    log.error(unexpectedDeathMessage, t);
                 }
             }
         }
