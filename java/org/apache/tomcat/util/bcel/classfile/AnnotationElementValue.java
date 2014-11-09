@@ -20,9 +20,9 @@ package org.apache.tomcat.util.bcel.classfile;
 public class AnnotationElementValue extends ElementValue
 {
     // For annotation element values, this is the annotation
-    private AnnotationEntry annotationEntry;
+    private final AnnotationEntry annotationEntry;
 
-    public AnnotationElementValue(int type, AnnotationEntry annotationEntry,
+    AnnotationElementValue(int type, AnnotationEntry annotationEntry,
             ConstantPool cpool)
     {
         super(type, cpool);

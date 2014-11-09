@@ -31,8 +31,6 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.catalina.Context;
 import org.apache.catalina.Host;
 import org.apache.catalina.Wrapper;
-import org.apache.catalina.comet.CometEvent;
-import org.apache.catalina.comet.CometEvent.EventType;
 import org.apache.catalina.core.AsyncContextImpl;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.catalina.util.SessionConfig;
@@ -46,8 +44,8 @@ import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
-import org.apache.tomcat.util.http.Cookies;
 import org.apache.tomcat.util.http.ServerCookie;
+import org.apache.tomcat.util.http.ServerCookies;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SocketStatus;
 import org.apache.tomcat.util.res.StringManager;
@@ -147,135 +145,6 @@ public class CoyoteAdapter implements Adapter {
 
     // -------------------------------------------------------- Adapter Methods
 
-
-    /**
-     * Event method.
-     *
-     * @return false to indicate an error, expected or not
-     */
-    @Override
-    public boolean event(org.apache.coyote.Request req,
-            org.apache.coyote.Response res, SocketStatus status) {
-
-        Request request = (Request) req.getNote(ADAPTER_NOTES);
-        Response response = (Response) res.getNote(ADAPTER_NOTES);
-
-        if (request.getWrapper() == null) {
-            return false;
-        }
-
-        boolean error = false;
-        boolean read = false;
-        try {
-            if (status == SocketStatus.OPEN_READ) {
-                if (response.isClosed()) {
-                    // The event has been closed asynchronously, so call end instead of
-                    // read to cleanup the pipeline
-                    request.getEvent().setEventType(CometEvent.EventType.END);
-                    request.getEvent().setEventSubType(null);
-                } else {
-                    try {
-                        // Fill the read buffer of the servlet layer
-                        if (request.read()) {
-                            read = true;
-                        }
-                    } catch (IOException e) {
-                        error = true;
-                    }
-                    if (read) {
-                        request.getEvent().setEventType(CometEvent.EventType.READ);
-                        request.getEvent().setEventSubType(null);
-                    } else if (error) {
-                        request.getEvent().setEventType(CometEvent.EventType.ERROR);
-                        request.getEvent().setEventSubType(CometEvent.EventSubType.CLIENT_DISCONNECT);
-                    } else {
-                        request.getEvent().setEventType(CometEvent.EventType.END);
-                        request.getEvent().setEventSubType(null);
-                    }
-                }
-            } else if (status == SocketStatus.DISCONNECT) {
-                request.getEvent().setEventType(CometEvent.EventType.ERROR);
-                request.getEvent().setEventSubType(CometEvent.EventSubType.CLIENT_DISCONNECT);
-                error = true;
-            } else if (status == SocketStatus.ERROR) {
-                request.getEvent().setEventType(CometEvent.EventType.ERROR);
-                request.getEvent().setEventSubType(CometEvent.EventSubType.IOEXCEPTION);
-                error = true;
-            } else if (status == SocketStatus.STOP) {
-                request.getEvent().setEventType(CometEvent.EventType.END);
-                request.getEvent().setEventSubType(CometEvent.EventSubType.SERVER_SHUTDOWN);
-            } else if (status == SocketStatus.TIMEOUT) {
-                if (response.isClosed()) {
-                    // The event has been closed asynchronously, so call end instead of
-                    // read to cleanup the pipeline
-                    request.getEvent().setEventType(CometEvent.EventType.END);
-                    request.getEvent().setEventSubType(null);
-                } else {
-                    request.getEvent().setEventType(CometEvent.EventType.ERROR);
-                    request.getEvent().setEventSubType(CometEvent.EventSubType.TIMEOUT);
-                }
-            }
-
-            req.getRequestProcessor().setWorkerThreadName(Thread.currentThread().getName());
-
-            // Calling the container
-            connector.getService().getContainer().getPipeline().getFirst().event(request, response, request.getEvent());
-
-            if (!error && !response.isClosed() && (request.getAttribute(
-                    RequestDispatcher.ERROR_EXCEPTION) != null)) {
-                // An unexpected exception occurred while processing the event, so
-                // error should be called
-                request.getEvent().setEventType(CometEvent.EventType.ERROR);
-                request.getEvent().setEventSubType(null);
-                error = true;
-                connector.getService().getContainer().getPipeline().getFirst().event(request, response, request.getEvent());
-            }
-            if (response.isClosed() || !request.isComet()) {
-                if (status==SocketStatus.OPEN_READ &&
-                        request.getEvent().getEventType() != EventType.END) {
-                    //CometEvent.close was called during an event other than END
-                    request.getEvent().setEventType(CometEvent.EventType.END);
-                    request.getEvent().setEventSubType(null);
-                    error = true;
-                    connector.getService().getContainer().getPipeline().getFirst().event(request, response, request.getEvent());
-                }
-                res.action(ActionCode.COMET_END, null);
-            } else if (!error && read && request.getAvailable()) {
-                // If this was a read and not all bytes have been read, or if no data
-                // was read from the connector, then it is an error
-                request.getEvent().setEventType(CometEvent.EventType.ERROR);
-                request.getEvent().setEventSubType(CometEvent.EventSubType.IOEXCEPTION);
-                error = true;
-                connector.getService().getContainer().getPipeline().getFirst().event(request, response, request.getEvent());
-            }
-            return (!error);
-        } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
-            if (!(t instanceof IOException)) {
-                log.error(sm.getString("coyoteAdapter.service"), t);
-            }
-            error = true;
-            return false;
-        } finally {
-            req.getRequestProcessor().setWorkerThreadName(null);
-            // Recycle the wrapper request and response
-            if (error || response.isClosed() || !request.isComet()) {
-                if (request.getMappingData().context != null) {
-                    request.getMappingData().context.logAccess(
-                            request, response,
-                            System.currentTimeMillis() - req.getStartTime(),
-                            false);
-                } else {
-                    // Should normally not happen
-                    log(req, res, System.currentTimeMillis() - req.getStartTime());
-                }
-                request.recycle();
-                request.setFilterChain(null);
-                response.recycle();
-            }
-        }
-    }
-
     @Override
     public boolean asyncDispatch(org.apache.coyote.Request req,
             org.apache.coyote.Response res, SocketStatus status) throws Exception {
@@ -286,12 +155,11 @@ public class CoyoteAdapter implements Adapter {
             throw new IllegalStateException(
                     "Dispatch may only happen on an existing request.");
         }
-        boolean comet = false;
         boolean success = true;
         AsyncContextImpl asyncConImpl = (AsyncContextImpl)request.getAsyncContext();
         req.getRequestProcessor().setWorkerThreadName(Thread.currentThread().getName());
         try {
-            if (!request.isAsync() && !comet) {
+            if (!request.isAsync()) {
                 // Error or timeout - need to tell listeners the request is over
                 // Have to test this first since state may change while in this
                 // method and this is only required if entering this method in
@@ -306,7 +174,6 @@ public class CoyoteAdapter implements Adapter {
             }
 
             if (status==SocketStatus.TIMEOUT) {
-                success = true;
                 if (!asyncConImpl.timeout()) {
                     asyncConImpl.setErrorState(null, false);
                 }
@@ -373,7 +240,6 @@ public class CoyoteAdapter implements Adapter {
                     } finally {
                         request.getContext().unbind(false, oldCL);
                     }
-                    success = true;
                 } else if (readListener != null && status == SocketStatus.OPEN_READ) {
                     ClassLoader oldCL = null;
                     try {
@@ -396,7 +262,6 @@ public class CoyoteAdapter implements Adapter {
                     } finally {
                         request.getContext().unbind(false, oldCL);
                     }
-                    success = true;
                 }
             }
 
@@ -409,7 +274,6 @@ public class CoyoteAdapter implements Adapter {
             }
 
             if (request.isAsyncDispatching()) {
-                success = true;
                 connector.getService().getContainer().getPipeline().getFirst().invoke(request, response);
                 Throwable t = (Throwable) request.getAttribute(
                         RequestDispatcher.ERROR_EXCEPTION);
@@ -418,25 +282,7 @@ public class CoyoteAdapter implements Adapter {
                 }
             }
 
-            if (request.isComet()) {
-                if (!response.isClosed() && !response.isError()) {
-                    if (request.getAvailable() || (request.getContentLength() > 0 && (!request.isParametersParsed()))) {
-                        // Invoke a read event right away if there are available bytes
-                        if (event(req, res, SocketStatus.OPEN_READ)) {
-                            comet = true;
-                            res.action(ActionCode.COMET_BEGIN, null);
-                        }
-                    } else {
-                        comet = true;
-                        res.action(ActionCode.COMET_BEGIN, null);
-                    }
-                } else {
-                    // Clear the filter chain, as otherwise it will not be reset elsewhere
-                    // since this is a Comet request
-                    request.setFilterChain(null);
-                }
-            }
-            if (!request.isAsync() && !comet) {
+            if (!request.isAsync()) {
                 request.finishRequest();
                 response.finishResponse();
                 if (request.getMappingData().context != null) {
@@ -450,6 +296,13 @@ public class CoyoteAdapter implements Adapter {
                 }
             }
 
+            // Check to see if the processor is in an error state. If it is,
+            // bail out now.
+            AtomicBoolean error = new AtomicBoolean(false);
+            res.action(ActionCode.IS_ERROR, error);
+            if (error.get()) {
+                success = false;
+            }
         } catch (IOException e) {
             success = false;
             // Ignore
@@ -468,7 +321,7 @@ public class CoyoteAdapter implements Adapter {
             }
             req.getRequestProcessor().setWorkerThreadName(null);
             // Recycle the wrapper request and response
-            if (!success || (!comet && !request.isAsync())) {
+            if (!success || !request.isAsync()) {
                 request.recycle();
                 response.recycle();
             } else {
@@ -518,7 +371,6 @@ public class CoyoteAdapter implements Adapter {
             response.addHeader("X-Powered-By", POWERED_BY);
         }
 
-        boolean comet = false;
         boolean async = false;
 
         try {
@@ -532,26 +384,6 @@ public class CoyoteAdapter implements Adapter {
                 request.setAsyncSupported(connector.getService().getContainer().getPipeline().isAsyncSupported());
                 // Calling the container
                 connector.getService().getContainer().getPipeline().getFirst().invoke(request, response);
-
-                if (request.isComet()) {
-                    if (!response.isClosed() && !response.isError()) {
-                        if (request.getAvailable() || (request.getContentLength() > 0 && (!request.isParametersParsed()))) {
-                            // Invoke a read event right away if there are available bytes
-                            if (event(req, res, SocketStatus.OPEN_READ)) {
-                                comet = true;
-                                res.action(ActionCode.COMET_BEGIN, null);
-                            }
-                        } else {
-                            comet = true;
-                            res.action(ActionCode.COMET_BEGIN, null);
-                        }
-                    } else {
-                        // Clear the filter chain, as otherwise it will not be reset elsewhere
-                        // since this is a Comet request
-                        request.setFilterChain(null);
-                    }
-                }
-
             }
             AsyncContextImpl asyncConImpl = (AsyncContextImpl)request.getAsyncContext();
             if (asyncConImpl != null) {
@@ -570,15 +402,12 @@ public class CoyoteAdapter implements Adapter {
                         request.getContext().unbind(false, oldCL);
                     }
                 }
-            } else if (!comet) {
+            } else {
                 request.finishRequest();
                 response.finishResponse();
-                if (postParseSuccess &&
-                        request.getMappingData().context != null) {
+                if (postParseSuccess) {
                     // Log only if processing was invoked.
                     // If postParseRequest() failed, it has already logged it.
-                    // If context is null this was the start of a comet request
-                    // that failed and has already been logged.
                     request.getMappingData().context.logAccess(
                             request, response,
                             System.currentTimeMillis() - req.getStartTime(),
@@ -593,7 +422,7 @@ public class CoyoteAdapter implements Adapter {
             AtomicBoolean error = new AtomicBoolean(false);
             res.action(ActionCode.IS_ERROR, error);
             // Recycle the wrapper request and response
-            if (!comet && !async || error.get()) {
+            if (!async || error.get()) {
                 request.recycle();
                 response.recycle();
             } else {
@@ -900,15 +729,8 @@ public class CoyoteAdapter implements Adapter {
                 }
             }
 
-            if (request.getContext().getUseRfc6265()) {
-                req.getCookies().setUseRfc6265(true);
-            } else {
-                req.getCookies().setUseRfc6265(false);
-            }
-
-
             // Look for session ID in cookies and SSL session
-            parseSessionCookiesId(req, request);
+            parseSessionCookiesId(request);
             parseSessionSslId(request);
 
             sessionID = request.getRequestedSessionId();
@@ -1142,7 +964,7 @@ public class CoyoteAdapter implements Adapter {
     /**
      * Parse session id in URL.
      */
-    protected void parseSessionCookiesId(org.apache.coyote.Request req, Request request) {
+    protected void parseSessionCookiesId(Request request) {
 
         // If session tracking via cookies has been disabled for the current
         // context, don't go looking for a session ID in a cookie as a cookie
@@ -1156,7 +978,7 @@ public class CoyoteAdapter implements Adapter {
         }
 
         // Parse session id from cookies
-        Cookies serverCookies = req.getCookies();
+        ServerCookies serverCookies = request.getServerCookies();
         int count = serverCookies.getCookieCount();
         if (count <= 0) {
             return;

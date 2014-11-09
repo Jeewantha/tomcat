@@ -19,6 +19,7 @@ package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
 
+import org.apache.catalina.SessionIdGenerator;
 import org.apache.catalina.Store;
 import org.apache.catalina.session.PersistentManager;
 
@@ -46,9 +47,15 @@ public class PersistentManagerSF extends StoreFactoryBase {
         if (aManager instanceof PersistentManager) {
             PersistentManager manager = (PersistentManager) aManager;
 
-            // Store nested <Manager> elements
+            // Store nested <Store> element
             Store store = manager.getStore();
             storeElement(aWriter, indent, store);
+
+            // Store nested <SessionIdGenerator> element
+            SessionIdGenerator sessionIdGenerator = manager.getSessionIdGenerator();
+            if (sessionIdGenerator != null) {
+                storeElement(aWriter, indent, sessionIdGenerator);
+            }
 
         }
     }

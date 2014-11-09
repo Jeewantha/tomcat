@@ -45,8 +45,11 @@ public class JspHelper {
 
     /**
      * Try to get user locale from the session, if possible.
-     * IMPLEMENTATION NOTE: this method has explicit support for Tapestry 3 and Struts 1.x
-     * @param in_session
+     * IMPLEMENTATION NOTE: this method has explicit support for Tapestry 3 and
+     * Struts 1.x
+     *
+     * @param in_session Session from which the locale should be guessed
+     *
      * @return String
      */
     public static String guessDisplayLocaleFromSession(Session in_session) {
@@ -192,11 +195,11 @@ public class JspHelper {
      * Performs the following substring replacements
      * (to facilitate output to XML/HTML pages):
      *
-     *    & -> &amp;
-     *    < -> &lt;
-     *    > -> &gt;
-     *    " -> &#034;
-     *    ' -> &#039;
+     *    &amp; -&gt; &amp;amp;
+     *    &lt; -&gt; &amp;lt;
+     *    &gt; -&gt; &amp;gt;
+     *    " -&gt; &amp;#034;
+     *    ' -&gt; &amp;#039;
      *
      * See also OutSupport.writeEscapedXml().
      */

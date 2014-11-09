@@ -18,12 +18,14 @@ package org.apache.coyote;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.charset.Charset;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.WriteListener;
 
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.http.MimeHeaders;
 import org.apache.tomcat.util.http.parser.MediaType;
 import org.apache.tomcat.util.res.StringManager;
@@ -35,7 +37,7 @@ import org.apache.tomcat.util.res.StringManager;
  * @author Jason Hunter [jch@eng.sun.com]
  * @author James Todd [gonzo@eng.sun.com]
  * @author Harish Prabandham
- * @author Hans Bergsten <hans@gefionsoftware.com>
+ * @author Hans Bergsten [hans@gefionsoftware.com]
  * @author Remy Maucherat
  */
 public final class Response {
@@ -278,7 +280,7 @@ public final class Response {
 
     // -------------------- Headers --------------------
     /**
-     * Warning: This method always returns <code>false<code> for Content-Type
+     * Warning: This method always returns <code>false</code> for Content-Type
      * and Content-Length.
      */
     public boolean containsHeader(String name) {
@@ -297,12 +299,21 @@ public final class Response {
 
 
     public void addHeader(String name, String value) {
+        addHeader(name, value, null);
+    }
+
+
+    public void addHeader(String name, String value, Charset charset) {
         char cc=name.charAt(0);
         if( cc=='C' || cc=='c' ) {
             if( checkSpecialHeader(name, value) )
             return;
         }
-        headers.addValue(name).setString( value );
+        MessageBytes mb = headers.addValue(name);
+        if (charset != null) {
+            mb.setCharset(charset);
+        }
+        mb.setString(value);
     }
 
 

@@ -499,8 +499,7 @@ public final class ByteChunk implements Cloneable, Serializable {
         // new String(byte[], int, int, Charset) takes a defensive copy of the
         // entire byte array. This is expensive if only a small subset of the
         // bytes will be used. The code below is from Apache Harmony.
-        CharBuffer cb;
-        cb = charset.decode(ByteBuffer.wrap(buff, start, end-start));
+        CharBuffer cb = charset.decode(ByteBuffer.wrap(buff, start, end-start));
         return new String(cb.array(), cb.arrayOffset(), cb.length());
     }
 
@@ -689,7 +688,7 @@ public final class ByteChunk implements Cloneable, Serializable {
      * Returns the first instance of the given character in this ByteChunk
      * starting at the specified byte. If the character is not found, -1 is
      * returned.
-     * <br/>
+     * <br>
      * NOTE: This only works for characters in the range 0-127.
      *
      * @param c         The character
@@ -705,7 +704,7 @@ public final class ByteChunk implements Cloneable, Serializable {
     /**
      * Returns the first instance of the given character in the given byte array
      * between the specified start and end.
-     * <br/>
+     * <br>
      * NOTE: This only works for characters in the range 0-127.
      *
      * @param bytes The byte array to search

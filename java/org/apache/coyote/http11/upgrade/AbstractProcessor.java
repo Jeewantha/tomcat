@@ -17,6 +17,7 @@
 package org.apache.coyote.http11.upgrade;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 
 import javax.servlet.ServletInputStream;
@@ -140,11 +141,6 @@ public abstract class AbstractProcessor<S>
     }
 
     @Override
-    public final SocketState event(SocketStatus status) throws IOException {
-        return null;
-    }
-
-    @Override
     public final SocketState asyncDispatch(SocketStatus status) {
         return null;
     }
@@ -160,11 +156,6 @@ public abstract class AbstractProcessor<S>
     }
 
     @Override
-    public final boolean isComet() {
-        return false;
-    }
-
-    @Override
     public final boolean isAsync() {
         return false;
     }
@@ -177,5 +168,10 @@ public abstract class AbstractProcessor<S>
     @Override
     public final void setSslSupport(SSLSupport sslSupport) {
         // NOOP
+    }
+
+    @Override
+    public ByteBuffer getLeftoverInput() {
+        return null;
     }
 }

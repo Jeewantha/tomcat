@@ -32,6 +32,7 @@ import org.apache.coyote.Response;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.C2BConverter;
 import org.apache.tomcat.util.buf.CharChunk;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * The buffer used by Tomcat response. This is a derivative of the Tomcat 3.3
@@ -43,6 +44,9 @@ import org.apache.tomcat.util.buf.CharChunk;
  */
 public class OutputBuffer extends Writer
     implements ByteChunk.ByteOutputChannel, CharChunk.CharOutputChannel {
+
+    private static final StringManager sm =
+            StringManager.getManager(Constants.Package);
 
     // -------------------------------------------------------------- Constants
 
@@ -245,7 +249,7 @@ public class OutputBuffer extends Writer
 
 
     /**
-     * Clear cached encoders (to save memory for Comet requests).
+     * Clear cached encoders (to save memory for async requests).
      */
     public void clearEncoders() {
         encoders.clear();
@@ -523,9 +527,8 @@ public class OutputBuffer extends Writer
             return;
         }
 
-        charsWritten += len;
         if (s == null) {
-            s = "null";
+            throw new NullPointerException(sm.getString("outputBuffer.writeNull"));
         }
         cb.append(s, off, len);
         charsWritten += len;
@@ -612,8 +615,10 @@ public class OutputBuffer extends Writer
     }
 
     /**
-     * True if this buffer hasn't been used ( since recycle() ) -
-     * i.e. no chars or bytes have been added to the buffer.
+     * Has this buffer been used at all?
+     *
+     * @return true if no chars or bytes have been added to the buffer since the
+     *         last call to {@link #recycle()}
      */
     public boolean isNew() {
         return (bytesWritten == 0) && (charsWritten == 0);

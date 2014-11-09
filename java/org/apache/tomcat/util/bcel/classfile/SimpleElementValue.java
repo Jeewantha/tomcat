@@ -21,10 +21,9 @@ import org.apache.tomcat.util.bcel.Constants;
 
 public class SimpleElementValue extends ElementValue
 {
-    private int index;
+    private final int index;
 
-    public SimpleElementValue(int type, int index, ConstantPool cpool)
-    {
+    SimpleElementValue(int type, int index, ConstantPool cpool) {
         super(type, cpool);
         this.index = index;
     }

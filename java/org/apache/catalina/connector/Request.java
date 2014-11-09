@@ -84,10 +84,11 @@ import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
-import org.apache.tomcat.util.http.Cookies;
+import org.apache.tomcat.util.http.CookieProcessor;
 import org.apache.tomcat.util.http.FastHttpDateFormat;
 import org.apache.tomcat.util.http.Parameters;
 import org.apache.tomcat.util.http.ServerCookie;
+import org.apache.tomcat.util.http.ServerCookies;
 import org.apache.tomcat.util.http.fileupload.FileItem;
 import org.apache.tomcat.util.http.fileupload.FileUploadBase;
 import org.apache.tomcat.util.http.fileupload.FileUploadBase.InvalidContentTypeException;
@@ -222,18 +223,6 @@ public class Request
 
 
     /**
-     * Associated event.
-     */
-    protected CometEventImpl event = null;
-
-
-    /**
-     * Comet state
-     */
-    protected boolean comet = false;
-
-
-    /**
      * The current dispatcher type.
      */
     protected DispatcherType internalDispatcherType = null;
@@ -283,9 +272,17 @@ public class Request
 
 
     /**
-     * Cookies parsed flag.
+     * Cookie headers parsed flag. Indicates that the cookie headers have been
+     * parsed into ServerCookies.
      */
     protected boolean cookiesParsed = false;
+
+
+    /**
+     * Cookie parsed flag. Indicates that the ServerCookies have been converted
+     * into user facing Cookie objects.
+     */
+    protected boolean cookiesConverted = false;
 
 
     /**
@@ -437,12 +434,6 @@ public class Request
         internalDispatcherType = null;
         requestDispatcherPath = null;
 
-        comet = false;
-        if (event != null) {
-            event.clear();
-            event = null;
-        }
-
         authType = null;
         inputBuffer.recycle();
         usingInputStream = false;
@@ -462,6 +453,7 @@ public class Request
         }
         partsParseException = null;
         cookiesParsed = false;
+        cookiesConverted = false;
         locales.clear();
         localesParsed = false;
         secure = false;
@@ -524,24 +516,14 @@ public class Request
     }
 
     /**
-     * Clear cached encoders (to save memory for Comet requests).
+     * Clear cached encoders (to save memory for async requests).
      */
     public void clearEncoders() {
         inputBuffer.clearEncoders();
     }
 
 
-    /**
-     * Clear cached encoders (to save memory for Comet requests).
-     */
-    public boolean read()
-        throws IOException {
-        return (inputBuffer.realReadBytes(null, 0, 0) > 0);
-    }
-
-
     // -------------------------------------------------------- Request Methods
-
 
     /**
      * Associated Catalina connector.
@@ -939,8 +921,6 @@ public class Request
      * have names starting with "org.apache.tomcat" and include:
      * <ul>
      * <li>{@link Globals#SENDFILE_SUPPORTED_ATTR}</li>
-     * <li>{@link Globals#COMET_SUPPORTED_ATTR}</li>
-     * <li>{@link Globals#COMET_TIMEOUT_SUPPORTED_ATTR}</li>
      * </ul>
      * Connector implementations may return some, all or none of these
      * attributes and may also support additional attributes.
@@ -1624,6 +1604,16 @@ public class Request
         return result.get();
     }
 
+    public boolean isAsyncCompleting() {
+        if (asyncContext == null) {
+            return false;
+        }
+
+        AtomicBoolean result = new AtomicBoolean(false);
+        coyoteRequest.action(ActionCode.ASYNC_IS_COMPLETING, result);
+        return result.get();
+    }
+
     public boolean isAsync() {
         if (asyncContext == null) {
             return false;
@@ -1667,8 +1657,8 @@ public class Request
      */
     public void addCookie(Cookie cookie) {
 
-        if (!cookiesParsed) {
-            parseCookies();
+        if (!cookiesConverted) {
+            convertCookies();
         }
 
         int size = 0;
@@ -1703,6 +1693,7 @@ public class Request
      */
     public void clearCookies() {
         cookiesParsed = true;
+        cookiesConverted = true;
         cookies = null;
     }
 
@@ -1899,17 +1890,27 @@ public class Request
 
 
     /**
-     * Return the set of Cookies received with this Request.
+     * Return the set of Cookies received with this Request. Triggers parsing of
+     * the Cookie HTTP headers followed by conversion to Cookie objects if this
+     * has not already been performed.
      */
     @Override
     public Cookie[] getCookies() {
-
-        if (!cookiesParsed) {
-            parseCookies();
+        if (!cookiesConverted) {
+            convertCookies();
         }
-
         return cookies;
+    }
 
+
+    /**
+     * Return the server representation of the cookies associated with this
+     * request. Triggers parsing of the Cookie HTTP headers (but not conversion
+     * to Cookie objects) if the headers have not yet been parsed.
+     */
+    public ServerCookies getServerCookies() {
+        parseCookies();
+        return coyoteRequest.getCookies();
     }
 
 
@@ -2424,33 +2425,6 @@ public class Request
 
 
     /**
-     * Get the event associated with the request.
-     * @return the event
-     */
-    public CometEventImpl getEvent() {
-        if (event == null) {
-            event = new CometEventImpl(this, response);
-        }
-        return event;
-    }
-
-
-    /**
-     * Return true if the current request is handling Comet traffic.
-     */
-    public boolean isComet() {
-        return comet;
-    }
-
-
-    /**
-     * Set comet state.
-     */
-    public void setComet(boolean comet) {
-        this.comet = comet;
-    }
-
-    /**
      * return true if we have parsed parameters
      */
     public boolean isParametersParsed() {
@@ -2482,15 +2456,6 @@ public class Request
         if (context != null && !context.getSwallowAbortedUploads()) {
             coyoteRequest.action(ActionCode.DISABLE_SWALLOW_INPUT, null);
         }
-    }
-
-    public void cometClose() {
-        coyoteRequest.action(ActionCode.COMET_CLOSE,getEvent());
-        setComet(false);
-    }
-
-    public void setCometTimeout(long timeout) {
-        coyoteRequest.action(ActionCode.COMET_SETTIMEOUT, Long.valueOf(timeout));
     }
 
     /**
@@ -2841,13 +2806,37 @@ public class Request
     }
 
     /**
-     * Parse cookies.
+     * Parse cookies. This only parses the cookies into the memory efficient
+     * ServerCookies structure. It does not populate the Cookie objects.
      */
     protected void parseCookies() {
+        if (cookiesParsed) {
+            return;
+        }
 
         cookiesParsed = true;
 
-        Cookies serverCookies = coyoteRequest.getCookies();
+        ServerCookies serverCookies = coyoteRequest.getCookies();
+        CookieProcessor cookieProcessor = getContext().getCookieProcessor();
+        cookieProcessor.parseCookieHeader(coyoteRequest.getMimeHeaders(), serverCookies);
+    }
+
+    /**
+     * Converts the parsed cookies (parsing the Cookie headers first if they
+     * have not been parsed) into Cookie objects.
+     */
+    protected void convertCookies() {
+        if (cookiesConverted) {
+            return;
+        }
+
+        cookiesConverted = true;
+
+        parseCookies();
+
+        ServerCookies serverCookies = coyoteRequest.getCookies();
+        CookieProcessor cookieProcessor = getContext().getCookieProcessor();
+
         int count = serverCookies.getCookieCount();
         if (count <= 0) {
             return;
@@ -2865,10 +2854,7 @@ public class Request
                 Cookie cookie = new Cookie(scookie.getName().toString(),null);
                 int version = scookie.getVersion();
                 cookie.setVersion(version);
-                if (getContext().getUseRfc6265()) {
-                    scookie.getValue().getByteChunk().setCharset(
-                            getContext().getCookieEncodingCharset());
-                }
+                scookie.getValue().getByteChunk().setCharset(cookieProcessor.getCharset());
                 cookie.setValue(unescape(scookie.getValue().toString()));
                 cookie.setPath(unescape(scookie.getPath().toString()));
                 String domain = scookie.getDomain().toString();
@@ -2888,8 +2874,8 @@ public class Request
             System.arraycopy(cookies, 0, ncookies, 0, idx);
             cookies = ncookies;
         }
-
     }
+
 
     /**
      * Parse request parameters.
@@ -3135,17 +3121,6 @@ public class Request
     }
 
 
-    protected static final boolean isAlpha(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-
     // ----------------------------------------------------- Special attributes handling
 
     private static interface SpecialAttributeAdapter {
@@ -3229,32 +3204,6 @@ public class Request
                         return null;
                     }
 
-                    @Override
-                    public void set(Request request, String name, Object value) {
-                        // NO-OP
-                    }
-                });
-        specialAttributes.put(Globals.COMET_SUPPORTED_ATTR,
-                new SpecialAttributeAdapter() {
-                    @Override
-                    public Object get(Request request, String name) {
-                        return Boolean.valueOf(
-                                request.getConnector().getProtocolHandler(
-                                        ).isCometSupported());
-                    }
-                    @Override
-                    public void set(Request request, String name, Object value) {
-                        // NO-OP
-                    }
-                });
-        specialAttributes.put(Globals.COMET_TIMEOUT_SUPPORTED_ATTR,
-                new SpecialAttributeAdapter() {
-                    @Override
-                    public Object get(Request request, String name) {
-                        return Boolean.valueOf(
-                                request.getConnector().getProtocolHandler(
-                                        ).isCometTimeoutSupported());
-                    }
                     @Override
                     public void set(Request request, String name, Object value) {
                         // NO-OP

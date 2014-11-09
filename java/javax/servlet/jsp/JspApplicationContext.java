@@ -30,17 +30,14 @@ import javax.el.ExpressionFactory;
 public interface JspApplicationContext {
 
     /**
-     * <p>
-     * Registers an <code>ELContextListener</code> that will notified whenever a
-     * new <code>ELContext</code> is created.
-     * </p>
+     * Registers an <code>ELContextListener</code> that will be notified
+     * whenever a new <code>ELContext</code> is created.
      * <p>
      * At the very least, any <code>ELContext</code> instantiated will have
      * reference to the <code>JspContext</code> under
      * <code>JspContext.class</code>.
-     * </p>
      *
-     * @param listener
+     * @param listener The listener to add
      */
     public void addELContextListener(ELContextListener listener);
 
@@ -51,6 +48,7 @@ public interface JspApplicationContext {
      * </p>
      * <p>
      * JSP has a default set of ELResolvers to chain for all EL evaluation:
+     * </p>
      * <ul>
      * <li><code>ImplicitObjectELResolver</code></li>
      * <li><code>ELResolver</code> instances registered with this method</li>
@@ -60,7 +58,6 @@ public interface JspApplicationContext {
      * <li><code>BeanELResolver</code></li>
      * <li><code>ScopedAttributeELResolver</code></li>
      * </ul>
-     * </p>
      *
      * @param resolver
      *            an additional resolver

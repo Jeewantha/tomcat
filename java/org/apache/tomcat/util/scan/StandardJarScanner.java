@@ -24,6 +24,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 
@@ -139,6 +140,8 @@ public class StandardJarScanner implements JarScanner {
             log.trace(sm.getString("jarScan.webinflibStart"));
         }
 
+        Set<URL> processedURLs = new HashSet<>();
+
         // Scan WEB-INF/lib
         Set<String> dirList = context.getResourcePaths(Constants.WEB_INF_LIB);
         if (dirList != null) {
@@ -146,7 +149,7 @@ public class StandardJarScanner implements JarScanner {
             while (it.hasNext()) {
                 String path = it.next();
                 if (path.endsWith(Constants.JAR_EXT) &&
-                        jarScanFilter.check(scanType,
+                        getJarScanFilter().check(scanType,
                                 path.substring(path.lastIndexOf('/')+1))) {
                     // Need to scan this JAR
                     if (log.isDebugEnabled()) {
@@ -155,6 +158,7 @@ public class StandardJarScanner implements JarScanner {
                     URL url = null;
                     try {
                         url = context.getResource(path);
+                        processedURLs.add(url);
                         process(scanType, callback, url, path, true);
                     } catch (IOException e) {
                         log.warn(sm.getString("jarScan.webinflibFail", url), e);
@@ -168,10 +172,18 @@ public class StandardJarScanner implements JarScanner {
         }
 
         // Scan WEB-INF/classes
-        if (scanAllDirectories) {
+        if (isScanAllDirectories()) {
             try {
                 URL url = context.getResource("/WEB-INF/classes/META-INF");
                 if (url != null) {
+                    // Class path scanning will look at WEB-INF/classes since
+                    // that is the URL that Tomcat's web application class
+                    // loader returns. Therefore, it is this URL that needs to
+                    // be added to the set of processed URLs.
+                    URL webInfURL = context.getResource("/WEB-INF/classes");
+                    if (webInfURL != null) {
+                        processedURLs.add(webInfURL);
+                    }
                     try {
                         callback.scanWebInfClasses();
                     } catch (IOException e) {
@@ -184,22 +196,18 @@ public class StandardJarScanner implements JarScanner {
         }
 
         // Scan the classpath
-        if (scanClassPath) {
+        if (isScanClassPath()) {
             if (log.isTraceEnabled()) {
                 log.trace(sm.getString("jarScan.classloaderStart"));
             }
 
             ClassLoader stopLoader = null;
-            if (!scanBootstrapClassPath) {
+            if (!isScanBootstrapClassPath()) {
                 // Stop when we reach the bootstrap class loader
                 stopLoader = ClassLoader.getSystemClassLoader().getParent();
             }
 
-
             ClassLoader classLoader = context.getClassLoader();
-            // No need to scan the web application class loader - we have
-            // already scanned WEB-INF/lib and WEB-INF/classes
-            classLoader = classLoader.getParent();
 
             // JARs are treated as application provided until the common class
             // loader is reached.
@@ -212,6 +220,11 @@ public class StandardJarScanner implements JarScanner {
                     }
                     URL[] urls = ((URLClassLoader) classLoader).getURLs();
                     for (int i=0; i<urls.length; i++) {
+                        if (processedURLs.contains(urls[i])) {
+                            // Skip this URL it has already been processed
+                            continue;
+                        }
+
                         ClassPathEntry cpe = new ClassPathEntry(urls[i]);
 
                         // JARs are scanned unless the filter says not to.
@@ -221,7 +234,7 @@ public class StandardJarScanner implements JarScanner {
                         if ((cpe.isJar() ||
                                 scanType == JarScanType.PLUGGABILITY ||
                                 isScanAllDirectories()) &&
-                                        jarScanFilter.check(scanType,
+                                        getJarScanFilter().check(scanType,
                                                 cpe.getName())) {
                             if (log.isDebugEnabled()) {
                                 log.debug(sm.getString(
@@ -303,7 +316,7 @@ public class StandardJarScanner implements JarScanner {
                     File f;
                     try {
                         f = new File(url.toURI());
-                        if (f.isFile() && scanAllFiles) {
+                        if (f.isFile() && isScanAllFiles()) {
                             // Treat this file as a JAR
                             URL jarURL = new URL("jar:" + urlStr + "!/");
                             callback.scan(

@@ -170,7 +170,7 @@ public class TestTomcat extends TomcatBaseTest {
     }
 
 
-    /**
+    /*
      * Start tomcat with a single context and one
      * servlet - all programmatic, no server.xml or
      * web.xml used.
@@ -181,11 +181,8 @@ public class TestTomcat extends TomcatBaseTest {
     public void testProgrammatic() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        org.apache.catalina.Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
-        // You can customize the context by calling
-        // its API
+        // No file system docBase required
+        org.apache.catalina.Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "myServlet", new HelloWorld());
         ctx.addServletMapping("/", "myServlet");
@@ -233,11 +230,8 @@ public class TestTomcat extends TomcatBaseTest {
     public void testSession() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        org.apache.catalina.Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
-        // You can customize the context by calling
-        // its API
+        // No file system docBase required
+        org.apache.catalina.Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "myServlet", new HelloWorldSession());
         ctx.addServletMapping("/", "myServlet");
@@ -259,18 +253,15 @@ public class TestTomcat extends TomcatBaseTest {
      }
 
 
-    /**
+    /*
      * Test for enabling JNDI.
      */
     @Test
     public void testEnableNaming() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        org.apache.catalina.Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
-
-        // You can customise the context by calling its API
+        // No file system docBase required
+        org.apache.catalina.Context ctx = tomcat.addContext("", null);
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -290,18 +281,15 @@ public class TestTomcat extends TomcatBaseTest {
         assertEquals("Hello, Tomcat User", res.toString());
     }
 
-    /**
+    /*
      * Test for enabling JNDI and using global resources.
      */
     @Test
     public void testEnableNamingGlobal() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        org.apache.catalina.Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
-
-        // You can customise the context by calling its API
+        // No file system docBase required
+        org.apache.catalina.Context ctx = tomcat.addContext("", null);
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -327,7 +315,7 @@ public class TestTomcat extends TomcatBaseTest {
     }
 
 
-    /**
+    /*
      * Test for https://issues.apache.org/bugzilla/show_bug.cgi?id=47866
      */
     @Test
@@ -378,9 +366,8 @@ public class TestTomcat extends TomcatBaseTest {
     public void testBug53301() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        org.apache.catalina.Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        org.apache.catalina.Context ctx = tomcat.addContext("", null);
 
         InitCount initCount = new InitCount();
         Tomcat.addServlet(ctx, "initCount", initCount);

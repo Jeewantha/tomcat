@@ -52,9 +52,9 @@ import org.apache.tomcat.util.security.PrivilegedSetTccl;
  * DISPATCHING   - The dispatch is being processed.
  * ERROR         - Something went wrong.
  *
- * |----------------->--------------|
+ * |-----------------»--------------|
  * |                               \|/
- * |   |----------<---------------ERROR---------------------------<-------------------------------|
+ * |   |----------«---------------ERROR---------------------------«-------------------------------|
  * |   |      complete()         /|\ | \                                                          |
  * |   |                          |  |  \---------------|                                         |
  * |   |                          |  |                  |dispatch()                               |
@@ -62,42 +62,42 @@ import org.apache.tomcat.util.security.PrivilegedSetTccl;
  * |   |                   error()|  |                  |                                         |
  * |   |                          |  |  |--|timeout()   |                                         |
  * |   |           postProcess()  | \|/ | \|/           |         auto                            |
- * |   |         |--------------->DISPATCHED<---------- | --------------COMPLETING<-----|         |
+ * |   |         |---------------»DISPATCHED«---------- | --------------COMPLETING«-----|         |
  * |   |         |               /|\  |                 |                 | /|\         |         |
- * |   |         |    |--->-------|   |                 |                 |--|          |         |
+ * |   |         |    |---»-------|   |                 |                 |--|          |         |
  * |   |         ^    |               |startAsync()     |               timeout()       |         |
  * |   |         |    |               |                 |                               |         |
  * |  \|/        |    |  complete()  \|/  postProcess() |                               |         |
- * | MUST_COMPLETE-<- | ----<------STARTING-->--------- | ------------|                 ^         |
+ * | MUST_COMPLETE-«- | ----«------STARTING--»--------- | ------------|                 ^         |
  * |  /|\    /|\      |               |                 |             |      complete() |         |
  * |   |      |       |               |                 |             |     /-----------|         |
  * |   |      |       ^               |dispatch()       |             |    /                      |
  * |   |      |       |               |                 |             |   /                       |
  * |   |      |       |              \|/                /            \|/ /    postProcess()       |
- * |   |      |       |         MUST_DISPATCH          /           STARTED<---------<---------|   |
+ * |   |      |       |         MUST_DISPATCH          /           STARTED«---------«---------|   |
  * |   |      |       |           |                   /           / |   |                     |   |
  * |   |      |       |           |postProcess()     /           /  |   |                     ^   |
  * ^   |      ^       |           |                 /           /   |   |asyncOperation()     |   |
  * |   |      |       |           |                /           /    |   |                     |   |
- * |   |      |       |           |   |---------- / ----------/     |   |--READ_WRITE_OP-->---|   |
+ * |   |      |       |           |   |---------- / ----------/     |   |--READ_WRITE_OP--»---|   |
  * |   |      |       |           |   |          /   dispatch()     |            |  |  |          |
  * |   |      |       |           |   |   |-----/               auto|            |  |  |   error()|
- * |   |      |       | auto     \|/ \|/ \|/                        |  dispatch()|  |  |->--------|
- * |   |      |       |---<------DISPATCHING<--------<------------- | ------<----|  |
+ * |   |      |       | auto     \|/ \|/ \|/                        |  dispatch()|  |  |-»--------|
+ * |   |      |       |---«------DISPATCHING«--------«------------- | ------«----|  |
  * |   |      |                      /|\                            |               |
  * |   |      |                       |       dispatch()           \|/              |
  * |   |      |                       |-----------------------TIMING_OUT            |
  * |   |      |                                                 |   |               |
- * |   |      |-------<----------------------------------<------|   |               |
+ * |   |      |-------«----------------------------------«------|   |               |
  * |   |                          complete()                        |               |
  * |   |                                                            |               |
- * |<- | ----<-------------------<-------------------------------<--|               |
+ * |«- | ----«-------------------«-------------------------------«--|               |
  *     |                           error()                                          |
  *     |                                                  complete()                |
  *     |----------------------------------------------------------------------------|
  * </pre>
  */
-public class AsyncStateMachine<S> {
+public class AsyncStateMachine {
 
     /**
      * The string manager for this package.
@@ -106,38 +106,44 @@ public class AsyncStateMachine<S> {
         StringManager.getManager(Constants.Package);
 
     private static enum AsyncState {
-        DISPATCHED(false, false, false),
-        STARTING(true, true, false),
-        STARTED(true, true, false),
-        MUST_COMPLETE(true, false, false),
-        COMPLETING(true, false, false),
-        TIMING_OUT(true, false, false),
-        MUST_DISPATCH(true, true, true),
-        DISPATCHING(true, false, true),
-        READ_WRITE_OP(true,true,false),
-        ERROR(true,false,false);
+        DISPATCHED(false, false, false, false),
+        STARTING(true, true, false, false),
+        STARTED(true, true, false, false),
+        MUST_COMPLETE(true, true, true, false),
+        COMPLETING(true, false, true, false),
+        TIMING_OUT(true, false, false, false),
+        MUST_DISPATCH(true, true, false, true),
+        DISPATCHING(true, false, false, true),
+        READ_WRITE_OP(true, true, false, false),
+        ERROR(true, false, false, false);
 
-        private boolean isAsync;
-        private boolean isStarted;
-        private boolean isDispatching;
+        private final boolean isAsync;
+        private final boolean isStarted;
+        private final boolean isCompleting;
+        private final boolean isDispatching;
 
-        private AsyncState(boolean isAsync, boolean isStarted,
+        private AsyncState(boolean isAsync, boolean isStarted, boolean isCompleting,
                 boolean isDispatching) {
             this.isAsync = isAsync;
             this.isStarted = isStarted;
+            this.isCompleting = isCompleting;
             this.isDispatching = isDispatching;
         }
 
         public boolean isAsync() {
-            return this.isAsync;
+            return isAsync;
         }
 
         public boolean isStarted() {
-            return this.isStarted;
+            return isStarted;
         }
 
         public boolean isDispatching() {
-            return this.isDispatching;
+            return isDispatching;
+        }
+
+        public boolean isCompleting() {
+            return isCompleting;
         }
     }
 
@@ -145,10 +151,10 @@ public class AsyncStateMachine<S> {
     private volatile AsyncState state = AsyncState.DISPATCHED;
     // Need this to fire listener on complete
     private AsyncContextCallback asyncCtxt = null;
-    private final Processor<S> processor;
+    private final Processor<?> processor;
 
 
-    public AsyncStateMachine(Processor<S> processor) {
+    public AsyncStateMachine(Processor<?> processor) {
         this.processor = processor;
     }
 
@@ -171,6 +177,10 @@ public class AsyncStateMachine<S> {
 
     public boolean isAsyncError() {
         return state == AsyncState.ERROR;
+    }
+
+    public boolean isCompleting() {
+        return state.isCompleting();
     }
 
     public synchronized void asyncStart(AsyncContextCallback asyncCtxt) {
@@ -248,7 +258,6 @@ public class AsyncStateMachine<S> {
             throw new IllegalStateException(
                     sm.getString("asyncStateMachine.invalidAsyncState",
                             "asyncComplete()", state));
-
         }
         return doComplete;
     }
@@ -318,7 +327,8 @@ public class AsyncStateMachine<S> {
     }
 
     public synchronized void asyncRun(Runnable runnable) {
-        if (state == AsyncState.STARTING || state ==  AsyncState.STARTED) {
+        if (state == AsyncState.STARTING || state ==  AsyncState.STARTED ||
+                state == AsyncState.READ_WRITE_OP) {
             // Execute the runnable using a container thread from the
             // Connector's thread pool. Use a wrapper to prevent a memory leak
             ClassLoader oldCL;

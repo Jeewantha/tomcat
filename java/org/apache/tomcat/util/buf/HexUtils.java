@@ -16,6 +16,8 @@
  */
 package org.apache.tomcat.util.buf;
 
+import org.apache.tomcat.util.res.StringManager;
+
 /**
  * Tables useful when converting byte arrays to and from strings of hexadecimal
  * digits.
@@ -23,12 +25,12 @@ package org.apache.tomcat.util.buf;
  *
  * @author Craig R. McClanahan
  */
-
 public final class HexUtils {
 
+    private static final StringManager sm =
+            StringManager.getManager(Constants.Package);
 
     // -------------------------------------------------------------- Constants
-
 
     /**
      *  Table for HEX to DEC byte translation.
@@ -55,10 +57,10 @@ public final class HexUtils {
      */
     private static final char[] hex = "0123456789abcdef".toCharArray();
 
+
     // --------------------------------------------------------- Static Methods
 
-
-    public static int getDec(int index){
+    public static int getDec(int index) {
         // Fast for correct values, slower for incorrect ones
         try {
             return DEC[index - '0'];
@@ -67,24 +69,50 @@ public final class HexUtils {
         }
     }
 
-    public static byte getHex(int index){
+
+    public static byte getHex(int index) {
         return HEX[index];
     }
 
-    public static String toHexString(byte[] bytes)
-    {
-        if(null == bytes) {
+
+    public static String toHexString(byte[] bytes) {
+        if (null == bytes) {
             return null;
         }
 
         StringBuilder sb = new StringBuilder(bytes.length << 1);
 
-        for(int i=0; i<bytes.length; ++i) {
+        for(int i = 0; i < bytes.length; ++i) {
             sb.append(hex[(bytes[i] & 0xf0) >> 4])
                 .append(hex[(bytes[i] & 0x0f)])
                 ;
         }
 
         return sb.toString();
+    }
+
+
+    public static byte[] fromHexString(String input) {
+        if (input == null) {
+            return null;
+        }
+
+        if ((input.length() & 1) == 1) {
+            // Odd number of characters
+            throw new IllegalArgumentException(sm.getString("hexUtils.fromHex.oddDigits"));
+        }
+
+        char[] inputChars = input.toCharArray();
+        byte[] result = new byte[input.length() >> 1];
+        for (int i = 0; i < result.length; i++) {
+            int upperNibble = getDec(inputChars[2*i]);
+            int lowerNibble =  getDec(inputChars[2*i + 1]);
+            if (upperNibble < 0 || lowerNibble < 0) {
+                // Non hex character
+                throw new IllegalArgumentException(sm.getString("hexUtils.fromHex.nonHex"));
+            }
+            result[i] = (byte) ((upperNibble << 4) + lowerNibble);
+        }
+        return result;
     }
 }

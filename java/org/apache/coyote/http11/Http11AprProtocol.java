@@ -17,6 +17,7 @@
 package org.apache.coyote.http11;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import javax.servlet.http.HttpUpgradeHandler;
 
@@ -199,7 +200,11 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
 
     @Override
     protected String getNamePrefix() {
-        return ("http-apr");
+        if (isSSLEnabled()) {
+            return ("https-apr");
+        } else {
+            return ("http-apr");
+        }
     }
 
 
@@ -265,7 +270,7 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
 
                 }
                 if (processor == null) {
-                    // if not null - this is a former comet request, handled by http11
+                    // if not null - handled by http11
                     SocketState socketState = proto.npnHandler.process(socket, status);
                     // handled by npn protocol.
                     if (socketState == SocketState.CLOSED ||
@@ -290,19 +295,6 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
             if (processor.isAsync()) {
                 // Async
                 socket.setAsync(true);
-            } else if (processor.isComet()) {
-                // Comet
-                if (proto.endpoint.isRunning()) {
-                    socket.setComet(true);
-                    ((AprEndpoint) proto.endpoint).getPoller().add(
-                            socket.getSocket().longValue(),
-                            proto.endpoint.getSoTimeout(), true, false);
-                } else {
-                    // Process a STOP directly
-                    ((AprEndpoint) proto.endpoint).processSocket(
-                            socket.getSocket().longValue(),
-                            SocketStatus.STOP);
-                }
             } else {
                 // Upgraded
                 Poller p = ((AprEndpoint) proto.endpoint).getPoller();
@@ -321,20 +313,8 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
                     proto.getMaxHttpHeaderSize(), (AprEndpoint)proto.endpoint,
                     proto.getMaxTrailerSize(), proto.getMaxExtensionSize(),
                     proto.getMaxSwallowSize());
-            processor.setAdapter(proto.getAdapter());
-            processor.setMaxKeepAliveRequests(proto.getMaxKeepAliveRequests());
-            processor.setKeepAliveTimeout(proto.getKeepAliveTimeout());
-            processor.setConnectionUploadTimeout(
-                    proto.getConnectionUploadTimeout());
-            processor.setDisableUploadTimeout(proto.getDisableUploadTimeout());
-            processor.setCompressionMinSize(proto.getCompressionMinSize());
-            processor.setCompression(proto.getCompression());
-            processor.setNoCompressionUserAgents(proto.getNoCompressionUserAgents());
-            processor.setCompressableMimeTypes(proto.getCompressableMimeTypes());
-            processor.setRestrictedUserAgents(proto.getRestrictedUserAgents());
-            processor.setSocketBuffer(proto.getSocketBuffer());
-            processor.setMaxSavePostSize(proto.getMaxSavePostSize());
-            processor.setServer(proto.getServer());
+            proto.configureProcessor(processor);
+            // APR specific configuration
             processor.setClientCertProvider(proto.getClientCertProvider());
             register(processor);
             return processor;
@@ -342,11 +322,11 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
 
         @Override
         protected Processor<Long> createUpgradeProcessor(
-                SocketWrapper<Long> socket,
+                SocketWrapper<Long> socket, ByteBuffer leftoverInput,
                 HttpUpgradeHandler httpUpgradeProcessor)
                 throws IOException {
-            return new AprProcessor(socket, httpUpgradeProcessor,
-                    (AprEndpoint) proto.endpoint,
+            return new AprProcessor(socket, leftoverInput,
+                    httpUpgradeProcessor, (AprEndpoint) proto.endpoint,
                     proto.getUpgradeAsyncWriteBufferSize());
         }
     }

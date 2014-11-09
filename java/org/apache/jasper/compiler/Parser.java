@@ -235,7 +235,7 @@ class Parser implements TagConstants {
     /**
      * Name ::= (Letter | '_' | ':') (Letter | Digit | '.' | '_' | '-' | ':')*
      */
-    private String parseName() throws JasperException {
+    private String parseName() {
         char ch = (char) reader.peekChar();
         if (Character.isLetter(ch) || ch == '_' || ch == ':') {
             StringBuilder buf = new StringBuilder();
@@ -1275,56 +1275,59 @@ class Parser implements TagConstants {
 
     /*
      * Parse for a template text string until '<' or "${" or "#{" is encountered,
-     * recognizing escape sequences "<\%", "\$", and "\#".
+     * recognizing escape sequences "<\%", "\${", and "\#{".
      */
-    private void parseTemplateText(Node parent) throws JasperException {
+    private void parseTemplateText(Node parent) {
 
         if (!reader.hasMoreInput())
             return;
 
         CharArrayWriter ttext = new CharArrayWriter();
-        // Output the first character
+
         int ch = reader.nextChar();
-        if (ch == '\\') {
-            reader.pushChar();
-        } else {
-            ttext.write(ch);
+        while (ch != -1) {
+            if (ch == '<') {
+                // Check for "<\%"
+                if (reader.peekChar(0) == '\\' && reader.peekChar(1) == '%') {
+                    ttext.write(ch);
+                    // Swallow the \
+                    reader.nextChar();
+                    ttext.write(reader.nextChar());
+                } else {
+                    if (ttext.size() == 0) {
+                        ttext.write(ch);
+                    } else {
+                        reader.pushChar();
+                        break;
+                    }
+                }
+            } else if (ch == '\\' && !pageInfo.isELIgnored()) {
+                int next = reader.peekChar(0);
+                if (next == '$' || next == '#') {
+                    if (reader.peekChar(1) == '{') {
+                        ttext.write(reader.nextChar());
+                        ttext.write(reader.nextChar());
+                    } else {
+                        ttext.write(ch);
+                        ttext.write(reader.nextChar());
+                    }
+                } else {
+                    ttext.write(ch);
+                }
+            } else if ((ch == '$' || ch == '#' && !pageInfo.isDeferredSyntaxAllowedAsLiteral()) &&
+                    !pageInfo.isELIgnored()) {
+                if (reader.peekChar(0) == '{') {
+                    reader.pushChar();
+                    break;
+                } else {
+                    ttext.write(ch);
+                }
+            } else {
+                ttext.write(ch);
+            }
+            ch = reader.nextChar();
         }
 
-        while (reader.hasMoreInput()) {
-            int prev = ch;
-            ch = reader.nextChar();
-            if (ch == '<') {
-                reader.pushChar();
-                break;
-            } else if ((ch == '$' || ch == '#') && !pageInfo.isELIgnored()) {
-                if (!reader.hasMoreInput()) {
-                    ttext.write(ch);
-                    break;
-                }
-                if (reader.nextChar() == '{') {
-                    reader.pushChar();
-                    reader.pushChar();
-                    break;
-                }
-                ttext.write(ch);
-                reader.pushChar();
-                continue;
-            } else if (ch == '\\') {
-                if (!reader.hasMoreInput()) {
-                    ttext.write('\\');
-                    break;
-                }
-                char next = (char) reader.peekChar();
-                // Looking for \% or \$ or \#
-                if ((prev == '<' && next == '%') ||
-                        ((next == '$' || next == '#') &&
-                                !pageInfo.isELIgnored())) {
-                    ch = reader.nextChar();
-                }
-            }
-            ttext.write(ch);
-        }
         @SuppressWarnings("unused")
         Node unused = new Node.TemplateText(ttext.toString(), start, parent);
     }
@@ -1342,8 +1345,8 @@ class Parser implements TagConstants {
                         "&lt;jsp:text&gt;");
             }
             CharArrayWriter ttext = new CharArrayWriter();
-            while (reader.hasMoreInput()) {
-                int ch = reader.nextChar();
+            int ch = reader.nextChar();
+            while (ch != -1) {
                 if (ch == '<') {
                     // Check for <![CDATA[
                     if (!reader.matches("![CDATA[")) {
@@ -1357,38 +1360,37 @@ class Parser implements TagConstants {
                     String text = reader.getText(start, stop);
                     ttext.write(text, 0, text.length());
                 } else if (ch == '\\') {
-                    if (!reader.hasMoreInput()) {
+                    int next = reader.peekChar(0);
+                    if (next == '$' || next =='#') {
+                        if (reader.peekChar(1) == '{') {
+                            ttext.write(reader.nextChar());
+                            ttext.write(reader.nextChar());
+                        }
+                    } else {
                         ttext.write('\\');
-                        break;
                     }
-                    ch = reader.nextChar();
-                    if (ch != '$' && ch != '#') {
-                        ttext.write('\\');
-                    }
-                    ttext.write(ch);
                 } else if (ch == '$' || ch == '#') {
-                    if (!reader.hasMoreInput()) {
-                        ttext.write(ch);
-                        break;
-                    }
-                    if (reader.nextChar() != '{') {
-                        ttext.write(ch);
-                        reader.pushChar();
-                        continue;
-                    }
-                    // Create a template text node
-                    @SuppressWarnings("unused")
-                    Node unused = new Node.TemplateText(
-                            ttext.toString(), start, parent);
+                    if (reader.peekChar(0) == '{') {
+                        // Swallow the '{'
+                        reader.nextChar();
 
-                    // Mark and parse the EL expression and create its node:
-                    parseELExpression(parent, (char) ch);
+                        // Create a template text node
+                        @SuppressWarnings("unused")
+                        Node unused = new Node.TemplateText(
+                                ttext.toString(), start, parent);
 
-                    start = reader.mark();
-                    ttext.reset();
+                        // Mark and parse the EL expression and create its node:
+                        parseELExpression(parent, (char) ch);
+
+                        start = reader.mark();
+                        ttext.reset();
+                    } else {
+                        ttext.write(ch);
+                    }
                 } else {
                     ttext.write(ch);
                 }
+                ch = reader.nextChar();
             }
 
             @SuppressWarnings("unused")
@@ -1770,7 +1772,6 @@ class Parser implements TagConstants {
     }
 
     private void parseFileDirectives(Node parent) throws JasperException {
-        reader.setSingleFile(true);
         reader.skipUntil("<");
         while (reader.hasMoreInput()) {
             start = reader.mark();

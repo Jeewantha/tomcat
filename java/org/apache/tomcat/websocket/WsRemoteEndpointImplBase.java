@@ -125,6 +125,9 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
 
     public void sendBytes(ByteBuffer data) throws IOException {
+        if (data == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
         stateMachine.binaryStart();
         startMessageBlock(Constants.OPCODE_BINARY, data, true);
         stateMachine.complete(true);
@@ -139,6 +142,12 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
 
     public void sendBytesByCompletion(ByteBuffer data, SendHandler handler) {
+        if (data == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
+        if (handler == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullHandler"));
+        }
         StateUpdateSendHandler sush = new StateUpdateSendHandler(handler);
         stateMachine.binaryStart();
         startMessage(Constants.OPCODE_BINARY, data, true, sush);
@@ -147,6 +156,9 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
     public void sendPartialBytes(ByteBuffer partialByte, boolean last)
             throws IOException {
+        if (partialByte == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
         stateMachine.binaryPartialStart();
         startMessageBlock(Constants.OPCODE_BINARY, partialByte, last);
         stateMachine.complete(last);
@@ -168,6 +180,9 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
 
     public void sendString(String text) throws IOException {
+        if (text == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
         stateMachine.textStart();
         sendPartialString(CharBuffer.wrap(text), true);
     }
@@ -181,6 +196,12 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
 
     public void sendStringByCompletion(String text, SendHandler handler) {
+        if (text == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
+        if (handler == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullHandler"));
+        }
         stateMachine.textStart();
         TextMessageSendHandler tmsh = new TextMessageSendHandler(handler,
                 CharBuffer.wrap(text), true, encoder, encoderBuffer, this);
@@ -191,6 +212,9 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
     public void sendPartialString(String fragment, boolean isLast)
             throws IOException {
+        if (fragment == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
         stateMachine.textPartialStart();
         sendPartialString(CharBuffer.wrap(fragment), isLast);
     }
@@ -485,12 +509,21 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
     }
 
 
-    public void sendObject(Object obj) throws IOException {
+    public void sendObject(Object obj) throws IOException, EncodeException {
         Future<Void> f = sendObjectByFuture(obj);
         try {
             f.get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
             throw new IOException(e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            } else if (cause instanceof EncodeException) {
+                throw (EncodeException) cause;
+            } else {
+                throw new IOException(e);
+            }
         }
     }
 
@@ -503,6 +536,13 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void sendObjectByCompletion(Object obj, SendHandler completion) {
+
+        if (obj == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullData"));
+        }
+        if (completion == null) {
+            throw new IllegalArgumentException(sm.getString("wsRemoteEndpoint.nullHandler"));
+        }
 
         if (Util.isPrimitive(obj.getClass())) {
             String msg = obj.toString();

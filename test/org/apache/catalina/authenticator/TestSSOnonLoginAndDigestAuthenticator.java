@@ -30,12 +30,12 @@ import org.apache.catalina.Context;
 import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
-import org.apache.catalina.util.ConcurrentMessageDigest;
-import org.apache.catalina.util.MD5Encoder;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
 import org.apache.tomcat.util.descriptor.web.SecurityCollection;
 import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
+import org.apache.tomcat.util.security.ConcurrentMessageDigest;
+import org.apache.tomcat.util.security.MD5Encoder;
 
 /**
  * Test DigestAuthenticator and NonLoginAuthenticator when a
@@ -86,7 +86,7 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
     private List<String> cookies;
 
-    /**
+    /*
      * Try to access an unprotected resource without an
      * established SSO session.
      * This should be permitted.
@@ -108,7 +108,7 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
                        false, true, 403);
     }
 
-    /**
+    /*
      * Logon to access a protected resource using DIGEST authentication,
      * which will establish an SSO session.
      * Wait until the SSO session times-out, then try to re-access

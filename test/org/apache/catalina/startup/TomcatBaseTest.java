@@ -45,12 +45,14 @@ import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Server;
 import org.apache.catalina.Service;
+import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.AprLifecycleListener;
 import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.session.StandardManager;
 import org.apache.catalina.valves.AccessLogValve;
+import org.apache.catalina.webresources.StandardRoot;
 import org.apache.coyote.http11.Http11NioProtocol;
 import org.apache.tomcat.util.buf.ByteChunk;
 
@@ -59,26 +61,60 @@ import org.apache.tomcat.util.buf.ByteChunk;
  * don't have to keep writing the cleanup code.
  */
 public abstract class TomcatBaseTest extends LoggingBaseTest {
+    private static final int DEFAULT_CLIENT_TIMEOUT_MS = 300_000;
     private Tomcat tomcat;
     private boolean accessLogEnabled = false;
 
     public static final String TEMP_DIR = System.getProperty("java.io.tmpdir");
 
     /**
-     * Make Tomcat instance accessible to sub-classes.
+     * Make the Tomcat instance available to sub-classes.
+     *
+     * @return A Tomcat instance without any pre-configured web applications
      */
     public Tomcat getTomcatInstance() {
         return tomcat;
     }
 
     /**
+     * Make the Tomcat instance preconfigured with test/webapp available to
+     * sub-classes.
+     * @param addJstl Should JSTL support be added to the test webapp
+     * @param start   Should the Tomcat instance be started
+     *
+     * @return A Tomcat instance pre-configured with the web application located
+     *         at test/webapp
+     *
+     * @throws LifecycleException If a problem occurs while starting the
+     *                            instance
+     */
+    public Tomcat getTomcatInstanceTestWebapp(boolean addJstl, boolean start)
+            throws LifecycleException {
+        File appDir = new File("test/webapp");
+        Context ctx = tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
+
+        if (addJstl) {
+            File lib = new File("webapps/examples/WEB-INF/lib");
+            ctx.setResources(new StandardRoot(ctx));
+            ctx.getResources().createWebResourceSet(
+                    WebResourceRoot.ResourceSetType.POST, "/WEB-INF/lib",
+                    lib.getAbsolutePath(), null, "/");
+        }
+
+        if (start) {
+            tomcat.start();
+        }
+        return tomcat;
+    }
+
+    /*
      * Sub-classes need to know port so they can connect
      */
     public int getPort() {
         return tomcat.getConnector().getLocalPort();
     }
 
-    /**
+    /*
      * Sub-classes may want to check, whether an AccessLogValve is active
      */
     public boolean isAccessLogEnabled() {
@@ -196,7 +232,7 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
     }
 
 
-    /**
+    /*
      *  Wrapper for getting the response.
      */
     public static ByteChunk getUrl(String path) throws IOException {
@@ -212,13 +248,13 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
 
     public static int headUrl(String path, ByteChunk out,
             Map<String, List<String>> resHead) throws IOException {
-        return methodUrl(path, out, 1000000, null, resHead, "HEAD");
+        return methodUrl(path, out, DEFAULT_CLIENT_TIMEOUT_MS, null, resHead, "HEAD");
     }
 
     public static int getUrl(String path, ByteChunk out,
             Map<String, List<String>> reqHead,
             Map<String, List<String>> resHead) throws IOException {
-        return getUrl(path, out, 1000000, reqHead, resHead);
+        return getUrl(path, out, DEFAULT_CLIENT_TIMEOUT_MS, reqHead, resHead);
     }
 
     public static int getUrl(String path, ByteChunk out, int readTimeout,

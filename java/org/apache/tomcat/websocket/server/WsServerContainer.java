@@ -166,7 +166,8 @@ public class WsServerContainer extends WsWebSocketContainer
      * must be called before calling this method.
      *
      * @param sec   The configuration to use when creating endpoint instances
-     * @throws DeploymentException
+     * @throws DeploymentException if the endpoint can not be published as
+     *         requested
      */
     @Override
     public void addEndpoint(ServerEndpointConfig sec)
@@ -308,7 +309,8 @@ public class WsServerContainer extends WsWebSocketContainer
         }
         if (!success) {
             log.warn(sm.getString("serverContainer.threadGroupNotDestroyed",
-                    threadGroup.getName(), Integer.valueOf(threadCount)));        }
+                    threadGroup.getName(), Integer.valueOf(threadCount)));
+        }
     }
 
 
@@ -336,8 +338,7 @@ public class WsServerContainer extends WsWebSocketContainer
         // Check an exact match. Simple case as there are no templates.
         ServerEndpointConfig sec = configExactMatchMap.get(path);
         if (sec != null) {
-            return new WsMappingResult(sec,
-                    Collections.<String, String> emptyMap());
+            return new WsMappingResult(sec, Collections.<String, String>emptyMap());
         }
 
         // No exact match. Need to look for template matches.

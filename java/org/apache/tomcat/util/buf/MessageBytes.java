@@ -18,7 +18,8 @@ package org.apache.tomcat.util.buf;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.util.Locale;
 
 /**
@@ -201,17 +202,32 @@ public final class MessageBytes implements Cloneable, Serializable {
         return strValue;
     }
 
-    /** Do a char->byte conversion.
+    /**
+     * Get the Charset used for string&lt;-&gt;byte conversions.
+     */
+    public Charset getCharset() {
+        return byteC.getCharset();
+    }
+
+    /**
+     * Set the Charset used for string&lt;-&gt;byte conversions.
+     */
+    public void setCharset(Charset charset) {
+        byteC.setCharset(charset);
+    }
+
+    /** Do a char-&gt;byte conversion.
      */
     public void toBytes() {
-        if( ! byteC.isNull() ) {
+        if (!byteC.isNull()) {
             type=T_BYTES;
             return;
         }
         toString();
         type=T_BYTES;
-        byte bb[] = strValue.getBytes(StandardCharsets.ISO_8859_1);
-        byteC.setBytes(bb, 0, bb.length);
+        Charset charset = byteC.getCharset();
+        ByteBuffer result = charset.encode(strValue);
+        byteC.setBytes(result.array(), result.arrayOffset(), result.limit());
     }
 
     /** Convert to char[] and fill the CharChunk.

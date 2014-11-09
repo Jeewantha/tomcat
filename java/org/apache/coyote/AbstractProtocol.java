@@ -18,6 +18,7 @@ package org.apache.coyote;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -83,7 +84,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
     /**
      * Endpoint that provides low-level network I/O - must be matched to the
-     * ProtocolHandler implementation (ProtocolHandler using BIO, requires BIO
+     * ProtocolHandler implementation (ProtocolHandler using NIO, requires NIO
      * Endpoint etc.).
      */
     protected AbstractEndpoint<S> endpoint = null;
@@ -156,18 +157,6 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
     @Override
     public boolean isAprRequired() {
         return false;
-    }
-
-
-    @Override
-    public boolean isCometSupported() {
-        return endpoint.getUseComet();
-    }
-
-
-    @Override
-    public boolean isCometTimeoutSupported() {
-        return endpoint.getUseCometTimeout();
     }
 
 
@@ -639,16 +628,11 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                             state = processor.asyncDispatch(
                                     nextDispatch.getSocketStatus());
                         }
-                    } else if (status == SocketStatus.DISCONNECT &&
-                            !processor.isComet()) {
+                    } else if (status == SocketStatus.DISCONNECT) {
                         // Do nothing here, just wait for it to get recycled
-                        // Don't do this for Comet we need to generate an end
-                        // event (see BZ 54022)
                     } else if (processor.isAsync() ||
                             state == SocketState.ASYNC_END) {
                         state = processor.asyncDispatch(status);
-                    } else if (processor.isComet()) {
-                        state = processor.event(status);
                     } else if (processor.isUpgrade()) {
                         state = processor.upgradeDispatch(status);
                     } else if (status == SocketStatus.OPEN_WRITE) {
@@ -666,11 +650,13 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                         // Get the HTTP upgrade handler
                         HttpUpgradeHandler httpUpgradeHandler =
                                 processor.getHttpUpgradeHandler();
+                        // Retrieve leftover input
+                        ByteBuffer leftoverInput = processor.getLeftoverInput();
                         // Release the Http11 processor to be re-used
                         release(wrapper, processor, false, false);
                         // Create the upgrade processor
                         processor = createUpgradeProcessor(
-                                wrapper, httpUpgradeHandler);
+                                wrapper, leftoverInput, httpUpgradeHandler);
                         // Mark the connection as upgraded
                         wrapper.setUpgraded(true);
                         // Associate with the processor with the connection
@@ -776,7 +762,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                 Processor<S> processor, boolean socketClosing,
                 boolean addToPoller);
         protected abstract Processor<S> createUpgradeProcessor(
-                SocketWrapper<S> socket,
+                SocketWrapper<S> socket, ByteBuffer leftoverInput,
                 HttpUpgradeHandler httpUpgradeProcessor) throws IOException;
 
         protected void register(AbstractProcessor<S> processor) {

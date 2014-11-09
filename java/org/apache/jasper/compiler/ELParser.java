@@ -196,58 +196,39 @@ public class ELParser {
 
     /**
      * Skip until an EL expression ('${' || '#{') is reached, allowing escape
-     * sequences '\\' and '\$' and '\#'.
+     * sequences '\$' and '\#'.
      *
      * @return The text string up to the EL expression
      */
     private String skipUntilEL() {
-        char prev = 0;
         StringBuilder buf = new StringBuilder();
         while (hasNextChar()) {
             char ch = nextChar();
-            if (prev == '\\') {
-                if (ch == '$' || (!isDeferredSyntaxAllowedAsLiteral && ch == '#')) {
-                    prev = 0;
-                    buf.append(ch);
-                    continue;
-                } else if (ch == '\\') {
-                    // Not an escape (this time).
-                    // Optimisation - no need to set prev as it is unchanged
-                    buf.append('\\');
-                    continue;
+            if (ch == '\\') {
+                // Is this the start of a "\${" or "\#{" escape sequence?
+                char p0 = peek(0);
+                char p1 = peek(1);
+                if ((p0 == '$' || (p0 == '#' && !isDeferredSyntaxAllowedAsLiteral)) && p1 == '{') {
+                    buf.append(nextChar());
+                    buf.append(nextChar());
                 } else {
-                    // Not an escape
-                    prev = 0;
-                    buf.append('\\');
                     buf.append(ch);
-                    continue;
                 }
-            } else if (prev == '$'
-                    || (!isDeferredSyntaxAllowedAsLiteral && prev == '#')) {
-                if (ch == '{') {
-                    this.type = prev;
-                    prev = 0;
-                    break;
-                }
-                buf.append(prev);
-                prev = 0;
-            }
-            if (ch == '\\' || ch == '$'
-                    || (!isDeferredSyntaxAllowedAsLiteral && ch == '#')) {
-                prev = ch;
+            } else if ((ch == '$' || (ch == '#' && !isDeferredSyntaxAllowedAsLiteral)) &&
+                    peek(0) == '{') {
+                this.type = ch;
+                nextChar();
+                break;
             } else {
                 buf.append(ch);
             }
-        }
-        if (prev != 0) {
-            buf.append(prev);
         }
         return buf.toString();
     }
 
 
     /**
-     * Escape '\\', '$' and '#', inverting the unescaping performed in
+     * Escape '$' and '#', inverting the unescaping performed in
      * {@link #skipUntilEL()}.
      *
      * @param input Non-EL input to be escaped
@@ -263,13 +244,15 @@ public class ELParser {
         for (int i = 0; i < len; i++) {
             char ch = input.charAt(i);
             if (ch =='$' || (!isDeferredSyntaxAllowedAsLiteral && ch == '#')) {
-                if (output == null) {
-                    output = new StringBuilder(len + 20);
+                if (i + 1 < len && input.charAt(i + 1) == '{') {
+                    if (output == null) {
+                        output = new StringBuilder(len + 20);
+                    }
+                    output.append(input.substring(lastAppend, i));
+                    lastAppend = i + 1;
+                    output.append('\\');
+                    output.append(ch);
                 }
-                output.append(input.substring(lastAppend, i));
-                lastAppend = i + 1;
-                output.append('\\');
-                output.append(ch);
             }
         }
         if (output == null) {
@@ -436,6 +419,14 @@ public class ELParser {
             return (char) -1;
         }
         return expression.charAt(index++);
+    }
+
+    private char peek(int advance) {
+        int target = index + advance;
+        if (target >= expression.length()) {
+            return (char) -1;
+        }
+        return expression.charAt(target);
     }
 
     private int getIndex() {

@@ -30,38 +30,38 @@ package org.apache.catalina;
  *  -----------------------------
  *  |                           |
  *  | init()                    |
- * NEW ->-- INITIALIZING        |
- * | |           |              |     ------------------<-----------------------
+ * NEW -»-- INITIALIZING        |
+ * | |           |              |     ------------------«-----------------------
  * | |           |auto          |     |                                        |
  * | |          \|/    start() \|/   \|/     auto          auto         stop() |
- * | |      INITIALIZED -->-- STARTING_PREP -->- STARTING -->- STARTED -->---  |
+ * | |      INITIALIZED --»-- STARTING_PREP --»- STARTING --»- STARTED --»---  |
  * | |         |                                                  |         |  |
  * | |         |                                                  |         |  |
  * | |         |                                                  |         |  |
  * | |destroy()|                                                  |         |  |
- * | -->-----<--       auto                    auto               |         |  |
- * |     |       ---------<----- MUST_STOP ---------------------<--         |  |
+ * | --»-----«--       auto                    auto               |         |  |
+ * |     |       ---------«----- MUST_STOP ---------------------«--         |  |
  * |     |       |                                                          |  |
- * |    \|/      ---------------------------<--------------------------------  ^
+ * |    \|/      ---------------------------«--------------------------------  ^
  * |     |       |                                                             |
  * |     |      \|/            auto                 auto              start()  |
- * |     |  STOPPING_PREP ------>----- STOPPING ------>----- STOPPED ---->------
+ * |     |  STOPPING_PREP ------»----- STOPPING ------»----- STOPPED ----»------
  * |     |                                ^                  |  |  ^
  * |     |               stop()           |                  |  |  |
  * |     |       --------------------------                  |  |  |
  * |     |       |                                  auto     |  |  |
- * |     |       |                  MUST_DESTROY------<-------  |  |
+ * |     |       |                  MUST_DESTROY------«-------  |  |
  * |     |       |                    |                         |  |
  * |     |       |                    |auto                     |  |
  * |     |       |    destroy()      \|/              destroy() |  |
- * |     |    FAILED ---->------ DESTROYING ---<-----------------  |
+ * |     |    FAILED ----»------ DESTROYING ---«-----------------  |
  * |     |                        ^     |                          |
  * |     |     destroy()          |     |auto                      |
- * |     -------->-----------------    \|/                         |
+ * |     --------»-----------------    \|/                         |
  * |                                 DESTROYED                     |
  * |                                                               |
  * |                            stop()                             |
- * --->------------------------------>------------------------------
+ * ----»-----------------------------»------------------------------
  *
  * Any state can transition to FAILED.
  *
@@ -106,7 +106,7 @@ public interface Lifecycle {
 
 
     /**
-     * The LifecycleEvent type for the "component after init" event.
+     * The LifecycleEvent type for the "component before init" event.
      */
     public static final String BEFORE_INIT_EVENT = "before_init";
 

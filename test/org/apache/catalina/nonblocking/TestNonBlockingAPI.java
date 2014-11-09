@@ -41,9 +41,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 
+import org.apache.catalina.Context;
 import org.apache.catalina.core.StandardContext;
 import org.apache.catalina.startup.BytesStreamer;
 import org.apache.catalina.startup.TesterServlet;
@@ -90,12 +90,6 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
 
     @Test(expected=IOException.class)
     public void testNonBlockingReadIgnoreIsReady() throws Exception {
-        // TODO Investigate options to get this test to pass with the HTTP BIO
-        //      connector.
-        Assume.assumeFalse(
-                "Skipping as this test requires true non-blocking IO",
-                getTomcatInstance().getConnector().getProtocol()
-                        .equals("org.apache.coyote.http11.Http11Protocol"));
         doTestNonBlockingRead(true);
     }
 
@@ -125,9 +119,8 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
     @Test
     public void testNonBlockingWrite() throws Exception {
         Tomcat tomcat = getTomcatInstance();
-        // Must have a real docBase - just use temp
-        StandardContext ctx = (StandardContext) tomcat.addContext("",
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         NBWriteServlet servlet = new NBWriteServlet();
         String servletName = NBWriteServlet.class.getName();
@@ -271,9 +264,8 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
     public void testNonBlockingWriteError() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        StandardContext ctx = (StandardContext) tomcat.addContext(
-                "", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         TesterAccessLogValve alv = new TesterAccessLogValve();
         ctx.getPipeline().addValve(alv);
@@ -358,9 +350,8 @@ public class TestNonBlockingAPI extends TomcatBaseTest {
     public void testBug55438NonBlockingReadWriteEmptyRead() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        StandardContext ctx = (StandardContext) tomcat.addContext("",
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         NBReadWriteServlet servlet = new NBReadWriteServlet();
         String servletName = NBReadWriteServlet.class.getName();

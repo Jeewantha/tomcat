@@ -29,8 +29,8 @@ import java.util.logging.LogManager;
  *
  * Why? It is an attempt to strike a balance between simpler code (no discovery)
  * and providing flexibility - particularly for those projects that embed Tomcat
- * or some of Tomcat&apos;s components - is an alternative logging
- * implementationnis desired.
+ * or some of Tomcat's components - is an alternative logging
+ * implementation is desired.
  *
  * Note that this implementation is not just a wrapper around JDK logging (like
  * the original commons-logging impl). It adds 2 features - a simpler

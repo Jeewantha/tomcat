@@ -562,6 +562,10 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
             ((AtomicBoolean) param).set(asyncStateMachine.isAsyncStarted());
             break;
         }
+        case ASYNC_IS_COMPLETING: {
+            ((AtomicBoolean) param).set(asyncStateMachine.isCompleting());
+            break;
+        }
         case ASYNC_IS_DISPATCHING: {
             ((AtomicBoolean) param).set(asyncStateMachine.isAsyncDispatching());
             break;
@@ -582,26 +586,6 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
             // HTTP connections only. Unsupported for AJP.
             throw new UnsupportedOperationException(
                     sm.getString("ajpprocessor.httpupgrade.notsupported"));
-        }
-        case COMET_BEGIN: {
-            // HTTP connections only. Unsupported for AJP.
-            throw new UnsupportedOperationException(
-                    sm.getString("ajpprocessor.comet.notsupported"));
-        }
-        case COMET_END: {
-            // HTTP connections only. Unsupported for AJP.
-            throw new UnsupportedOperationException(
-                    sm.getString("ajpprocessor.comet.notsupported"));
-        }
-        case COMET_CLOSE: {
-            // HTTP connections only. Unsupported for AJP.
-            throw new UnsupportedOperationException(
-                    sm.getString("ajpprocessor.comet.notsupported"));
-        }
-        case COMET_SETTIMEOUT: {
-            // HTTP connections only. Unsupported for AJP.
-            throw new UnsupportedOperationException(
-                    sm.getString("ajpprocessor.comet.notsupported"));
         }
         case AVAILABLE: {
             if (available()) {
@@ -890,14 +874,6 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
 
     @Override
-    public SocketState event(SocketStatus status) throws IOException {
-        // Should never reach this code but in case we do...
-        throw new IOException(
-                sm.getString("ajpprocessor.comet.notsupported"));
-    }
-
-
-    @Override
     public SocketState upgradeDispatch(SocketStatus status) throws IOException {
         // Should never reach this code but in case we do...
         throw new IOException(
@@ -1067,16 +1043,15 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
 
     @Override
-    public final boolean isComet() {
-        // AJP does not support Comet
+    public final boolean isUpgrade() {
+        // AJP does not support HTTP upgrade
         return false;
     }
 
 
     @Override
-    public final boolean isUpgrade() {
-        // AJP does not support HTTP upgrade
-        return false;
+    public ByteBuffer getLeftoverInput() {
+        return null;
     }
 
 

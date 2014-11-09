@@ -35,13 +35,14 @@ import org.junit.Test;
  */
 public class Threading {
 
-    /**
+    /*
      * {@link FileInputStream#read(byte[])} and related methods are all native
      * methods so it isn't immediately obvious if they are thread-safe or not.
      *
      * <pre>
      * Windows JDK 1.6.0_22_x64 - Thread safe
      * OSX     JDK 1.6.0_22_x64 - Not thread safe
+     * OSX     JDK 1.7.0_51_x64 - Not thread safe
      * </pre>
      *
      * Therefore, have to assume that {@link FileInputStream#read(byte[])} is
@@ -60,7 +61,7 @@ public class Threading {
         // Assumes "ant release" has been run
         // Will need to be updated as new releases are made
         File file = new File(
-                "./output/release/v7.0.20-dev/bin/apache-tomcat-7.0.20-dev.zip");
+                "./output/release/v8.0.15-dev/bin/apache-tomcat-8.0.15-dev.zip");
 
         FileInputStream fis = new FileInputStream(file);
 

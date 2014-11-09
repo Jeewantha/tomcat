@@ -16,7 +16,6 @@
  */
 package org.apache.coyote.ajp;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
@@ -47,17 +46,15 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         // Has a protocol been specified
         String protocol = System.getProperty("tomcat.test.protocol");
 
-        // Use BIO by default
+        // Use NIO by default
         if (protocol == null) {
-            protocol = "org.apache.coyote.ajp.AjpProtocol";
+            protocol = "org.apache.coyote.ajp.AjpNioProtocol";
         } else if (protocol.contains("Nio2")) {
             protocol = "org.apache.coyote.ajp.AjpNio2Protocol";
-        } else if (protocol.contains("Nio")) {
-            protocol = "org.apache.coyote.ajp.AjpNioProtocol";
         } else if (protocol.contains("Apr")) {
             protocol = "org.apache.coyote.ajp.AjpAprProtocol";
         } else {
-            protocol = "org.apache.coyote.ajp.AjpProtocol";
+            protocol = "org.apache.coyote.ajp.AjpNioProtocol";
         }
 
         return protocol;
@@ -69,8 +66,9 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         tomcat.getConnector().setProperty("connectionTimeout", "-1");
         tomcat.start();
 
-        // Must have a real docBase - just use temp
-        Context ctx = tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
         Tomcat.addServlet(ctx, "helloWorld", new HelloWorldServlet());
         ctx.addServletMapping("/", "helloWorld");
 
@@ -120,13 +118,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
 
     public void doTestPost(boolean multipleCL, int expectedStatus) throws Exception {
 
-        Tomcat tomcat = getTomcatInstance();
-
-        // Use the normal Tomcat ROOT context
-        File root = new File("test/webapp");
-        tomcat.addWebapp("", root.getAbsolutePath());
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         SimpleAjpClient ajpClient = new SimpleAjpClient();
         ajpClient.setPort(getPort());
@@ -135,7 +127,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         validateCpong(ajpClient.cping());
 
         TesterAjpMessage forwardMessage =
-                ajpClient.createForwardMessage("/echo-params.jsp", 4);
+                ajpClient.createForwardMessage("/test/echo-params.jsp", 4);
         forwardMessage.addHeader(0xA008, "9");
         if (multipleCL) {
             forwardMessage.addHeader(0xA008, "99");
@@ -176,8 +168,9 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
 
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx = tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
         Tomcat.addServlet(ctx, "bug55453", new Tester304WithBodyServlet());
         ctx.addServletMapping("/", "bug55453");
 
@@ -231,8 +224,9 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
 
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx = tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
         ReadBodyServlet servlet = new ReadBodyServlet(callAvailable);
         Tomcat.addServlet(ctx, "ReadBody", servlet);
         ctx.addServletMapping("/", "ReadBody");
@@ -394,8 +388,8 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
 
         public ReadBodyServlet(boolean callAvailable) {
             this.callAvailable = callAvailable;
-            this.availableList = callAvailable ? new ArrayList<Integer>() : null;
-            this.readList = callAvailable ? new ArrayList<Integer>() : null;
+            this.availableList = callAvailable ? new ArrayList<>() : null;
+            this.readList = callAvailable ? new ArrayList<>() : null;
         }
 
         @Override

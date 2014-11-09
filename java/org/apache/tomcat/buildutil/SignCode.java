@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,11 +54,18 @@ import org.w3c.dom.NodeList;
  */
 public class SignCode extends Task {
 
+    private static final URL SIGNING_SERVICE_URL;
+
     private static final String NS = "cod";
 
     private static final MessageFactory SOAP_MSG_FACTORY;
 
     static {
+        try {
+            SIGNING_SERVICE_URL = new URL("https://api.ws.symantec.com/webtrust/SigningService");
+        } catch (MalformedURLException e) {
+            throw new IllegalArgumentException(e);
+        }
         try {
             SOAP_MSG_FACTORY = MessageFactory.newInstance(SOAPConstants.SOAP_1_1_PROTOCOL);
         } catch (SOAPException e) {
@@ -160,21 +168,22 @@ public class SignCode extends Task {
                 requestSigningRequest.addChildElement("signingServiceName", NS);
         signingServiceName.addTextNode(this.signingService);
 
+        List<String> fileNames = getFileNames(filesToSign);
+
         SOAPElement commaDelimitedFileNames =
                 requestSigningRequest.addChildElement("commaDelimitedFileNames", NS);
-        commaDelimitedFileNames.addTextNode(getFileNames(filesToSign.size()));
+        commaDelimitedFileNames.addTextNode(listToString(fileNames));
 
         SOAPElement application =
                 requestSigningRequest.addChildElement("application", NS);
-        application.addTextNode(getApplicationString(filesToSign));
+        application.addTextNode(getApplicationString(fileNames, filesToSign));
 
         // Send the message
         SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
         SOAPConnection connection = soapConnectionFactory.createConnection();
-        URL endpoint = new URL("https://test-api.ws.symantec.com:443/webtrust/SigningService");
 
         log("Sending siging request to server and waiting for response");
-        SOAPMessage response = connection.call(message, endpoint);
+        SOAPMessage response = connection.call(message, SIGNING_SERVICE_URL);
 
         log("Processing response");
         SOAPElement responseBody = response.getSOAPBody();
@@ -196,11 +205,27 @@ public class SignCode extends Task {
             }
         }
 
-        if (!"SIGNED".equals(signingSetStatus)) {
+        if (!signingService.contains("TEST") && !"SIGNED".equals(signingSetStatus) ||
+                signingService.contains("TEST") && !"INITIALIZED".equals(signingSetStatus) ) {
             throw new BuildException("Signing failed. Status was: " + signingSetStatus);
         }
 
         return signingSetID;
+    }
+
+
+    private String listToString(List<String> list) {
+        StringBuilder sb = new StringBuilder(list.size() * 6);
+        boolean doneFirst = false;
+        for (String s : list) {
+            if (doneFirst) {
+                sb.append(',');
+            } else {
+                doneFirst = true;
+            }
+            sb.append(s);
+        }
+        return sb.toString();
     }
 
 
@@ -229,10 +254,9 @@ public class SignCode extends Task {
         // Send the message
         SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
         SOAPConnection connection = soapConnectionFactory.createConnection();
-        URL endpoint = new URL("https://test-api.ws.symantec.com:443/webtrust/SigningService");
 
         log("Requesting signed files from server and waiting for response");
-        SOAPMessage response = connection.call(message, endpoint);
+        SOAPMessage response = connection.call(message, SIGNING_SERVICE_URL);
 
         log("Processing response");
         SOAPElement responseBody = response.getSOAPBody();
@@ -290,23 +314,28 @@ public class SignCode extends Task {
 
     /**
      * Signing service requires unique files names. Since files will be returned
-     * in order, use dummy names that we know are unique.
+     * in order, use dummy names that we know are unique but retain the file
+     * extension since the signing service appears to use it to figure out what
+     * to sign and how to sign it.
      */
-    private static String getFileNames(int fileCount) {
-        StringBuilder sb = new StringBuilder();
+    private static List<String> getFileNames(List<File> filesToSign) {
+        List<String> result = new ArrayList<>(filesToSign.size());
 
-        boolean first = true;
-
-        for (int i = 0; i < fileCount; i++) {
-            if (first) {
-                first = false;
+        for (int i = 0; i < filesToSign.size(); i++) {
+            File f = filesToSign.get(i);
+            String fileName = f.getName();
+            int extIndex = fileName.lastIndexOf('.');
+            String newName;
+            if (extIndex < 0) {
+                newName = Integer.toString(i);
             } else {
-                sb.append(',');
+                newName = Integer.toString(i) + fileName.substring(extIndex);
             }
-            sb.append(Integer.toString(i));
+            result.add(newName);
         }
-        return sb.toString();
+        return result;
     }
+
 
     /**
      * Zips the files, base 64 encodes the resulting zip and then returns the
@@ -314,16 +343,18 @@ public class SignCode extends Task {
      * signing server but the files that need to be signed are relatively small
      * and this simpler to write.
      *
-     * @param files Files to be signed
+     * @param fileNames Modified names of files
+     * @param files     Files to be signed
      */
-    private static String getApplicationString(List<File> files) throws IOException {
-        // 10 MB should be more than enough for Tomcat
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(10 * 1024 * 1024);
+    private static String getApplicationString(List<String> fileNames, List<File> files)
+            throws IOException {
+        // 16 MB should be more than enough for Tomcat
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(16 * 1024 * 1024);
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
             byte[] buf = new byte[32 * 1024];
             for (int i = 0; i < files.size(); i++) {
                 try (FileInputStream fis = new FileInputStream(files.get(i))) {
-                    ZipEntry zipEntry = new ZipEntry(Integer.toString(i));
+                    ZipEntry zipEntry = new ZipEntry(fileNames.get(i));
                     zos.putNextEntry(zipEntry);
                     int numRead;
                     while ( (numRead = fis.read(buf)) >= 0) {

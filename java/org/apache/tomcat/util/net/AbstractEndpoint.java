@@ -690,7 +690,7 @@ public abstract class AbstractEndpoint<S> {
          * onWritePossible() and/or onDataAvailable() as appropriate are made by
          * the container.
          *
-         * Processing the dispatches requires (for BIO and APR/native at least)
+         * Processing the dispatches requires (for APR/native at least)
          * that the socket has been added to the waitingRequests queue. This may
          * not have occurred by the time that the non-container thread completes
          * triggering the call to this method. Therefore, the coded syncs on the
@@ -821,9 +821,6 @@ public abstract class AbstractEndpoint<S> {
     // Some of these are always hard-coded, some are hard-coded to false (i.e.
     // the endpoint does not support them) and some are configurable.
     public abstract boolean getUseSendfile();
-    public abstract boolean getUseComet();
-    public abstract boolean getUseCometTimeout();
-    public abstract boolean getUsePolling();
 
     protected LimitLatch initializeConnectionLatch() {
         if (maxConnections==-1) return null;

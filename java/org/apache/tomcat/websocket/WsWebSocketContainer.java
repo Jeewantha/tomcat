@@ -137,8 +137,7 @@ public class WsWebSocketContainer
         Endpoint ep = new PojoEndpointClient(pojo, annotation.decoders());
 
         Class<? extends ClientEndpointConfig.Configurator> configuratorClazz =
-                pojo.getClass().getAnnotation(
-                        ClientEndpoint.class).configurator();
+                annotation.configurator();
 
         ClientEndpointConfig.Configurator configurator = null;
         if (!ClientEndpointConfig.Configurator.class.equals(
@@ -159,6 +158,7 @@ public class WsWebSocketContainer
         ClientEndpointConfig config = builder.
                 decoders(Arrays.asList(annotation.decoders())).
                 encoders(Arrays.asList(annotation.encoders())).
+                preferredSubprotocols(Arrays.asList(annotation.subprotocols())).
                 build();
         return connectToServer(ep, config, path);
     }
@@ -274,6 +274,9 @@ public class WsWebSocketContainer
         ByteBuffer response;
         String subProtocol;
         boolean success = false;
+        List<Extension> extensionsAgreed = new ArrayList<>();
+        Transformation transformation = null;
+
         try {
             fConnect.get(timeout, TimeUnit.MILLISECONDS);
 
@@ -301,16 +304,45 @@ public class WsWebSocketContainer
 
             // Sub-protocol
             // Header names are always stored in lower case
-            List<String> values = handshakeResponse.getHeaders().get(
+            List<String> protocolHeaders = handshakeResponse.getHeaders().get(
                     Constants.WS_PROTOCOL_HEADER_NAME_LOWER);
-            if (values == null || values.size() == 0) {
+            if (protocolHeaders == null || protocolHeaders.size() == 0) {
                 subProtocol = null;
-            } else if (values.size() == 1) {
-                subProtocol = values.get(0);
+            } else if (protocolHeaders.size() == 1) {
+                subProtocol = protocolHeaders.get(0);
             } else {
                 throw new DeploymentException(
                         sm.getString("Sec-WebSocket-Protocol"));
             }
+
+            // Extensions
+            // Should normally only be one header but handle the case of
+            // multiple headers
+            List<String> extHeaders = handshakeResponse.getHeaders().get(
+                    Constants.WS_EXTENSIONS_HEADER_NAME_LOWER);
+            if (extHeaders != null) {
+                for (String extHeader : extHeaders) {
+                    Util.parseExtensionHeader(extensionsAgreed, extHeader);
+                }
+            }
+
+            // Build the transformations
+            TransformationFactory factory = TransformationFactory.getInstance();
+            for (Extension extension : extensionsAgreed) {
+                List<List<Extension.Parameter>> wrapper = new ArrayList<>(1);
+                wrapper.add(extension.getParameters());
+                Transformation t = factory.create(extension.getName(), wrapper, false);
+                if (t == null) {
+                    throw new DeploymentException(sm.getString(
+                            "wsWebSocketContainer.invalidExtensionParameters"));
+                }
+                if (transformation == null) {
+                    transformation = t;
+                } else {
+                    transformation.setNext(t);
+                }
+            }
+
             success = true;
         } catch (ExecutionException | InterruptedException | SSLException |
                 EOFException | TimeoutException e) {
@@ -326,12 +358,12 @@ public class WsWebSocketContainer
         WsRemoteEndpointImplClient wsRemoteEndpointClient = new WsRemoteEndpointImplClient(channel);
 
         WsSession wsSession = new WsSession(endpoint, wsRemoteEndpointClient,
-                this, null, null, null, null, null, subProtocol,
-                Collections.<String, String> emptyMap(), secure,
+                this, null, null, null, null, null, extensionsAgreed,
+                subProtocol, Collections.<String,String>emptyMap(), secure,
                 clientEndpointConfiguration);
 
         WsFrameClient wsFrameClient = new WsFrameClient(response, channel,
-                wsSession);
+                wsSession, transformation);
         // WsFrame adds the necessary final transformations. Copy the
         // completed transformation chain to the remote end point.
         wsRemoteEndpointClient.setTransformation(wsFrameClient.getTransformation());
@@ -463,6 +495,7 @@ public class WsWebSocketContainer
                     header.append(value);
                 }
             }
+            result.add(header.toString());
         }
         return result;
     }
@@ -545,6 +578,9 @@ public class WsWebSocketContainer
         boolean readHeaders = false;
         String line = null;
         while (!readHeaders) {
+            // On entering loop buffer will be empty and at the start of a new
+            // loop the buffer will have been fully read.
+            response.clear();
             // Blocking read
             Future<Integer> read = channel.read(response);
             Integer bytesRead = read.get(timeout, TimeUnit.MILLISECONDS);
@@ -596,7 +632,8 @@ public class WsWebSocketContainer
         }
         // Header names are case insensitive so always use lower case
         String headerName = line.substring(0, index).trim().toLowerCase();
-        // TODO handle known multi-value headers
+        // Multi-value headers are stored as a single header and the client is
+        // expected to handle splitting into individual values
         String headerValue = line.substring(index + 1).trim();
 
         List<String> values = headers.get(headerName);

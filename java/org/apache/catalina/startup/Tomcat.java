@@ -183,7 +183,7 @@ public class Tomcat {
     }
 
     /**
-     * This is equivalent to adding a web application to Tomcat&apos;s webapps
+     * This is equivalent to adding a web application to Tomcat's webapps
      * directory. The equivalent of the default web.xml will be applied  to the
      * web application and any WEB-INF/web.xml and META-INF/context.xml packaged
      * with the application will be processed normally. Normal web fragment and
@@ -240,8 +240,7 @@ public class Tomcat {
     }
 
     /**
-     * Equivalent with
-     *  <servlet><servlet-name><servlet-class>.
+     * Equivalent to &lt;servlet&gt;&lt;servlet-name&gt;&lt;servlet-class&gt;.
      *
      * In general it is better/faster to use the method that takes a
      * Servlet as param - this one can be used if the servlet is not
@@ -405,7 +404,6 @@ public class Tomcat {
         // and for the use case the speed benefit wouldn't matter.
 
         connector = new Connector("HTTP/1.1");
-        // connector = new Connector("org.apache.coyote.http11.Http11Protocol");
         connector.setPort(port);
         service.addConnector( connector );
         return connector;
@@ -646,7 +644,7 @@ public class Tomcat {
     }
 
     static final String[] silences = new String[] {
-        "org.apache.coyote.http11.Http11Protocol",
+        "org.apache.coyote.http11.Http11NioProtocol",
         "org.apache.catalina.core.StandardService",
         "org.apache.catalina.core.StandardEngine",
         "org.apache.catalina.startup.ContextConfig",

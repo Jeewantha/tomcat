@@ -17,6 +17,7 @@
 package org.apache.coyote.http11;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 
@@ -139,7 +140,11 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
 
     @Override
     protected String getNamePrefix() {
-        return ("http-nio");
+        if (isSSLEnabled()) {
+            return ("https-nio");
+        } else {
+            return ("http-nio");
+        }
     }
 
 
@@ -268,7 +273,6 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
                 socket.setAsync(true);
             } else {
                 // Either:
-                //  - this is comet request
                 //  - this is an upgraded connection
                 //  - the request line/headers have not been completely
                 //    read
@@ -282,30 +286,17 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
                     proto.getMaxHttpHeaderSize(), (NioEndpoint)proto.endpoint,
                     proto.getMaxTrailerSize(), proto.getMaxExtensionSize(),
                     proto.getMaxSwallowSize());
-            processor.setAdapter(proto.getAdapter());
-            processor.setMaxKeepAliveRequests(proto.getMaxKeepAliveRequests());
-            processor.setKeepAliveTimeout(proto.getKeepAliveTimeout());
-            processor.setConnectionUploadTimeout(
-                    proto.getConnectionUploadTimeout());
-            processor.setDisableUploadTimeout(proto.getDisableUploadTimeout());
-            processor.setCompressionMinSize(proto.getCompressionMinSize());
-            processor.setCompression(proto.getCompression());
-            processor.setNoCompressionUserAgents(proto.getNoCompressionUserAgents());
-            processor.setCompressableMimeTypes(proto.getCompressableMimeTypes());
-            processor.setRestrictedUserAgents(proto.getRestrictedUserAgents());
-            processor.setSocketBuffer(proto.getSocketBuffer());
-            processor.setMaxSavePostSize(proto.getMaxSavePostSize());
-            processor.setServer(proto.getServer());
+            proto.configureProcessor(processor);
             register(processor);
             return processor;
         }
 
         @Override
         protected Processor<NioChannel> createUpgradeProcessor(
-                SocketWrapper<NioChannel> socket,
+                SocketWrapper<NioChannel> socket, ByteBuffer leftoverInput,
                 HttpUpgradeHandler httpUpgradeProcessor)
                 throws IOException {
-            return new NioProcessor(socket, httpUpgradeProcessor,
+            return new NioProcessor(socket, leftoverInput, httpUpgradeProcessor,
                     proto.getEndpoint().getSelectorPool(),
                     proto.getUpgradeAsyncWriteBufferSize());
         }

@@ -15,6 +15,13 @@
 
 ; Tomcat script for Nullsoft Installer
 
+!ifdef UNINSTALLONLY
+  RequestExecutionLevel user
+  OutFile "tempinstaller.exe"
+!else
+  OutFile tomcat-installer.exe
+!endif
+
   ;Compression options
   CRCCheck on
   SetCompressor /SOLID lzma
@@ -90,9 +97,6 @@ Var ServiceInstallLog
   !define MUI_ICON tomcat.ico
   !define MUI_UNICON tomcat.ico
 
-  ;General
-  OutFile tomcat-installer.exe
-
   ;Install Options pages
   LangString TEXT_JVM_TITLE ${LANG_ENGLISH} "Java Virtual Machine"
   LangString TEXT_JVM_SUBTITLE ${LANG_ENGLISH} "Java Virtual Machine path selection."
@@ -103,7 +107,7 @@ Var ServiceInstallLog
   LangString TEXT_CONF_SUBTITLE ${LANG_ENGLISH} "Tomcat basic configuration."
   LangString TEXT_CONF_PAGETITLE ${LANG_ENGLISH} ": Configuration Options"
 
-  LangString TEXT_JVM_LABEL1 ${LANG_ENGLISH} "Please select the path of a Java SE 6.0 or later JRE installed on your system."
+  LangString TEXT_JVM_LABEL1 ${LANG_ENGLISH} "Please select the path of a Java SE 7.0 or later JRE installed on your system."
   LangString TEXT_CONF_LABEL_PORT_SHUTDOWN ${LANG_ENGLISH} "Server Shutdown Port"
   LangString TEXT_CONF_LABEL_PORT_HTTP ${LANG_ENGLISH} "HTTP/1.1 Connector Port"
   LangString TEXT_CONF_LABEL_PORT_AJP ${LANG_ENGLISH} "AJP/1.3 Connector Port"
@@ -129,9 +133,11 @@ Var ServiceInstallLog
   Page custom CheckUserType
   !insertmacro MUI_PAGE_FINISH
 
-  ;Uninstall Page order
-  !insertmacro MUI_UNPAGE_CONFIRM
-  !insertmacro MUI_UNPAGE_INSTFILES
+  !ifdef UNINSTALLONLY
+    ;Uninstall Page order
+    !insertmacro MUI_UNPAGE_CONFIRM
+    !insertmacro MUI_UNPAGE_INSTFILES
+  !endif
 
   ;Component-selection page
     ;Descriptions
@@ -339,7 +345,11 @@ Section -post
     Call createShortcuts
   ${EndIf}
 
-  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  !ifndef UNINSTALLONLY
+    SetOutPath $INSTDIR
+    ; this packages the signed uninstaller
+    File Uninstall.exe
+  !endif
 
   WriteRegStr HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName" "InstallPath" $INSTDIR
   WriteRegStr HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName" "Version" @VERSION@
@@ -355,6 +365,14 @@ Section -post
 SectionEnd
 
 Function .onInit
+  !ifdef UNINSTALLONLY
+    ; If UNINSTALLONLY is defined, then we aren't supposed to do anything except write out
+    ; the installer.  This is better than processing a command line option as it means
+    ; this entire code path is not present in the final (real) installer.
+    WriteUninstaller "$EXEDIR\Uninstall.exe"
+    Quit
+  !endif
+
   ${GetParameters} $R0
   ClearErrors
 
@@ -1085,90 +1103,92 @@ FunctionEnd
 ;--------------------------------
 ;Uninstaller Section
 
-Section Uninstall
+!ifdef UNINSTALLONLY
+  Section Uninstall
 
-  ${If} $TomcatServiceName == ""
-    MessageBox MB_ICONSTOP|MB_OK \
-        "No service name specified to uninstall. This will be provided automatically if you uninstall via \
-         Add/Remove Programs or the shortcut on the Start menu. Alternatively, call the installer from \
-         the command line with -ServiceName=$\"<name of service>$\"."
-    Quit
-  ${EndIf}
+    ${If} $TomcatServiceName == ""
+      MessageBox MB_ICONSTOP|MB_OK \
+          "No service name specified to uninstall. This will be provided automatically if you uninstall via \
+           Add/Remove Programs or the shortcut on the Start menu. Alternatively, call the installer from \
+           the command line with -ServiceName=$\"<name of service>$\"."
+      Quit
+    ${EndIf}
 
-  Delete "$INSTDIR\Uninstall.exe"
+    Delete "$INSTDIR\Uninstall.exe"
 
-  ; Stop Tomcat service monitor if running
-  DetailPrint "Stopping $TomcatServiceName service monitor"
-  nsExec::ExecToLog '"$INSTDIR\bin\$TomcatServiceManagerFileName" //MQ//$TomcatServiceName'
-  ; Delete Tomcat service
-  DetailPrint "Uninstalling $TomcatServiceName service"
-  nsExec::ExecToLog '"$INSTDIR\bin\$TomcatServiceFileName" //DS//$TomcatServiceName --LogPath "$INSTDIR\logs"'
-  ClearErrors
+    ; Stop Tomcat service monitor if running
+    DetailPrint "Stopping $TomcatServiceName service monitor"
+    nsExec::ExecToLog '"$INSTDIR\bin\$TomcatServiceManagerFileName" //MQ//$TomcatServiceName'
+    ; Delete Tomcat service
+    DetailPrint "Uninstalling $TomcatServiceName service"
+    nsExec::ExecToLog '"$INSTDIR\bin\$TomcatServiceFileName" //DS//$TomcatServiceName --LogPath "$INSTDIR\logs"'
+    ClearErrors
 
-  ; Don't know if 32-bit or 64-bit registry was used so, for now, remove both
-  SetRegView 32
-  DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
-  DeleteRegKey HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName"
-  DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
-  SetRegView 64
-  DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
-  DeleteRegKey HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName"
-  DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
+    ; Don't know if 32-bit or 64-bit registry was used so, for now, remove both
+    SetRegView 32
+    DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
+    DeleteRegKey HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName"
+    DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
+    SetRegView 64
+    DeleteRegKey HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
+    DeleteRegKey HKLM "SOFTWARE\Apache Software Foundation\Tomcat\@VERSION_MAJOR_MINOR@\$TomcatServiceName"
+    DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ApacheTomcatMonitor@VERSION_MAJOR_MINOR@_$TomcatServiceName"
 
-  ; Don't know if short-cuts were created for all users, one user or not at all so, for now, remove both
-  SetShellVarContext all
-  RMDir /r "$SMPROGRAMS\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
-  SetShellVarContext current
-  RMDir /r "$SMPROGRAMS\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
+    ; Don't know if short-cuts were created for all users, one user or not at all so, for now, remove both
+    SetShellVarContext all
+    RMDir /r "$SMPROGRAMS\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
+    SetShellVarContext current
+    RMDir /r "$SMPROGRAMS\Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName"
 
-  Delete "$INSTDIR\tomcat.ico"
-  Delete "$INSTDIR\LICENSE"
-  Delete "$INSTDIR\NOTICE"
-  RMDir /r "$INSTDIR\bin"
-  RMDir /r "$INSTDIR\lib"
-  Delete "$INSTDIR\conf\*.dtd"
-  RMDir "$INSTDIR\logs"
-  RMDir /r "$INSTDIR\webapps\docs"
-  RMDir /r "$INSTDIR\webapps\examples"
-  RMDir /r "$INSTDIR\work"
-  RMDir /r "$INSTDIR\temp"
-  RMDir "$INSTDIR"
+    Delete "$INSTDIR\tomcat.ico"
+    Delete "$INSTDIR\LICENSE"
+    Delete "$INSTDIR\NOTICE"
+    RMDir /r "$INSTDIR\bin"
+    RMDir /r "$INSTDIR\lib"
+    Delete "$INSTDIR\conf\*.dtd"
+    RMDir "$INSTDIR\logs"
+    RMDir /r "$INSTDIR\webapps\docs"
+    RMDir /r "$INSTDIR\webapps\examples"
+    RMDir /r "$INSTDIR\work"
+    RMDir /r "$INSTDIR\temp"
+    RMDir "$INSTDIR"
 
-  IfSilent Removed 0
+    IfSilent Removed 0
 
-  ; if $INSTDIR was removed, skip these next ones
-  IfFileExists "$INSTDIR" 0 Removed
-    MessageBox MB_YESNO|MB_ICONQUESTION \
-      "Remove all files in your Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName directory? (If you have anything  \
- you created that you want to keep, click No)" IDNO Removed
-    ; these would be skipped if the user hits no
-    RMDir /r "$INSTDIR\webapps"
-    RMDir /r "$INSTDIR\logs"
-    RMDir /r "$INSTDIR\conf"
-    Delete "$INSTDIR\*.*"
-    RMDir /r "$INSTDIR"
-    Sleep 500
+    ; if $INSTDIR was removed, skip these next ones
     IfFileExists "$INSTDIR" 0 Removed
-      MessageBox MB_OK|MB_ICONEXCLAMATION \
-                 "Note: $INSTDIR could not be removed."
-  Removed:
+      MessageBox MB_YESNO|MB_ICONQUESTION \
+        "Remove all files in your Apache Tomcat @VERSION_MAJOR_MINOR@ $TomcatServiceName directory? (If you have anything  \
+   you created that you want to keep, click No)" IDNO Removed
+      ; these would be skipped if the user hits no
+      RMDir /r "$INSTDIR\webapps"
+      RMDir /r "$INSTDIR\logs"
+      RMDir /r "$INSTDIR\conf"
+      Delete "$INSTDIR\*.*"
+      RMDir /r "$INSTDIR"
+      Sleep 500
+      IfFileExists "$INSTDIR" 0 Removed
+        MessageBox MB_OK|MB_ICONEXCLAMATION \
+                   "Note: $INSTDIR could not be removed."
+    Removed:
 
-SectionEnd
+  SectionEnd
 
+  ; =================
+  ; uninstall init function
+  ;
+  ; Read the command line paramater and set up the service name variables so the
+  ; uninstaller knows which service it is working with
+  ; =================
+  Function un.onInit
+    ${GetParameters} $R0
+    ${GetOptions} $R0 "-ServiceName=" $R1
+    StrCpy $TomcatServiceName $R1
+    StrCpy $TomcatServiceFileName $R1.exe
+    StrCpy $TomcatServiceManagerFileName $R1w.exe
+  FunctionEnd
+!endif
 
-; =================
-; uninstall init function
-;
-; Read the command line paramater and set up the service name variables so the
-; uninstaller knows which service it is working with
-; =================
-Function un.onInit
-  ${GetParameters} $R0
-  ${GetOptions} $R0 "-ServiceName=" $R1
-  StrCpy $TomcatServiceName $R1
-  StrCpy $TomcatServiceFileName $R1.exe
-  StrCpy $TomcatServiceManagerFileName $R1w.exe
-FunctionEnd
 ;eof

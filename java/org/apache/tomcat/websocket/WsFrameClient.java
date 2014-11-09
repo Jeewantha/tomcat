@@ -23,7 +23,15 @@ import java.nio.channels.CompletionHandler;
 import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
+
 public class WsFrameClient extends WsFrameBase {
+
+    private final Log log = LogFactory.getLog(WsFrameClient.class);
+    private static final StringManager sm =
+            StringManager.getManager(Constants.PACKAGE_NAME);
 
     private final AsyncChannelWrapper channel;
     private final CompletionHandler<Integer,Void> handler;
@@ -31,9 +39,8 @@ public class WsFrameClient extends WsFrameBase {
     private ByteBuffer response;
 
     public WsFrameClient(ByteBuffer response, AsyncChannelWrapper channel,
-            WsSession wsSession) {
-        // TODO Add support for extensions to the client side code
-        super(wsSession, null);
+            WsSession wsSession, Transformation transformation) {
+        super(wsSession, transformation);
         this.response = response;
         this.channel = channel;
         this.handler = new WsFrameClientCompletionHandler();
@@ -112,6 +119,7 @@ public class WsFrameClient extends WsFrameBase {
                 // continuing to send a message after the server sent a close
                 // control message.
                 if (isOpen()) {
+                    log.debug(sm.getString("wsFrameClient.ioe", e));
                     close(e);
                 }
             }

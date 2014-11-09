@@ -37,6 +37,8 @@ import javax.websocket.Endpoint;
 import javax.websocket.EndpointConfig;
 import javax.websocket.Extension;
 import javax.websocket.MessageHandler;
+import javax.websocket.MessageHandler.Partial;
+import javax.websocket.MessageHandler.Whole;
 import javax.websocket.PongMessage;
 import javax.websocket.RemoteEndpoint;
 import javax.websocket.SendResult;
@@ -75,6 +77,7 @@ public class WsSession implements Session {
     private final Principal userPrincipal;
     private final EndpointConfig endpointConfig;
 
+    private final List<Extension> negotiatedExtensions;
     private final String subProtocol;
     private final Map<String,String> pathParameters;
     private final boolean secure;
@@ -103,16 +106,41 @@ public class WsSession implements Session {
      * at the time this constructor is called will be used when calling
      * {@link Endpoint#onClose(Session, CloseReason)}.
      *
-     * @param localEndpoint
-     * @param wsRemoteEndpoint
-     * @throws DeploymentException
+     * @param localEndpoint        The end point managed by this code
+     * @param wsRemoteEndpoint     The other / remote endpoint
+     * @param wsWebSocketContainer The container that created this session
+     * @param requestUri           The URI used to connect to this endpoint or
+     *                             <code>null</code> is this is a client session
+     * @param requestParameterMap  The parameters associated with the request
+     *                             that initiated this session or
+     *                             <code>null</code> if this is a client session
+     * @param queryString          The query string associated with the request
+     *                             that initiated this session or
+     *                             <code>null</code> if this is a client session
+     * @param userPrincipal        The principal associated with the request
+     *                             that initiated this session or
+     *                             <code>null</code> if this is a client session
+     * @param httpSessionId        The HTTP session ID associated with the
+     *                             request that initiated this session or
+     *                             <code>null</code> if this is a client session
+     * @param negotiatedExtensions The agreed extensions to use for this session
+     * @param subProtocol          The agreed subprotocol to use for this
+     *                             session
+     * @param pathParameters       The path parameters associated with the
+     *                             request that initiated this session or
+     *                             <code>null</code> if this is a client session
+     * @param secure               Was this session initiated over a secure
+     *                             connection?
+     * @param endpointConfig       The configuration information for the
+     *                             endpoint
+     * @throws DeploymentException if an invalid encode is specified
      */
     public WsSession(Endpoint localEndpoint,
             WsRemoteEndpointImplBase wsRemoteEndpoint,
             WsWebSocketContainer wsWebSocketContainer,
             URI requestUri, Map<String,List<String>> requestParameterMap,
             String queryString, Principal userPrincipal, String httpSessionId,
-            String subProtocol, Map<String,String> pathParameters,
+            List<Extension> negotiatedExtensions, String subProtocol, Map<String,String> pathParameters,
             boolean secure, EndpointConfig endpointConfig) throws DeploymentException {
         this.localEndpoint = localEndpoint;
         this.wsRemoteEndpoint = wsRemoteEndpoint;
@@ -138,6 +166,7 @@ public class WsSession implements Session {
         this.queryString = queryString;
         this.userPrincipal = userPrincipal;
         this.httpSessionId = httpSessionId;
+        this.negotiatedExtensions = negotiatedExtensions;
         if (subProtocol == null) {
             this.subProtocol = "";
         } else {
@@ -160,10 +189,29 @@ public class WsSession implements Session {
     }
 
 
-    @SuppressWarnings("unchecked")
     @Override
     public void addMessageHandler(MessageHandler listener) {
+        Class<?> target = Util.getMessageType(listener);
+        doAddMessageHandler(target, listener);
+    }
 
+
+    @Override
+    public <T> void addMessageHandler(Class<T> clazz, Partial<T> handler)
+            throws IllegalStateException {
+        doAddMessageHandler(clazz, handler);
+    }
+
+
+    @Override
+    public <T> void addMessageHandler(Class<T> clazz, Whole<T> handler)
+            throws IllegalStateException {
+        doAddMessageHandler(clazz, handler);
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private void doAddMessageHandler(Class<?> target, MessageHandler listener) {
         checkState();
 
         // Message handlers that require decoders may map to text messages,
@@ -177,7 +225,7 @@ public class WsSession implements Session {
         // just as easily.
 
         Set<MessageHandlerResult> mhResults =
-                Util.getMessageHandlers(listener, endpointConfig, this);
+                Util.getMessageHandlers(target, listener, endpointConfig, this);
 
         for (MessageHandlerResult mhResult : mhResults) {
             switch (mhResult.getType()) {
@@ -302,7 +350,7 @@ public class WsSession implements Session {
     @Override
     public List<Extension> getNegotiatedExtensions() {
         checkState();
-        return Collections.emptyList();
+        return negotiatedExtensions;
     }
 
 
@@ -431,6 +479,9 @@ public class WsSession implements Session {
      * Called when a close message is received. Should only ever happen once.
      * Also called after a protocol error when the ProtocolHandler needs to
      * force the closing of the connection.
+     *
+     * @param closeReason The reason contained within the received close
+     *                    message.
      */
     public void onClose(CloseReason closeReason) {
 

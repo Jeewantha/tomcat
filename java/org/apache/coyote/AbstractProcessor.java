@@ -37,7 +37,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
     protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
     protected Adapter adapter;
-    protected final AsyncStateMachine<S> asyncStateMachine;
+    protected final AsyncStateMachine asyncStateMachine;
     protected final AbstractEndpoint<S> endpoint;
     protected final Request request;
     protected final Response response;
@@ -62,7 +62,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
 
     public AbstractProcessor(AbstractEndpoint<S> endpoint) {
         this.endpoint = endpoint;
-        asyncStateMachine = new AsyncStateMachine<>(this);
+        asyncStateMachine = new AsyncStateMachine(this);
         request = new Request();
         response = new Response();
         response.setHook(this);
@@ -179,9 +179,6 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
     }
 
     @Override
-    public abstract boolean isComet();
-
-    @Override
     public abstract boolean isUpgrade();
 
     /**
@@ -190,12 +187,6 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
      */
     @Override
     public abstract SocketState process(SocketWrapper<S> socket) throws IOException;
-
-    /**
-     * Process in-progress Comet requests. These will start as HTTP requests.
-     */
-    @Override
-    public abstract SocketState event(SocketStatus status) throws IOException;
 
     /**
      * Process in-progress Servlet 3.0 Async requests. These will start as HTTP

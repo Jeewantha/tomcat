@@ -19,6 +19,7 @@ package org.apache.coyote.spdy;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -506,20 +507,9 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
     }
 
     @Override
-    public boolean isComet() {
-        return false;
-    }
-
-    @Override
     public SocketState process(SocketWrapper<S> socket)
             throws IOException {
         throw new IOException("Unimplemented");
-    }
-
-    @Override
-    public SocketState event(SocketStatus status) throws IOException {
-        System.err.println("EVENT: " + status);
-        return null;
     }
 
     @Override
@@ -531,6 +521,11 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
     @Override
     public boolean isUpgrade() {
         return false;
+    }
+
+    @Override
+    public ByteBuffer getLeftoverInput() {
+        return null;
     }
 
     @Override

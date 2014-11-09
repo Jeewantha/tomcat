@@ -28,7 +28,6 @@ import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Response;
 import org.apache.coyote.http11.filters.GzipOutputFilter;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.http.HttpMessages;
 import org.apache.tomcat.util.net.AbstractEndpoint;
@@ -488,16 +487,26 @@ public abstract class AbstractOutputBuffer<S> implements OutputBuffer {
      */
     protected void write(MessageBytes mb) {
 
-        if (mb.getType() == MessageBytes.T_BYTES) {
+        if (mb.getType() != MessageBytes.T_BYTES) {
+            mb.toBytes();
             ByteChunk bc = mb.getByteChunk();
-            write(bc);
-        } else if (mb.getType() == MessageBytes.T_CHARS) {
-            CharChunk cc = mb.getCharChunk();
-            write(cc);
-        } else {
-            write(mb.toString());
+            // Need to filter out CTLs excluding TAB. ISO-8859-1 and UTF-8
+            // values will be OK. Strings using other encodings may be
+            // corrupted.
+            byte[] buffer = bc.getBuffer();
+            for (int i = bc.getOffset(); i < bc.getLength(); i++) {
+                // byte values are signed i.e. -128 to 127
+                // The values are used unsigned. 0 to 31 are CTLs so they are
+                // filtered (apart from TAB which is 9). 127 is a control (DEL).
+                // The values 128 to 255 are all OK. Converting those to signed
+                // gives -128 to -1.
+                if ((buffer[i] > -1 && buffer[i] <= 31 && buffer[i] != 9) ||
+                        buffer[i] == 127) {
+                    buffer[i] = ' ';
+                }
+            }
         }
-
+        write(mb.getByteChunk());
     }
 
 
@@ -515,34 +524,6 @@ public abstract class AbstractOutputBuffer<S> implements OutputBuffer {
         checkLengthBeforeWrite(length);
         System.arraycopy(bc.getBytes(), bc.getStart(), headerBuffer, pos, length);
         pos = pos + length;
-
-    }
-
-
-    /**
-     * This method will write the contents of the specified char
-     * buffer to the output stream, without filtering. This method is meant to
-     * be used to write the response header.
-     *
-     * @param cc data to be written
-     */
-    protected void write(CharChunk cc) {
-
-        int start = cc.getStart();
-        int end = cc.getEnd();
-        checkLengthBeforeWrite(end-start);
-        char[] cbuf = cc.getBuffer();
-        for (int i = start; i < end; i++) {
-            char c = cbuf[i];
-            // Note:  This is clearly incorrect for many strings,
-            // but is the only consistent approach within the current
-            // servlet framework.  It must suffice until servlet output
-            // streams properly encode their output.
-            if (((c <= 31) && (c != 9)) || c == 127 || c > 255) {
-                c = ' ';
-            }
-            headerBuffer[pos++] = (byte) c;
-        }
 
     }
 

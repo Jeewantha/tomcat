@@ -1308,7 +1308,7 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
      * Returns the value of the flag that controls whether or not connections
      * being returned to the pool will checked and configured with
      * {@link Connection#setAutoCommit(boolean) Connection.setAutoCommit(true)}
-     * if the auto commit setting is <code>false</false> when the connection
+     * if the auto commit setting is {@code false} when the connection
      * is returned. It is <code>true</code> by default.
      */
     public boolean getEnableAutoCommitOnReturn() {
@@ -1319,7 +1319,7 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
      * Sets the value of the flag that controls whether or not connections
      * being returned to the pool will checked and configured with
      * {@link Connection#setAutoCommit(boolean) Connection.setAutoCommit(true)}
-     * if the auto commit setting is <code>false</false> when the connection
+     * if the auto commit setting is {@code false} when the connection
      * is returned. It is <code>true</code> by default.
      */
     public void setEnableAutoCommitOnReturn(boolean enableAutoCommitOnReturn) {
@@ -1518,11 +1518,12 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
      * {@link #getRemoveAbandonedTimeout() removeAbandonedTimeout} seconds.</p>
      *
      * <p>Abandoned connections are identified and removed when
-     * {@link #getConnection()} is invoked and the following conditions hold
+     * {@link #getConnection()} is invoked and the following conditions hold:
+     * </p>
      * <ul><li>{@link #getRemoveAbandonedOnBorrow()} or
      *         {@link #getRemoveAbandonedOnMaintenance()} = true</li>
-     *     <li>{@link #getNumActive()} > {@link #getMaxTotal()} - 3 </li>
-     *     <li>{@link #getNumIdle()} < 2 </li></ul></p>
+     *     <li>{@link #getNumActive()} &gt; {@link #getMaxTotal()} - 3 </li>
+     *     <li>{@link #getNumIdle()} &lt; 2 </li></ul>
      *
      * @see #getRemoveAbandonedTimeout()
      */
@@ -1569,11 +1570,12 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
      * {@link #getRemoveAbandonedTimeout() removeAbandonedTimeout} seconds.</p>
      *
      * <p>Abandoned connections are identified and removed when
-     * {@link #getConnection()} is invoked and the following conditions hold
+     * {@link #getConnection()} is invoked and the following conditions hold:
+     * </p>
      * <ul><li>{@link #getRemoveAbandonedOnBorrow()} or
      *         {@link #getRemoveAbandonedOnMaintenance()} = true</li>
-     *     <li>{@link #getNumActive()} > {@link #getMaxTotal()} - 3 </li>
-     *     <li>{@link #getNumIdle()} < 2 </li></ul></p>
+     *     <li>{@link #getNumActive()} &gt; {@link #getMaxTotal()} - 3 </li>
+     *     <li>{@link #getNumIdle()} &lt; 2 </li></ul>
      *
      * @see #getRemoveAbandonedTimeout()
      */
@@ -1613,13 +1615,13 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
      * one of these to execute a query (using one of the execute methods)
      * resets the lastUsed property of the parent connection.</p>
      *
-     * <p>Abandoned connection cleanup happens when
-     * <code><ul>
+     * <p>Abandoned connection cleanup happens when:</p>
+     * <ul>
      * <li>{@link #getRemoveAbandonedOnBorrow()} or
      *     {@link #getRemoveAbandonedOnMaintenance()} = true</li>
      * <li>{@link #getNumIdle() numIdle} &lt; 2</li>
      * <li>{@link #getNumActive() numActive} &gt; {@link #getMaxTotal() maxTotal} - 3</li>
-     * </ul></code></p>
+     * </ul>
      *
      * <p>The default value is 300 seconds.</p>
      */
@@ -1864,6 +1866,47 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
         throw new SQLFeatureNotSupportedException();
     }
 
+    /**
+     * Manually invalidates a connection, effectively requesting the pool to try
+     * to close it, remove it from the pool and reclaim pool capacity.
+     *
+     * @throws IllegalStateException
+     *             if invalidating the connection failed.
+     * @since 2.1
+     */
+    public void invalidateConnection(Connection connection) throws IllegalStateException {
+        if (connection == null) {
+            return;
+        }
+        if (connectionPool == null) {
+            throw new IllegalStateException("Cannot invalidate connection: ConnectionPool is null.");
+        }
+
+        final PoolableConnection poolableConnection;
+        try {
+            poolableConnection = connection.unwrap(PoolableConnection.class);
+            if (poolableConnection == null) {
+                throw new IllegalStateException(
+                        "Cannot invalidate connection: Connection is not a poolable connection.");
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Cannot invalidate connection: Unwrapping poolable connection failed.", e);
+        }
+
+        // attempt to close the connection for good measure
+        try {
+            connection.close();
+        } catch (Exception e) {
+            // ignore any exceptions here
+        }
+
+        try {
+            connectionPool.invalidateObject(poolableConnection);
+        } catch (Exception e) {
+            throw new IllegalStateException("Invalidating connection threw unexpected exception", e);
+        }
+    }
+
     // ------------------------------------------------------ Protected Methods
 
 
@@ -2078,6 +2121,7 @@ public class BasicDataSource implements DataSource, BasicDataSourceMXBean, MBean
         gop.setTestWhileIdle(testWhileIdle);
         gop.setLifo(lifo);
         gop.setSwallowedExceptionListener(new SwallowedExceptionLogger(log));
+        gop.setEvictionPolicyClassName(evictionPolicyClassName);
         factory.setPool(gop);
         connectionPool = gop;
     }

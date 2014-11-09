@@ -18,16 +18,13 @@ package org.apache.tomcat.websocket.server;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
@@ -40,6 +37,8 @@ import javax.websocket.HandshakeResponse;
 import javax.websocket.server.ServerEndpointConfig;
 
 import org.apache.tomcat.util.codec.binary.Base64;
+import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.ConcurrentMessageDigest;
 import org.apache.tomcat.websocket.Constants;
 import org.apache.tomcat.websocket.Transformation;
 import org.apache.tomcat.websocket.TransformationFactory;
@@ -49,11 +48,11 @@ import org.apache.tomcat.websocket.pojo.PojoEndpointServer;
 
 public class UpgradeUtil {
 
+    private static final StringManager sm =
+            StringManager.getManager(UpgradeUtil.class.getPackage().getName());
     private static final byte[] WS_ACCEPT =
             "258EAFA5-E914-47DA-95CA-C5AB0DC85B11".getBytes(
                     StandardCharsets.ISO_8859_1);
-    private static final Queue<MessageDigest> sha1Helpers =
-            new ConcurrentLinkedQueue<>();
 
     private UpgradeUtil() {
         // Utility class. Hide default constructor.
@@ -66,6 +65,11 @@ public class UpgradeUtil {
      * Note: RFC 2616 does not limit HTTP upgrade to GET requests but the Java
      *       WebSocket spec 1.0, section 8.2 implies such a limitation and RFC
      *       6455 section 4.1 requires that a WebSocket Upgrade uses GET.
+     * @param request  The request to check if it is an HTTP upgrade request for
+     *                 a WebSocket connection
+     * @param response The response associated with the request
+     * @return <code>true</code> if the request includes a HTTP Upgrade request
+     *         for the WebSocket protocol, otherwise <code>false</code>
      */
     public static boolean isWebSocketUpgradeRequest(ServletRequest request,
             ServletResponse response) {
@@ -115,7 +119,7 @@ public class UpgradeUtil {
         }
         // Sub-protocols
         List<String> subProtocols = getTokensFromHeader(req,
-                "Sec-WebSocket-Protocol");
+                Constants.WS_PROTOCOL_HEADER_NAME);
         subProtocol = sec.getConfigurator().getNegotiatedSubprotocol(
                 sec.getSubprotocols(), subProtocols);
 
@@ -123,15 +127,31 @@ public class UpgradeUtil {
         // Should normally only be one header but handle the case of multiple
         // headers
         List<Extension> extensionsRequested = new ArrayList<>();
-        Enumeration<String> extHeaders = req.getHeaders("Sec-WebSocket-Extensions");
+        Enumeration<String> extHeaders = req.getHeaders(Constants.WS_EXTENSIONS_HEADER_NAME);
         while (extHeaders.hasMoreElements()) {
             Util.parseExtensionHeader(extensionsRequested, extHeaders.nextElement());
         }
-        List<Extension> negotiatedExtensions = sec.getConfigurator().getNegotiatedExtensions(
+        // Negotiation phase 1. By default this simply filters out the
+        // extensions that the server does not support but applications could
+        // use a custom configurator to do more than this.
+        List<Extension> negotiatedExtensionsPhase1 = sec.getConfigurator().getNegotiatedExtensions(
                 Constants.INSTALLED_EXTENSIONS, extensionsRequested);
 
-        // Create the Transformations that will be applied to this connection
-        List<Transformation> transformations = createTransformations(negotiatedExtensions);
+        // Negotiation phase 2. Create the Transformations that will be applied
+        // to this connection. Note than an extension may be dropped at this
+        // point if the client has requested a configuration that the server is
+        // unable to support.
+        List<Transformation> transformations = createTransformations(negotiatedExtensionsPhase1);
+
+        List<Extension> negotiatedExtensionsPhase2;
+        if (transformations.isEmpty()) {
+            negotiatedExtensionsPhase2 = Collections.emptyList();
+        } else {
+            negotiatedExtensionsPhase2 = new ArrayList<>(transformations.size());
+            for (Transformation t : transformations) {
+                negotiatedExtensionsPhase2.add(t.getExtensionResponse());
+            }
+        }
 
         // Build the transformation pipeline
         Transformation transformation = null;
@@ -153,8 +173,7 @@ public class UpgradeUtil {
 
         // Now we have the full pipeline, validate the use of the RSV bits.
         if (transformation != null && !transformation.validateRsvBits(0)) {
-            // TODO i18n
-            throw new ServletException("Incompatible RSV bit usage");
+            throw new ServletException(sm.getString("upgradeUtil.incompatibleRsv"));
         }
 
         // If we got this far, all is good. Accept the connection.
@@ -166,10 +185,10 @@ public class UpgradeUtil {
                 getWebSocketAccept(key));
         if (subProtocol != null && subProtocol.length() > 0) {
             // RFC6455 4.2.2 explicitly states "" is not valid here
-            resp.setHeader("Sec-WebSocket-Protocol", subProtocol);
+            resp.setHeader(Constants.WS_PROTOCOL_HEADER_NAME, subProtocol);
         }
         if (!transformations.isEmpty()) {
-            resp.setHeader("Sec-WebSocket-Extensions", responseHeaderExtensions.toString());
+            resp.setHeader(Constants.WS_EXTENSIONS_HEADER_NAME, responseHeaderExtensions.toString());
         }
 
         WsHandshakeRequest wsRequest = new WsHandshakeRequest(req);
@@ -204,7 +223,8 @@ public class UpgradeUtil {
         WsHttpUpgradeHandler wsHandler =
                 req.upgrade(WsHttpUpgradeHandler.class);
         wsHandler.preInit(ep, perSessionServerEndpointConfig, sc, wsRequest,
-                subProtocol, transformation, pathParams, req.isSecure());
+                negotiatedExtensionsPhase2, subProtocol, transformation, pathParams,
+                req.isSecure());
 
     }
 
@@ -234,7 +254,7 @@ public class UpgradeUtil {
 
         for (Map.Entry<String,List<List<Extension.Parameter>>> entry :
             extensionPreferences.entrySet()) {
-            Transformation transformation = factory.create(entry.getKey(), entry.getValue());
+            Transformation transformation = factory.create(entry.getKey(), entry.getValue(), true);
             if (transformation != null) {
                 result.add(transformation);
             }
@@ -300,19 +320,9 @@ public class UpgradeUtil {
     }
 
 
-    private static String getWebSocketAccept(String key) throws ServletException {
-        MessageDigest sha1Helper = sha1Helpers.poll();
-        if (sha1Helper == null) {
-            try {
-                sha1Helper = MessageDigest.getInstance("SHA1");
-            } catch (NoSuchAlgorithmException e) {
-                throw new ServletException(e);
-            }
-        }
-        sha1Helper.reset();
-        sha1Helper.update(key.getBytes(StandardCharsets.ISO_8859_1));
-        String result = Base64.encodeBase64String(sha1Helper.digest(WS_ACCEPT));
-        sha1Helpers.add(sha1Helper);
-        return result;
+    private static String getWebSocketAccept(String key) {
+        byte[] digest = ConcurrentMessageDigest.digestSHA1(
+                key.getBytes(StandardCharsets.ISO_8859_1), WS_ACCEPT);
+        return Base64.encodeBase64String(digest);
     }
 }

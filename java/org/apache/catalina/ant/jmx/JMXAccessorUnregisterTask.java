@@ -28,14 +28,14 @@ import org.apache.tools.ant.BuildException;
  * </ul>
  * <p>
  * Examples:
- * <br/>
+ * <br>
  * unregister an existing Mbean at jmx.server connection
+ * </p>
  * <pre>
  *   &lt;jmx:unregister
  *           ref="jmx.server"
  *           name="Catalina:type=MBeanFactory" /&gt;
  * </pre>
- * </p>
  * <p>
  * <b>WARNING</b>Not all Tomcat MBeans can successfully unregister remotely. The mbean
  * unregistration don't remove valves, realm, .. from parent class.

@@ -32,17 +32,7 @@ import org.apache.tomcat.util.bcel.Constants;
  */
 public final class ConstantFloat extends Constant {
 
-    private static final long serialVersionUID = 8301269629885378651L;
-    private float bytes;
-
-
-    /**
-     * @param bytes Data
-     */
-    public ConstantFloat(float bytes) {
-        super(Constants.CONSTANT_Float);
-        this.bytes = bytes;
-    }
+    private final float bytes;
 
 
     /**
@@ -52,7 +42,8 @@ public final class ConstantFloat extends Constant {
      * @throws IOException
      */
     ConstantFloat(DataInput file) throws IOException {
-        this(file.readFloat());
+        super(Constants.CONSTANT_Float);
+        this.bytes = file.readFloat();
     }
 
 

@@ -32,17 +32,7 @@ import org.apache.tomcat.util.bcel.Constants;
  */
 public final class ConstantInteger extends Constant {
 
-    private static final long serialVersionUID = -6415476571232528966L;
-    private int bytes;
-
-
-    /**
-     * @param bytes Data
-     */
-    public ConstantInteger(int bytes) {
-        super(Constants.CONSTANT_Integer);
-        this.bytes = bytes;
-    }
+    private final int bytes;
 
 
     /**
@@ -52,7 +42,8 @@ public final class ConstantInteger extends Constant {
      * @throws IOException
      */
     ConstantInteger(DataInput file) throws IOException {
-        this(file.readInt());
+        super(Constants.CONSTANT_Integer);
+        this.bytes = file.readInt();
     }
 
 

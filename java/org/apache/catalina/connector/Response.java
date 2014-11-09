@@ -19,6 +19,7 @@ package org.apache.catalina.connector;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.MalformedURLException;
+import java.nio.charset.Charset;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
@@ -51,7 +52,6 @@ import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.UEncoder;
 import org.apache.tomcat.util.http.FastHttpDateFormat;
 import org.apache.tomcat.util.http.MimeHeaders;
-import org.apache.tomcat.util.http.SetCookieSupport;
 import org.apache.tomcat.util.http.parser.MediaTypeCache;
 import org.apache.tomcat.util.net.URL;
 import org.apache.tomcat.util.res.StringManager;
@@ -224,7 +224,7 @@ public class Response
      *   |----<----REPORTED
      * </pre>
      */
-    private AtomicInteger errorState = new AtomicInteger(0);
+    private final AtomicInteger errorState = new AtomicInteger(0);
 
 
     /**
@@ -289,7 +289,7 @@ public class Response
 
 
     /**
-     * Clear cached encoders (to save memory for Comet requests).
+     * Clear cached encoders (to save memory for async requests).
      */
     public void clearEncoders() {
         outputBuffer.clearEncoders();
@@ -909,13 +909,14 @@ public class Response
         // the header name is Set-Cookie for both "old" and v.1 ( RFC2109 )
         // RFC2965 is not supported by browsers and the Servlet spec
         // asks for 2109.
-        addHeader("Set-Cookie", header);
+        addHeader("Set-Cookie", header, getContext().getCookieProcessor().getCharset());
     }
 
     /**
      * Special method for adding a session cookie as we should be overriding
-     * any previous
-     * @param cookie
+     * any previous.
+     *
+     * @param cookie The new session cookie to add the response
      */
     public void addSessionCookieInternal(final Cookie cookie) {
         if (isCommitted()) {
@@ -945,17 +946,17 @@ public class Response
     }
 
     public String generateCookieString(final Cookie cookie) {
-        //web application code can receive a IllegalArgumentException
-        //from the appendCookieValue invocation
+        // Web application code can receive a IllegalArgumentException
+        // from the generateHeader() invocation
         if (SecurityUtil.isPackageProtectionEnabled()) {
             return AccessController.doPrivileged(new PrivilegedAction<String>() {
                 @Override
                 public String run(){
-                    return SetCookieSupport.generateHeader(cookie);
+                    return getContext().getCookieProcessor().generateHeader(cookie);
                 }
             });
         } else {
-            return SetCookieSupport.generateHeader(cookie);
+            return getContext().getCookieProcessor().generateHeader(cookie);
         }
     }
 
@@ -1001,6 +1002,11 @@ public class Response
      */
     @Override
     public void addHeader(String name, String value) {
+        addHeader(name, value, null);
+    }
+
+
+    private void addHeader(String name, String value, Charset charset) {
 
         if (name == null || name.length() == 0 || value == null) {
             return;
@@ -1021,7 +1027,7 @@ public class Response
             return;
         }
 
-        coyoteResponse.addHeader(name, value);
+        coyoteResponse.addHeader(name, value, charset);
     }
 
 

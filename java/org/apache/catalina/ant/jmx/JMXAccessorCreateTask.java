@@ -33,8 +33,9 @@ import org.apache.tools.ant.BuildException;
  * </ul>
  * <p>
  * Examples:
- * <br/>
+ * <br>
  * create a new Mbean at jmx.server connection
+ * </p>
  * <pre>
  *   &lt;jmx:create
  *           ref="jmx.server"
@@ -44,7 +45,6 @@ import org.apache.tools.ant.BuildException;
  *            &lt;Arg value="org.apache.catalina.mbeans.MBeanFactory" /&gt;
  *   &lt;/jmxCreate/&gt;
  * </pre>
- * </p>
  * <p>
  * <b>WARNING</b>Not all Tomcat MBeans can create remotely and autoregister by its parents!
  * Please, use the MBeanFactory operation to generate valves and realms.

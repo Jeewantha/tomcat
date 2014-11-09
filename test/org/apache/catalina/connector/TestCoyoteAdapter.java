@@ -37,6 +37,7 @@ import org.apache.catalina.startup.SimpleHttpClient;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.MessageBytes;
 
 public class TestCoyoteAdapter extends TomcatBaseTest {
 
@@ -131,9 +132,8 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new PathParamServlet());
         ctx.addServletMapping("/", "servlet");
@@ -185,9 +185,8 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("/testapp", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("/testapp", null);
 
         Tomcat.addServlet(ctx, "servlet", new PathParamServlet());
         ctx.addServletMapping("*.txt", "servlet");
@@ -236,9 +235,8 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
 
         tomcat.getConnector().setURIEncoding(encoding);
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("/", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         PathInfoServlet servlet = new PathInfoServlet();
         Tomcat.addServlet(ctx, "servlet", servlet);
@@ -278,9 +276,8 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("/", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         AsyncServlet servlet = new AsyncServlet();
         Wrapper w = Tomcat.addServlet(ctx, "async", servlet);
@@ -307,25 +304,47 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
 
         for (int i = 0; i < 10; i++) {
             String line = client.readLine();
-            if (line != null && line.length() > 20)
-            System.err.println(line.subSequence(0, 20) + "...");
+            if (line != null && line.length() > 20) {
+                log.info(line.subSequence(0, 20) + "...");
+            }
         }
 
         client.disconnect();
 
         // Wait for server thread to stop
-        int count = 0;
-        while (servlet.getThread().isAlive() && count < 20) {
-            Thread.sleep(250);
-            count ++;
-        }
-        System.err.println("Waited for servlet thread to stop for "
-                + (count * 250) + " ms");
+        Thread t = servlet.getThread();
+        long startTime = System.nanoTime();
+        t.join(5000);
+        long endTime = System.nanoTime();
+        log.info("Waited for servlet thread to stop for "
+                + (endTime - startTime) / 1000000 + " ms");
 
         Assert.assertTrue(servlet.isCompleted());
     }
 
-    private static class AsyncServlet extends HttpServlet {
+    @Test
+    public void testNormalize01() {
+        doTestNormalize("/foo/../bar", "/bar");
+    }
+
+    private void doTestNormalize(String input, String expected) {
+        MessageBytes mb = MessageBytes.newInstance();
+        byte[] b = input.getBytes(StandardCharsets.UTF_8);
+        mb.setBytes(b, 0, b.length);
+
+        boolean result = CoyoteAdapter.normalize(mb);
+        mb.toString();
+
+        if (expected == null) {
+            Assert.assertFalse(result);
+        } else {
+            Assert.assertTrue(result);
+            Assert.assertEquals(expected, mb.toString());
+        }
+    }
+
+
+    private class AsyncServlet extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
 
@@ -360,11 +379,17 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
                 public void run() {
                     for (int i = 0; i < 20; i++) {
                         try {
-                            os.write(BYTES_8K);
+                            // Some tests depend on this write failing (e.g.
+                            // because the client has gone away). In some cases
+                            // there may be a large (ish) buffer to fill before
+                            // the write fails.
+                            for (int j = 0 ; j < 8; j++) {
+                                os.write(BYTES_8K);
+                            }
                             os.flush();
                             Thread.sleep(1000);
                         } catch (Exception e) {
-                            System.err.println("Exception caught " + e.getMessage());
+                            log.info("Exception caught " + e);
                             try {
                                 // Note if request times out before this
                                 // exception is thrown and the complete call

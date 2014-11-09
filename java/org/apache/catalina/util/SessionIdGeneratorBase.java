@@ -22,12 +22,15 @@ import java.security.SecureRandom;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import org.apache.catalina.LifecycleException;
+import org.apache.catalina.LifecycleState;
 import org.apache.catalina.SessionIdGenerator;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
-public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
+public abstract class SessionIdGeneratorBase extends LifecycleBase
+        implements SessionIdGenerator {
 
     private static final Log log = LogFactory.getLog(SessionIdGeneratorBase.class);
 
@@ -45,36 +48,10 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
      */
     private final Queue<SecureRandom> randoms = new ConcurrentLinkedQueue<>();
 
-
-    /**
-     * The Java class name of the secure random number generator class to be
-     * used when generating session identifiers. The random number generator
-     * class must be self-seeding and have a zero-argument constructor. If not
-     * specified, an instance of {@link SecureRandom} will be generated.
-     */
     private String secureRandomClass = null;
 
-
-    /**
-     * The name of the algorithm to use to create instances of
-     * {@link SecureRandom} which are used to generate session IDs. If no
-     * algorithm is specified, SHA1PRNG is used. To use the platform default
-     * (which may be SHA1PRNG), specify the empty string. If an invalid
-     * algorithm and/or provider is specified the {@link SecureRandom} instances
-     * will be created using the defaults. If that fails, the {@link
-     * SecureRandom} instances will be created using platform defaults.
-     */
     private String secureRandomAlgorithm = "SHA1PRNG";
 
-
-    /**
-     * The name of the provider to use to create instances of
-     * {@link SecureRandom} which are used to generate session IDs. If
-     * no algorithm is specified the of SHA1PRNG default is used. If an invalid
-     * algorithm and/or provider is specified the {@link SecureRandom} instances
-     * will be created using the defaults. If that fails, the {@link
-     * SecureRandom} instances will be created using platform defaults.
-     */
     private String secureRandomProvider = null;
 
 
@@ -87,7 +64,21 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
 
 
     /**
-     * Specify a non-default @{link {@link SecureRandom} implementation to use.
+     * Get the class name of the {@link SecureRandom} implementation used to
+     * generate session IDs.
+     *
+     * @return The fully qualified class name. {@code null} indicates that the
+     *         JRE provided {@link SecureRandom} implementation will be used
+     */
+    public String getSecureRandomClass() {
+        return secureRandomClass;
+    }
+
+
+    /**
+     * Specify a non-default {@link SecureRandom} implementation to use. The
+     * implementation must be self-seeding and have a zero-argument constructor.
+     * If not specified, an instance of {@link SecureRandom} will be generated.
      *
      * @param secureRandomClass The fully-qualified class name
      */
@@ -97,7 +88,26 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
 
 
     /**
-     * Specify a non-default algorithm to use to generate random numbers.
+     * Get the name of the algorithm used to create the {@link SecureRandom}
+     * instances which generate new session IDs.
+     *
+     * @return The name of the algorithm. {@code null} or the empty string means
+     *         that platform default will be used
+     */
+    public String getSecureRandomAlgorithm() {
+        return secureRandomAlgorithm;
+    }
+
+
+    /**
+     * Specify a non-default algorithm to use to create instances of
+     * {@link SecureRandom} which are used to generate session IDs. If no
+     * algorithm is specified, SHA1PRNG is used. To use the platform default
+     * (which may be SHA1PRNG), specify {@code null} or the empty string. If an
+     * invalid algorithm and/or provider is specified the {@link SecureRandom}
+     * instances will be created using the defaults for this
+     * {@link SessionIdGenerator} implementation. If that fails, the
+     * {@link SecureRandom} instances will be created using platform defaults.
      *
      * @param secureRandomAlgorithm The name of the algorithm
      */
@@ -107,7 +117,26 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
 
 
     /**
-     * Specify a non-default provider to use to generate random numbers.
+     * Get the name of the provider used to create the {@link SecureRandom}
+     * instances which generate new session IDs.
+     *
+     * @return The name of the provider. {@code null} or the empty string means
+     *         that platform default will be used
+     */
+    public String getSecureRandomProvider() {
+        return secureRandomProvider;
+    }
+
+
+    /**
+     * Specify a non-default provider to use to create instances of
+     * {@link SecureRandom} which are used to generate session IDs.  If no
+     * provider is specified, the platform default is used. To use the platform
+     * default specify {@code null} or the empty string. If an invalid algorithm
+     * and/or provider is specified the {@link SecureRandom} instances will be
+     * created using the defaults for this {@link SessionIdGenerator}
+     * implementation. If that fails, the {@link SecureRandom} instances will be
+     * created using platform defaults.
      *
      * @param secureRandomProvider  The name of the provider
      */
@@ -145,6 +174,8 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
     public int getSessionIdLength() {
         return sessionIdLength;
     }
+
+
     /**
      * Specify the number of bytes for a session ID
      *
@@ -163,6 +194,7 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
     public String generateSessionId() {
         return generateSessionId(jvmRoute);
     }
+
 
     protected void getRandomBytes(byte bytes[]) {
 
@@ -238,5 +270,33 @@ public abstract class SessionIdGeneratorBase implements SessionIdGenerator {
             log.info(sm.getString("sessionIdGeneratorBase.createRandom",
                     result.getAlgorithm(), Long.valueOf(t2-t1)));
         return result;
+    }
+
+
+    @Override
+    protected void initInternal() throws LifecycleException {
+        // NO-OP
+    }
+
+
+    @Override
+    protected void startInternal() throws LifecycleException {
+        // Ensure SecureRandom has been initialised
+        generateSessionId();
+
+        setState(LifecycleState.STARTING);
+    }
+
+
+    @Override
+    protected void stopInternal() throws LifecycleException {
+        setState(LifecycleState.STOPPING);
+        randoms.clear();
+    }
+
+
+    @Override
+    protected void destroyInternal() throws LifecycleException {
+        // NO-OP
     }
 }

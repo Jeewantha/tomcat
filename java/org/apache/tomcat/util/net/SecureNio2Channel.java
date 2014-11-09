@@ -84,7 +84,7 @@ public class SecureNio2Channel extends Nio2Channel  {
             }
             @Override
             public void failed(Throwable exc, SocketWrapper<Nio2Channel> attachment) {
-                endpoint.closeSocket(attachment, SocketStatus.ERROR);
+                endpoint.closeSocket(attachment);
             }
         };
         handshakeWriteCompletionHandler = new CompletionHandler<Integer, SocketWrapper<Nio2Channel>>() {
@@ -98,7 +98,7 @@ public class SecureNio2Channel extends Nio2Channel  {
             }
             @Override
             public void failed(Throwable exc, SocketWrapper<Nio2Channel> attachment) {
-                endpoint.closeSocket(attachment, SocketStatus.ERROR);
+                endpoint.closeSocket(attachment);
             }
         };
     }
@@ -413,7 +413,7 @@ public class SecureNio2Channel extends Nio2Channel  {
      * To close the connection, you could do something like
      * <pre><code>
      *   close();
-     *   while (isOpen() && !myTimeoutFunction()) Thread.sleep(25);
+     *   while (isOpen() &amp;&amp; !myTimeoutFunction()) Thread.sleep(25);
      *   if ( isOpen() ) close(true); //forces a close if you timed out
      * </code></pre>
      * @throws IOException if an I/O error occurs

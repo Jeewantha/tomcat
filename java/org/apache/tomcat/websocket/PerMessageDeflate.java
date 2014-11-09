@@ -48,6 +48,7 @@ public class PerMessageDeflate implements Transformation {
     private final int serverMaxWindowBits;
     private final boolean clientContextTakeover;
     private final int clientMaxWindowBits;
+    private final boolean isServer;
     private final Inflater inflater = new Inflater(true);
     private final ByteBuffer readBuffer = ByteBuffer.allocate(Constants.DEFAULT_BUFFER_SIZE);
     private final Deflater deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
@@ -58,8 +59,8 @@ public class PerMessageDeflate implements Transformation {
     private volatile ByteBuffer writeBuffer = ByteBuffer.allocate(Constants.DEFAULT_BUFFER_SIZE);
     private volatile boolean firstCompressedFrameWritten = false;
 
-    static PerMessageDeflate negotiate(List<List<Parameter>> preferences) {
-        // Accept the first preference that the server is able to support
+    static PerMessageDeflate negotiate(List<List<Parameter>> preferences, boolean isServer) {
+        // Accept the first preference that the endpoint is able to support
         for (List<Parameter> preference : preferences) {
             boolean ok = true;
             boolean serverContextTakeover = true;
@@ -98,9 +99,13 @@ public class PerMessageDeflate implements Transformation {
                         // Java SE API (as of Java 8) does not expose the API to
                         // control the Window size. It is effectively hard-coded
                         // to 15
-                        if (serverMaxWindowBits != 15) {
+                        if (isServer && serverMaxWindowBits != 15) {
                             ok = false;
                             break;
+                            // Note server window size is not an issue for the
+                            // client since the client will assume 15 and if the
+                            // server uses a smaller window everything will
+                            // still work
                         }
                     } else {
                         // Duplicate definition
@@ -125,9 +130,17 @@ public class PerMessageDeflate implements Transformation {
                                         Integer.valueOf(clientMaxWindowBits)));
                             }
                         }
-                        // Not a problem is client specified a window size less
-                        // than 15 since the server will always use a larger
-                        // window it will still work.
+                        // Java SE API (as of Java 8) does not expose the API to
+                        // control the Window size. It is effectively hard-coded
+                        // to 15
+                        if (!isServer && clientMaxWindowBits != 15) {
+                            ok = false;
+                            break;
+                            // Note client window size is not an issue for the
+                            // server since the server will assume 15 and if the
+                            // client uses a smaller window everything will
+                            // still work
+                        }
                     } else {
                         // Duplicate definition
                         throw new IllegalArgumentException(sm.getString(
@@ -142,7 +155,7 @@ public class PerMessageDeflate implements Transformation {
             }
             if (ok) {
                 return new PerMessageDeflate(serverContextTakeover, serverMaxWindowBits,
-                        clientContextTakeover, clientMaxWindowBits);
+                        clientContextTakeover, clientMaxWindowBits, isServer);
             }
         }
         // Failed to negotiate agreeable terms
@@ -151,11 +164,12 @@ public class PerMessageDeflate implements Transformation {
 
 
     private PerMessageDeflate(boolean serverContextTakeover, int serverMaxWindowBits,
-            boolean clientContextTakeover, int clientMaxWindowBits) {
+            boolean clientContextTakeover, int clientMaxWindowBits, boolean isServer) {
         this.serverContextTakeover = serverContextTakeover;
         this.serverMaxWindowBits = serverMaxWindowBits;
         this.clientContextTakeover = clientContextTakeover;
         this.clientMaxWindowBits = clientMaxWindowBits;
+        this.isServer = isServer;
     }
 
 
@@ -211,7 +225,8 @@ public class PerMessageDeflate implements Transformation {
                     }
                 }
             } else if (written == 0) {
-                if (fin && !serverContextTakeover) {
+                if (fin && (isServer && !clientContextTakeover ||
+                        !isServer && !serverContextTakeover)) {
                     inflater.reset();
                 }
                 return TransformationResult.END_OF_FRAME;
@@ -423,10 +438,11 @@ public class PerMessageDeflate implements Transformation {
 
     private void startNewMessage() {
         firstCompressedFrameWritten = false;
-        if (!clientContextTakeover) {
+        if (isServer && !serverContextTakeover || !isServer && !clientContextTakeover) {
             deflater.reset();
         }
     }
+
 
     private int getRsv(MessagePart uncompressedMessagePart) {
         int result = uncompressedMessagePart.getRsv();

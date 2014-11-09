@@ -16,7 +16,6 @@
  */
 package org.apache.coyote.http11;
 
-
 import org.apache.coyote.AbstractProtocol;
 
 public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
@@ -218,4 +217,23 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
         }
     }
 
+
+    // ------------------------------------------------------------- Common code
+
+    // Common configuration required for all new HTTP11 processors
+    protected void configureProcessor(AbstractHttp11Processor<S> processor) {
+        processor.setAdapter(getAdapter());
+        processor.setMaxKeepAliveRequests(getMaxKeepAliveRequests());
+        processor.setKeepAliveTimeout(getKeepAliveTimeout());
+        processor.setConnectionUploadTimeout(getConnectionUploadTimeout());
+        processor.setDisableUploadTimeout(getDisableUploadTimeout());
+        processor.setCompressionMinSize(getCompressionMinSize());
+        processor.setCompression(getCompression());
+        processor.setNoCompressionUserAgents(getNoCompressionUserAgents());
+        processor.setCompressableMimeTypes(getCompressableMimeTypes());
+        processor.setRestrictedUserAgents(getRestrictedUserAgents());
+        processor.setSocketBuffer(getSocketBuffer());
+        processor.setMaxSavePostSize(getMaxSavePostSize());
+        processor.setServer(getServer());
+    }
 }

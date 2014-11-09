@@ -17,9 +17,8 @@
  */
 package org.apache.tomcat.util.bcel.classfile;
 
-import java.io.DataInputStream;
+import java.io.DataInput;
 import java.io.IOException;
-import java.io.Serializable;
 
 import org.apache.tomcat.util.bcel.Constants;
 
@@ -34,11 +33,9 @@ import org.apache.tomcat.util.bcel.Constants;
  * @see     Constant
  * @author <A HREF="mailto:m.dahm@gmx.de">M. Dahm</A>
  */
-public class ConstantPool implements Cloneable, Serializable {
+public class ConstantPool {
 
-    private static final long serialVersionUID = -6765503791185687014L;
-    private int constant_pool_count;
-    private Constant[] constant_pool;
+    private final Constant[] constant_pool;
 
 
     /**
@@ -48,9 +45,8 @@ public class ConstantPool implements Cloneable, Serializable {
      * @throws IOException
      * @throws ClassFormatException
      */
-    ConstantPool(DataInputStream file) throws IOException, ClassFormatException {
-        byte tag;
-        constant_pool_count = file.readUnsignedShort();
+    ConstantPool(DataInput file) throws IOException, ClassFormatException {
+        int constant_pool_count = file.readUnsignedShort();
         constant_pool = new Constant[constant_pool_count];
         /* constant_pool[0] is unused by the compiler and may be used freely
          * by the implementation.
@@ -64,110 +60,13 @@ public class ConstantPool implements Cloneable, Serializable {
              *
              * Thus we have to increment the index counter.
              */
-            tag = constant_pool[i].getTag();
-            if ((tag == Constants.CONSTANT_Double) || (tag == Constants.CONSTANT_Long)) {
-                i++;
+            if (constant_pool[i] != null) {
+                byte tag = constant_pool[i].getTag();
+                if ((tag == Constants.CONSTANT_Double) || (tag == Constants.CONSTANT_Long)) {
+                    i++;
+                }
             }
         }
-    }
-
-
-    /**
-     * Resolve constant to a string representation.
-     *
-     * @param  c Constant to be printed
-     * @return String representation
-     */
-    public String constantToString( Constant c ) throws ClassFormatException {
-        String str;
-        int i;
-        byte tag = c.getTag();
-        switch (tag) {
-            case Constants.CONSTANT_Class:
-                i = ((ConstantClass) c).getNameIndex();
-                c = getConstant(i, Constants.CONSTANT_Utf8);
-                str = Utility.compactClassName(((ConstantUtf8) c).getBytes());
-                break;
-            case Constants.CONSTANT_String:
-                i = ((ConstantString) c).getStringIndex();
-                c = getConstant(i, Constants.CONSTANT_Utf8);
-                str = "\"" + escape(((ConstantUtf8) c).getBytes()) + "\"";
-                break;
-            case Constants.CONSTANT_Utf8:
-                str = ((ConstantUtf8) c).getBytes();
-                break;
-            case Constants.CONSTANT_Double:
-                str = String.valueOf(((ConstantDouble) c).getBytes());
-                break;
-            case Constants.CONSTANT_Float:
-                str = String.valueOf(((ConstantFloat) c).getBytes());
-                break;
-            case Constants.CONSTANT_Long:
-                str = String.valueOf(((ConstantLong) c).getBytes());
-                break;
-            case Constants.CONSTANT_Integer:
-                str = String.valueOf(((ConstantInteger) c).getBytes());
-                break;
-            case Constants.CONSTANT_NameAndType:
-                str = (constantToString(((ConstantNameAndType) c).getNameIndex(),
-                        Constants.CONSTANT_Utf8)
-                        + " " + constantToString(((ConstantNameAndType) c).getSignatureIndex(),
-                        Constants.CONSTANT_Utf8));
-                break;
-            case Constants.CONSTANT_InterfaceMethodref:
-            case Constants.CONSTANT_Methodref:
-            case Constants.CONSTANT_Fieldref:
-                str = (constantToString(((ConstantCP) c).getClassIndex(), Constants.CONSTANT_Class)
-                        + "." + constantToString(((ConstantCP) c).getNameAndTypeIndex(),
-                        Constants.CONSTANT_NameAndType));
-                break;
-            default: // Never reached
-                throw new RuntimeException("Unknown constant type " + tag);
-        }
-        return str;
-    }
-
-
-    private static String escape( String str ) {
-        int len = str.length();
-        StringBuilder buf = new StringBuilder(len + 5);
-        char[] ch = str.toCharArray();
-        for (int i = 0; i < len; i++) {
-            switch (ch[i]) {
-                case '\n':
-                    buf.append("\\n");
-                    break;
-                case '\r':
-                    buf.append("\\r");
-                    break;
-                case '\t':
-                    buf.append("\\t");
-                    break;
-                case '\b':
-                    buf.append("\\b");
-                    break;
-                case '"':
-                    buf.append("\\\"");
-                    break;
-                default:
-                    buf.append(ch[i]);
-            }
-        }
-        return buf.toString();
-    }
-
-
-    /**
-     * Retrieve constant at `index' from constant pool and resolve it to
-     * a string representation.
-     *
-     * @param  index of constant in constant pool
-     * @param  tag expected type
-     * @return String representation
-     */
-    public String constantToString( int index, byte tag ) throws ClassFormatException {
-        Constant c = getConstant(index, tag);
-        return constantToString(c);
     }
 
 
@@ -208,45 +107,5 @@ public class ConstantPool implements Cloneable, Serializable {
                     + "' at index " + index + " and got " + c);
         }
         return c;
-    }
-
-
-    /**
-     * Get string from constant pool and bypass the indirection of
-     * `ConstantClass' and `ConstantString' objects. I.e. these classes have
-     * an index field that points to another entry of the constant pool of
-     * type `ConstantUtf8' which contains the real data.
-     *
-     * @param  index Index in constant pool
-     * @param  tag Tag of expected constant, either ConstantClass or ConstantString
-     * @return Contents of string reference
-     * @see    ConstantClass
-     * @see    ConstantString
-     * @throws  ClassFormatException
-     */
-    public String getConstantString( int index, byte tag ) throws ClassFormatException {
-        Constant c;
-        int i;
-        c = getConstant(index, tag);
-        /* This switch() is not that elegant, since the two classes have the
-         * same contents, they just differ in the name of the index
-         * field variable.
-         * But we want to stick to the JVM naming conventions closely though
-         * we could have solved these more elegantly by using the same
-         * variable name or by subclassing.
-         */
-        switch (tag) {
-            case Constants.CONSTANT_Class:
-                i = ((ConstantClass) c).getNameIndex();
-                break;
-            case Constants.CONSTANT_String:
-                i = ((ConstantString) c).getStringIndex();
-                break;
-            default:
-                throw new RuntimeException("getConstantString called with illegal tag " + tag);
-        }
-        // Finally get the string from the constant pool
-        c = getConstant(i, Constants.CONSTANT_Utf8);
-        return ((ConstantUtf8) c).getBytes();
     }
 }

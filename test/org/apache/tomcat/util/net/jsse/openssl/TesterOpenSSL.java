@@ -30,7 +30,7 @@ import org.apache.tomcat.util.http.fileupload.ByteArrayOutputStream;
 
 public class TesterOpenSSL {
 
-    public static final String EXPECTED_VERSION = "1.0.1i";
+    public static final String EXPECTED_VERSION = "1.0.1j";
     public static final boolean IS_EXPECTED_VERSION;
 
     public static final Set<Cipher> OPENSSL_UNIMPLEMENTED_CIPHERS =
@@ -139,7 +139,7 @@ public class TesterOpenSSL {
     }
 
 
-    /**
+    /*
      * Use this method to filter parser results when comparing them to OpenSSL
      * results to take account of unimplemented cipher suites.
      */

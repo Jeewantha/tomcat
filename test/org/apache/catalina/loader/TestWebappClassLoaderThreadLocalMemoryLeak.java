@@ -45,9 +45,8 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
         tomcat.getServer().addLifecycleListener(
                 new JreMemoryLeakPreventionListener());
 
-        // Must have a real docBase - just use temp
-        Context ctx = tomcat.addContext("",
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "leakServlet1",
                 "org.apache.tomcat.unittest.TesterLeakingServlet1");
@@ -58,9 +57,9 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
         // Configure logging filter to check leak message appears
         LogValidationFilter f = new LogValidationFilter(
-                "The web application [] created a ThreadLocal with key of");
+                "The web application [ROOT] created a ThreadLocal with key of");
         LogManager.getLogManager().getLogger(
-                "org.apache.catalina.loader.WebappClassLoader").setFilter(f);
+                "org.apache.catalina.loader.WebappClassLoaderBase").setFilter(f);
 
         // Need to force loading of all web application classes via the web
         // application class loader
@@ -100,9 +99,8 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
         tomcat.getServer().addLifecycleListener(
                 new JreMemoryLeakPreventionListener());
 
-        // Must have a real docBase - just use temp
-        Context ctx = tomcat.addContext("",
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "leakServlet2",
                 "org.apache.tomcat.unittest.TesterLeakingServlet2");
@@ -112,9 +110,9 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
         // Configure logging filter to check leak message appears
         LogValidationFilter f = new LogValidationFilter(
-                "The web application [] created a ThreadLocal with key of");
+                "The web application [ROOT] created a ThreadLocal with key of");
         LogManager.getLogManager().getLogger(
-                "org.apache.catalina.loader.WebappClassLoader").setFilter(f);
+                "org.apache.catalina.loader.WebappClassLoaderBase").setFilter(f);
 
         // Need to force loading of all web application classes via the web
         // application class loader

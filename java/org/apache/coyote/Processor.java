@@ -17,6 +17,7 @@
 package org.apache.coyote;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 
 import javax.servlet.http.HttpUpgradeHandler;
@@ -35,8 +36,6 @@ public interface Processor<S> {
 
     SocketState process(SocketWrapper<S> socketWrapper) throws IOException;
 
-    SocketState event(SocketStatus status) throws IOException;
-
     SocketState asyncDispatch(SocketStatus status);
     SocketState asyncPostProcess();
 
@@ -45,7 +44,6 @@ public interface Processor<S> {
 
     void errorDispatch();
 
-    boolean isComet();
     boolean isAsync();
     boolean isUpgrade();
 
@@ -54,4 +52,10 @@ public interface Processor<S> {
     void recycle(boolean socketClosing);
 
     void setSslSupport(SSLSupport sslSupport);
+
+    /**
+     * Allows retrieving additional input during the upgrade process
+     * @return leftover bytes
+     */
+    ByteBuffer getLeftoverInput();
 }

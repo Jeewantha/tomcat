@@ -138,41 +138,6 @@ public final class Globals {
 
     /**
      * The request attribute that is set to the value of {@code Boolean.TRUE}
-     * if connector processing this request supports Comet API.
-     * Duplicated here for neater code in the catalina packages.
-     */
-    public static final String COMET_SUPPORTED_ATTR =
-        org.apache.coyote.Constants.COMET_SUPPORTED_ATTR;
-
-
-    /**
-     * The request attribute that is set to the value of {@code Boolean.TRUE}
-     * if connector processing this request supports setting
-     * per-connection request timeout through Comet API.
-     *
-     * @see org.apache.catalina.comet.CometEvent#setTimeout(int)
-     *
-     * Duplicated here for neater code in the catalina packages.
-     */
-    public static final String COMET_TIMEOUT_SUPPORTED_ATTR =
-            org.apache.coyote.Constants.COMET_TIMEOUT_SUPPORTED_ATTR;
-
-
-    /**
-     * The request attribute that can be set to a value of type
-     * {@code java.lang.Integer} to specify per-connection request
-     * timeout for Comet API. The value is in milliseconds.
-     *
-     * @see org.apache.catalina.comet.CometEvent#setTimeout(int)
-     *
-     * Duplicated here for neater code in the catalina packages.
-     */
-    public static final String COMET_TIMEOUT_ATTR =
-        org.apache.coyote.Constants.COMET_TIMEOUT_ATTR;
-
-
-    /**
-     * The request attribute that is set to the value of {@code Boolean.TRUE}
      * if connector processing this request supports use of sendfile.
      *
      * Duplicated here for neater code in the catalina packages.
@@ -232,9 +197,6 @@ public final class Globals {
             org.apache.coyote.Constants.REMOTE_ADDR_ATTRIBUTE;
 
 
-    /**
-     *
-     */
     public static final String ASYNC_SUPPORTED_ATTR =
         "org.apache.catalina.ASYNC_SUPPORTED";
 

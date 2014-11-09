@@ -602,8 +602,6 @@ public class HostConfig
             if (isExternalWar && unpackWARs) {
                 deployedApp.redeployResources.put(expandedDocBase.getAbsolutePath(),
                         Long.valueOf(expandedDocBase.lastModified()));
-                deployedApp.redeployResources.put(contextXml.getAbsolutePath(),
-                        Long.valueOf(contextXml.lastModified()));
                 addWatchedResources(deployedApp, expandedDocBase.getAbsolutePath(), context);
             } else {
                 // Find an existing matching war and expanded folder
@@ -899,7 +897,7 @@ public class HostConfig
             if (deployXML && xml.exists() && copyThisXml) {
                 deployedApp.redeployResources.put(xml.getAbsolutePath(),
                         Long.valueOf(xml.lastModified()));
-            } else if (!copyThisXml ) {
+            } else {
                 // In case an XML file is added to the config base later
                 deployedApp.redeployResources.put(
                         (new File(host.getConfigBaseFile(),
@@ -1223,8 +1221,7 @@ public class HostConfig
                         // expanded WAR (if any)
                         Context context = (Context) host.findChild(app.name);
                         String docBase = context.getDocBase();
-                        docBase = docBase.toLowerCase(Locale.ENGLISH);
-                        if (!docBase.endsWith(".war")) {
+                        if (!docBase.toLowerCase(Locale.ENGLISH).endsWith(".war")) {
                             // This is an expanded directory
                             File docBaseFile = new File(docBase);
                             if (!docBaseFile.isAbsolute()) {
@@ -1520,7 +1517,7 @@ public class HostConfig
                 Context previousContext =
                         (Context) host.findChild(previous.getName());
                 Context currentContext =
-                        (Context) host.findChild(previous.getName());
+                        (Context) host.findChild(current.getName());
                 if (previousContext != null && currentContext != null &&
                         currentContext.getState().isAvailable() &&
                         !isServiced(previous.getName())) {

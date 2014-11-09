@@ -29,16 +29,20 @@ public interface RemoteEndpoint {
 
         /**
          * Obtain the timeout (in milliseconds) for sending a message
-         * asynchronously. A non-positive value means an infinite timeout. The
-         * default value is determined by
+         * asynchronously. The default value is determined by
          * {@link WebSocketContainer#getDefaultAsyncSendTimeout()}.
+         * @return  The current send timeout in milliseconds. A non-positive
+         *          value means an infinite timeout.
          */
         long getSendTimeout();
 
         /**
-         * Set the timeout (in milliseconds) for sending a message asynchronously. A
-         * non-positive value means an infinite timeout. The default value is
-         * determined by {@link WebSocketContainer#getDefaultAsyncSendTimeout()}.
+         * Set the timeout (in milliseconds) for sending a message
+         * asynchronously. The default value is determined by
+         * {@link WebSocketContainer#getDefaultAsyncSendTimeout()}.
+         * @param timeout   The new timeout for sending messages asynchronously
+         *                  in milliseconds. A non-positive value means an
+         *                  infinite timeout.
          */
         void setSendTimeout(long timeout);
 
@@ -52,9 +56,10 @@ public interface RemoteEndpoint {
         void sendText(String text, SendHandler completion);
 
         /**
-         * Send the message asynchronously, using the Future to signal to the client
-         * when the message has been sent.
+         * Send the message asynchronously, using the Future to signal to the
+         * client when the message has been sent.
          * @param text          The text message to send
+         * @return A Future that signals when the message has been sent.
          */
         Future<Void> sendText(String text);
 
@@ -62,6 +67,8 @@ public interface RemoteEndpoint {
          * Send the message asynchronously, using the Future to signal to the client
          * when the message has been sent.
          * @param data          The text message to send
+         * @return A Future that signals when the message has been sent.
+         * @throws IllegalArgumentException if {@code data} is {@code null}.
          */
         Future<Void> sendBinary(ByteBuffer data);
 
@@ -71,11 +78,29 @@ public interface RemoteEndpoint {
          * @param data          The text message to send
          * @param completion    Used to signal to the client when the message has
          *                      been sent
+         * @throws IllegalArgumentException if {@code data} or {@code completion}
+         *                      is {@code null}.
          */
         void sendBinary(ByteBuffer data, SendHandler completion);
 
+        /**
+         * Encodes object as a message and sends it asynchronously, using the
+         * Future to signal to the client when the message has been sent.
+         * @param obj           The object to be sent.
+         * @return A Future that signals when the message has been sent.
+         * @throws IllegalArgumentException if {@code obj} is {@code null}.
+         */
         Future<Void> sendObject(Object obj);
 
+        /**
+         * Encodes object as a message and sends it asynchronously, using the
+         * SendHandler to signal to the client when the message has been sent.
+         * @param obj           The object to be sent.
+         * @param completion    Used to signal to the client when the message has
+         *                      been sent
+         * @throws IllegalArgumentException if {@code obj} or
+         *                      {@code completion} is {@code null}.
+         */
         void sendObject(Object obj, SendHandler completion);
 
     }
@@ -85,14 +110,18 @@ public interface RemoteEndpoint {
         /**
          * Send the message, blocking until the message is sent.
          * @param text  The text message to send.
-         * @throws IOException
+         * @throws IllegalArgumentException if {@code text} is {@code null}.
+         * @throws IOException if an I/O error occurs during the sending of the
+         *                     message.
          */
         void sendText(String text) throws IOException;
 
         /**
          * Send the message, blocking until the message is sent.
          * @param data  The binary message to send
-         * @throws IOException
+         * @throws IllegalArgumentException if {@code data} is {@code null}.
+         * @throws IOException if an I/O error occurs during the sending of the
+         *                     message.
          */
         void sendBinary(ByteBuffer data) throws IOException;
 
@@ -104,7 +133,9 @@ public interface RemoteEndpoint {
          * @param fragment  The partial message to send
          * @param isLast    <code>true</code> if this is the last part of the
          *                  message, otherwise <code>false</code>
-         * @throws IOException
+         * @throws IllegalArgumentException if {@code fragment} is {@code null}.
+         * @throws IOException if an I/O error occurs during the sending of the
+         *                     message.
          */
         void sendText(String fragment, boolean isLast) throws IOException;
 
@@ -116,7 +147,10 @@ public interface RemoteEndpoint {
          * @param partialByte   The partial message to send
          * @param isLast        <code>true</code> if this is the last part of the
          *                      message, otherwise <code>false</code>
-         * @throws IOException
+         * @throws IllegalArgumentException if {@code partialByte} is
+         *                     {@code null}.
+         * @throws IOException if an I/O error occurs during the sending of the
+         *                     message.
          */
         void sendBinary(ByteBuffer partialByte, boolean isLast) throws IOException;
 
@@ -124,7 +158,16 @@ public interface RemoteEndpoint {
 
         Writer getSendWriter() throws IOException;
 
-        void sendObject(Object o) throws IOException, EncodeException;
+        /**
+         * Encodes object as a message and sends it to the remote endpoint.
+         * @param data  The object to be sent.
+         * @throws EncodeException if there was a problem encoding the
+         *                     {@code data} object as a websocket message.
+         * @throws IllegalArgumentException if {@code data} is {@code null}.
+         * @throws IOException if an I/O error occurs during the sending of the
+         *                     message.
+         */
+        void sendObject(Object data) throws IOException, EncodeException;
 
     }
     /**
@@ -141,12 +184,17 @@ public interface RemoteEndpoint {
 
     /**
      * Obtains the current batching status of the endpoint.
+     *
+     * @return <code>true</code> if batching is enabled, otherwise
+     *         <code>false</code>.
      */
     boolean getBatchingAllowed();
 
     /**
      * Flush any currently batched messages to the remote endpoint. This method
      * will block until the flush completes.
+     *
+     * @throws IOException If an I/O error occurs while flushing
      */
     void flushBatch() throws IOException;
 
@@ -156,6 +204,10 @@ public interface RemoteEndpoint {
      * will block until that message and this ping has been sent.
      *
      * @param applicationData   The payload for the ping message
+     *
+     * @throws IOException If an I/O error occurs while sending the ping
+     * @throws IllegalArgumentException if the applicationData is too large for
+     *         a control message (max 125 bytes)
      */
     void sendPing(ByteBuffer applicationData)
             throws IOException, IllegalArgumentException;
@@ -166,6 +218,10 @@ public interface RemoteEndpoint {
      * will block until that message and this pong has been sent.
      *
      * @param applicationData   The payload for the pong message
+     *
+     * @throws IOException If an I/O error occurs while sending the pong
+     * @throws IllegalArgumentException if the applicationData is too large for
+     *         a control message (max 125 bytes)
      */
     void sendPong(ByteBuffer applicationData)
             throws IOException, IllegalArgumentException;

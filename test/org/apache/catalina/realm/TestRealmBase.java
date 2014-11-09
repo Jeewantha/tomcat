@@ -89,7 +89,9 @@ public class TestRealmBase {
         Context context = new TesterContext();
         TesterMapRealm realm = new TesterMapRealm();
         realm.setContainer(context);
-        realm.setDigest(digest);
+        MessageDigestCredentialHandler ch = new MessageDigestCredentialHandler();
+        ch.setAlgorithm(digest);
+        realm.setCredentialHandler(ch);
         realm.start();
 
         realm.addUser(USER1, digestedPassword);
@@ -635,7 +637,7 @@ public class TestRealmBase {
     }
 
 
-    /**
+    /*
      * This test case covers the special case in section 13.4.1 of the Servlet
      * 3.1 specification for {@link javax.servlet.annotation.HttpConstraint}.
      */

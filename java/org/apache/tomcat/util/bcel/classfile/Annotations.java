@@ -17,7 +17,7 @@
  */
 package org.apache.tomcat.util.bcel.classfile;
 
-import java.io.DataInputStream;
+import java.io.DataInput;
 import java.io.IOException;
 
 /**
@@ -26,45 +26,23 @@ import java.io.IOException;
  * @author  <A HREF="mailto:dbrosius@qis.net">D. Brosius</A>
  * @since 6.0
  */
-public abstract class Annotations extends Attribute {
+public class Annotations {
 
-    private static final long serialVersionUID = 1L;
-
-    private AnnotationEntry[] annotation_table;
+    private final AnnotationEntry[] annotation_table;
 
     /**
-     * @param name_index Index pointing to the name <em>Code</em>
-     * @param length Content length in bytes
      * @param file Input stream
      * @param constant_pool Array of constants
      */
-    public Annotations(int name_index, int length, DataInputStream file, ConstantPool constant_pool) throws IOException {
-        this(name_index, length, (AnnotationEntry[]) null, constant_pool);
+    Annotations(DataInput file, ConstantPool constant_pool)
+            throws IOException {
         final int annotation_table_length = (file.readUnsignedShort());
         annotation_table = new AnnotationEntry[annotation_table_length];
         for (int i = 0; i < annotation_table_length; i++) {
-            annotation_table[i] = AnnotationEntry.read(file, constant_pool);
+            annotation_table[i] = new AnnotationEntry(file, constant_pool);
         }
     }
 
-
-    /**
-     * @param name_index Index pointing to the name <em>Code</em>
-     * @param length Content length in bytes
-     * @param annotation_table the actual annotations
-     * @param constant_pool Array of constants
-     */
-    public Annotations(int name_index, int length, AnnotationEntry[] annotation_table, ConstantPool constant_pool) {
-        super(name_index, length, constant_pool);
-        setAnnotationTable(annotation_table);
-    }
-
-    /**
-     * @param annotation_table the entries to set in this annotation
-     */
-    public final void setAnnotationTable( AnnotationEntry[] annotation_table ) {
-        this.annotation_table = annotation_table;
-    }
 
     /**
      * returns the array of annotation entries in this annotation

@@ -18,6 +18,7 @@ package org.apache.coyote.http11;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.nio.ByteBuffer;
 import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -146,12 +147,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
      * Is there an expectation ?
      */
     protected boolean expectation = false;
-
-
-    /**
-     * Comet used.
-     */
-    protected boolean comet = false;
 
 
     /**
@@ -822,6 +817,10 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             ((AtomicBoolean) param).set(asyncStateMachine.isAsyncStarted());
             break;
         }
+        case ASYNC_IS_COMPLETING: {
+            ((AtomicBoolean) param).set(asyncStateMachine.isCompleting());
+            break;
+        }
         case ASYNC_IS_DISPATCHING: {
             ((AtomicBoolean) param).set(asyncStateMachine.isAsyncDispatching());
             break;
@@ -971,21 +970,16 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
         // Flags
         keepAlive = true;
-        comet = false;
         openSocket = false;
         sendfileInProgress = false;
         readComplete = true;
-        if (endpoint.getUsePolling()) {
-            keptAlive = false;
-        } else {
-            keptAlive = socketWrapper.isKeptAlive();
-        }
+        keptAlive = false;
 
         if (disableKeepAlive()) {
             socketWrapper.setKeepAliveLeft(0);
         }
 
-        while (!getErrorState().isError() && keepAlive && !comet && !isAsync() &&
+        while (!getErrorState().isError() && keepAlive && !isAsync() &&
                 httpUpgradeHandler == null && !endpoint.isPaused()) {
 
             // Parsing the request header
@@ -1090,7 +1084,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                                     statusDropsConnection(response.getStatus())))) {
                         setErrorState(ErrorState.CLOSE_CLEAN, null);
                     }
-                    setCometTimeouts(socketWrapper);
                 } catch (InterruptedIOException e) {
                     setErrorState(ErrorState.CLOSE_NOW, e);
                 } catch (HeadersTooLargeException e) {
@@ -1118,7 +1111,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             // Finish the handling of the request
             rp.setStage(org.apache.coyote.Constants.STAGE_ENDINPUT);
 
-            if (!isAsync() && !comet) {
+            if (!isAsync()) {
                 if (getErrorState().isError()) {
                     // If we know we are closing the connection, don't drain
                     // input. This way uploading a 100GB file doesn't tie up the
@@ -1147,7 +1140,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             }
             request.updateCounters();
 
-            if (!isAsync() && !comet || getErrorState().isError()) {
+            if (!isAsync() || getErrorState().isError()) {
                 if (getErrorState().isIoAllowed()) {
                     getInputBuffer().nextRequest();
                     getOutputBuffer().nextRequest();
@@ -1173,7 +1166,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
         if (getErrorState().isError() || endpoint.isPaused()) {
             return SocketState.CLOSED;
-        } else if (isAsync() || comet) {
+        } else if (isAsync()) {
             return SocketState.LONG;
         } else if (isUpgrade()) {
             return SocketState.UPGRADING;
@@ -1271,7 +1264,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
         }
 
         // Check user-agent header
-        if ((restrictedUserAgents != null) && ((http11) || (keepAlive))) {
+        if (restrictedUserAgents != null && (http11 || keepAlive)) {
             MessageBytes userAgentValueMB = headers.getValue("user-agent");
             // Check in the restricted list, and adjust the http11
             // and keepAlive flags accordingly
@@ -1309,7 +1302,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                 hostMB.setBytes(uriB, uriBCStart + pos + 3,
                                 slashPos - pos - 3);
             }
-
         }
 
         // Input filter setup
@@ -1639,24 +1631,23 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
         if (status == SocketStatus.OPEN_WRITE) {
             try {
                 asyncStateMachine.asyncOperation();
-                try {
-                    if (outputBuffer.hasDataToWrite()) {
-                        if (outputBuffer.flushBuffer(false)) {
-                            // There is data to write but go via Response to
-                            // maintain a consistent view of non-blocking state
-                            response.checkRegisterForWrite(true);
-                            return SocketState.LONG;
-                        }
+
+                if (outputBuffer.hasDataToWrite()) {
+                    if (outputBuffer.flushBuffer(false)) {
+                        // There is data to write but go via Response to
+                        // maintain a consistent view of non-blocking state
+                        response.checkRegisterForWrite(true);
+                        return SocketState.LONG;
                     }
-                } catch (IOException x) {
-                    if (getLog().isDebugEnabled()) {
-                        getLog().debug("Unable to write async data.",x);
-                    }
-                    status = SocketStatus.ASYNC_WRITE_ERROR;
-                    request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, x);
                 }
-            } catch (IllegalStateException x) {
-                registerForEvent(false, true);
+            } catch (IOException | IllegalStateException x) {
+                // IOE - Problem writing to socket
+                // ISE - Request/Response not in correct state for async write
+                if (getLog().isDebugEnabled()) {
+                    getLog().debug("Unable to write async data.",x);
+                }
+                status = SocketStatus.ASYNC_WRITE_ERROR;
+                request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, x);
             }
         } else if (status == SocketStatus.OPEN_READ &&
                 request.getReadListener() != null) {
@@ -1665,7 +1656,12 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                     asyncStateMachine.asyncOperation();
                 }
             } catch (IllegalStateException x) {
-                registerForEvent(true, false);
+                // ISE - Request/Response not in correct state for async read
+                if (getLog().isDebugEnabled()) {
+                    getLog().debug("Unable to read async data.",x);
+                }
+                status = SocketStatus.ASYNC_READ_ERROR;
+                request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, x);
             }
         }
 
@@ -1703,12 +1699,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
 
     @Override
-    public boolean isComet() {
-        return comet;
-    }
-
-
-    @Override
     public boolean isUpgrade() {
         return httpUpgradeHandler != null;
     }
@@ -1736,12 +1726,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
      */
     protected abstract void resetTimeouts();
 
-
-    /**
-     * Provides a mechanism for those connectors (currently only NIO) that need
-     * that need to set comet timeouts.
-     */
-    protected abstract void setCometTimeouts(SocketWrapper<S> socketWrapper);
 
     public void endRequest() {
 
@@ -1785,7 +1769,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             SocketWrapper<S> socketWrapper);
 
 
-
     @Override
     public final void recycle(boolean isSocketClosing) {
         getAdapter().checkRecycled(request, response);
@@ -1800,10 +1783,16 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             asyncStateMachine.recycle();
         }
         httpUpgradeHandler = null;
-        comet = false;
         resetErrorState();
         recycleInternal();
     }
 
     protected abstract void recycleInternal();
+
+
+    @Override
+    public ByteBuffer getLeftoverInput() {
+        return inputBuffer.getLeftover();
+    }
+
 }

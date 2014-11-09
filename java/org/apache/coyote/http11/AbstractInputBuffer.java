@@ -17,6 +17,7 @@
 package org.apache.coyote.http11;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
@@ -361,7 +362,7 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
 
     /**
      * Has all of the request body been read? There are subtle differences
-     * between this and available() > 0 primarily because of having to handle
+     * between this and available() &gt; 0 primarily because of having to handle
      * faking non-blocking reads with the blocking IO connector.
      */
     public boolean isFinished() {
@@ -387,6 +388,15 @@ public abstract class AbstractInputBuffer<S> implements InputBuffer{
             // No filters. Assume request is not finished. EOF will signal end of
             // request.
             return false;
+        }
+    }
+
+    ByteBuffer getLeftover() {
+        int available = lastValid - pos;
+        if (available > 0) {
+            return ByteBuffer.wrap(buf, pos, available);
+        } else {
+            return null;
         }
     }
 

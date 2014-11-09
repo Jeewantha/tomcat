@@ -68,15 +68,13 @@ public class TestEncodingDecoding extends TomcatBaseTest {
     @Test
     public void testProgrammaticEndPoints() throws Exception{
         Tomcat tomcat = getTomcatInstance();
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ProgramaticServerEndpointConfig.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
         ctx.addServletMapping("/", "default");
 
-        WebSocketContainer wsContainer =
-                ContainerProvider.getWebSocketContainer();
+        WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 
         tomcat.start();
 
@@ -119,9 +117,8 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         ServerConfigListener.setPojoClazz(Server.class);
 
         Tomcat tomcat = getTomcatInstance();
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
         ctx.addServletMapping("/", "default");
@@ -179,9 +176,8 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         ServerConfigListener.setPojoClazz(GenericsServer.class);
 
         Tomcat tomcat = getTomcatInstance();
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
         ctx.addServletMapping("/", "default");
@@ -341,8 +337,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
     }
 
 
-    public static class MsgStringMessageHandler
-            implements MessageHandler.Whole<MsgString>{
+    public static class MsgStringMessageHandler implements MessageHandler.Whole<MsgString> {
 
         public static Queue<Object> received = new ConcurrentLinkedQueue<>();
         private final Session session;
@@ -599,6 +594,38 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             } catch (DeploymentException e) {
                 throw new IllegalStateException(e);
             }
+        }
+    }
+
+
+    @Test
+    public void testUnsupportedObject() throws Exception{
+        Tomcat tomcat = getTomcatInstance();
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+        ctx.addApplicationListener(ProgramaticServerEndpointConfig.class.getName());
+        Tomcat.addServlet(ctx, "default", new DefaultServlet());
+        ctx.addServletMapping("/", "default");
+
+        WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
+
+        tomcat.start();
+
+        Client client = new Client();
+        URI uri = new URI("ws://localhost:" + getPort() + PATH_PROGRAMMATIC_EP);
+        Session session = wsContainer.connectToServer(client, uri);
+
+        // This should fail
+        Object msg1 = new Object();
+        try {
+            session.getBasicRemote().sendObject(msg1);
+            Assert.fail("No exception thrown ");
+        } catch (EncodeException e) {
+            // Expected
+        } catch (Throwable t) {
+            Assert.fail("Wrong exception type");
+        } finally {
+            session.close();
         }
     }
 }

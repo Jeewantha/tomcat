@@ -300,13 +300,6 @@
         no filtering will be applied.</p>
       </attribute>
 
-      <attribute name="cookieEncoding" required="false">
-        <p>If the RFC6265 based cookie parser is used this attribute determines
-        the encoding to be used to convert the byte values in the HTTP header to
-        strings. If not specified, the default of <code>UTF-8</code> will be
-        used.</p>
-      </attribute>
-
       <attribute name="cookies" required="false">
         <p>Set to <code>true</code> if you want cookies to be used for
         session identifier communication if supported by the client (this
@@ -536,12 +529,6 @@
         penalty.</p>
       </attribute>
 
-      <attribute name="useRfc6265" required="false">
-        <p>Determines if the RFC6265 based cookie parser is used. The default
-        value is <code>false</code> in which case the original parser based on
-        RFC2109 and the Netscape cookie specification will be used.</p>
-      </attribute>
-
       <attribute name="useHttpOnly" required="false">
        <p>Should the HttpOnly flag be set on session cookies to prevent client
           side script from accessing the session ID? Defaults to
@@ -641,12 +628,11 @@
         <p>If <code>true</code> and an <code>sun.net.www.http.HttpClient</code>
         keep-alive timer thread has been started by this web application and is
         still running, Tomcat will change the context class loader for that
-        thread from the current <code>WebappClassLoader</code> to
-        <code>WebappClassLoader#parent</code> to prevent a memory leak. Note
-        that the keep-alive timer thread will stop on its own once the
-        keep-alives all expire however, on a busy system that might not happen
-        for some time. If not specified, the default value of
-        <code>true</code> will be used.</p>
+        thread from the web application class loader to the the parent of the web
+        application class loader to prevent a memory leak. Note that the
+        keep-alive timer thread will stop on its own once the keep-alives all
+        expire however, on a busy system that might not happen for some time. If
+        not specified, the default value of <code>true</code> will be used.</p>
       </attribute>
 
       <attribute name="clearReferencesStatic" required = "false">
@@ -710,12 +696,6 @@
         be used.</p>
       </attribute>
 
-      <attribute name="processTlds" required="false">
-        <p>Whether the context should process TLDs on startup.  The default
-        is true.  The false setting is intended for special cases
-        that know in advance TLDs are not part of the webapp.</p>
-      </attribute>
-
       <attribute name="renewThreadsWhenStoppingContext" required="false">
         <p>If <code>true</code>, when this context is stopped, Tomcat renews all
         the threads from the thread pool that was used to serve this context.
@@ -774,6 +754,8 @@
   by nesting a corresponding element inside your <strong>Context</strong>
   element:</p>
   <ul>
+  <li><a href="cookie-processor.html"><strong>Cookie Processor</strong></a> -
+      Configure parsing and generation of HTTP cookie headers.</li>
   <li><a href="loader.html"><strong>Loader</strong></a> -
       Configure the web application class loader that will be used to load
       servlet and bean classes for this web application.  Normally, the

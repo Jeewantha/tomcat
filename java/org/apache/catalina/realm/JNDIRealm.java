@@ -874,7 +874,7 @@ public class JNDIRealm extends RealmBase {
      * separated by parentheses. (for example, either "cn={0}", or
      * "(cn={0})(cn={0},o=myorg)" Full LDAP search strings are also supported,
      * but only the "OR", "|" syntax, so "(|(cn={0})(cn={0},o=myorg))" is
-     * also valid. Complex search strings with &, etc are NOT supported.
+     * also valid. Complex search strings with &amp;, etc are NOT supported.
      *
      * @param userPattern The new user pattern
      */
@@ -1280,6 +1280,13 @@ public class JNDIRealm extends RealmBase {
             user = getUserBySearch(context, username, attrIds);
         }
 
+        if (userPassword == null && credentials != null) {
+            // The password is available. Insert it since it may be required for
+            // role searches.
+            return new User(user.getUserName(), user.getDN(), credentials,
+                    user.getRoles(), user.getUserRoleId());
+        }
+
         return user;
     }
 
@@ -1551,7 +1558,7 @@ public class JNDIRealm extends RealmBase {
 
         String password = info.getPassword();
 
-        return compareCredentials(credentials, password);
+        return getCredentialHandler().matches(credentials, password);
     }
 
 
@@ -1708,6 +1715,8 @@ public class JNDIRealm extends RealmBase {
                 nameParts[i] = name.get(i);
             }
             base = roleBaseFormat.format(nameParts);
+        } else {
+            base = "";
         }
 
         // Perform the configured search and process the results
@@ -2250,13 +2259,13 @@ public class JNDIRealm extends RealmBase {
      * Given an LDAP search string, returns the string with certain characters
      * escaped according to RFC 2254 guidelines.
      * The character mapping is as follows:
-     *     char ->  Replacement
+     *     char -&gt;  Replacement
      *    ---------------------------
-     *     *  -> \2a
-     *     (  -> \28
-     *     )  -> \29
-     *     \  -> \5c
-     *     \0 -> \00
+     *     *  -&gt; \2a
+     *     (  -&gt; \28
+     *     )  -&gt; \29
+     *     \  -&gt; \5c
+     *     \0 -&gt; \00
      * @param inString string to escape according to RFC 2254 guidelines
      * @return String the escaped/encoded result
      */

@@ -16,6 +16,8 @@
  */
 package org.apache.coyote.ajp;
 
+import java.nio.ByteBuffer;
+
 import javax.servlet.http.HttpUpgradeHandler;
 
 import org.apache.coyote.AbstractProtocol;
@@ -75,6 +77,14 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         }
     }
 
+    protected void configureProcessor(AbstractAjpProcessor<S> processor) {
+        processor.setAdapter(getAdapter());
+        processor.setTomcatAuthentication(getTomcatAuthentication());
+        processor.setRequiredSecret(requiredSecret);
+        processor.setKeepAliveTimeout(getKeepAliveTimeout());
+        processor.setClientCertProvider(getClientCertProvider());
+    }
+
     protected abstract static class AbstractAjpConnectionHandler<S,P extends AbstractAjpProcessor<S>>
             extends AbstractConnectionHandler<S, P> {
 
@@ -91,7 +101,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         }
 
         @Override
-        protected P createUpgradeProcessor(SocketWrapper<S> socket,
+        protected P createUpgradeProcessor(SocketWrapper<S> socket, ByteBuffer leftoverInput,
                 HttpUpgradeHandler httpUpgradeHandler) {
             // TODO should fail - throw IOE
             return null;

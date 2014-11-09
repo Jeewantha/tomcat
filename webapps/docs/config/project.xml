@@ -15,10 +15,10 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project name="Apache Tomcat 8 Configuration Reference"
+<project name="Apache Tomcat 9 Configuration Reference"
         href="http://tomcat.apache.org/">
 
-  <title>Apache Tomcat 8 Configuration Reference</title>
+  <title>Apache Tomcat 9 Configuration Reference</title>
 
   <logo href="/images/tomcat.gif">
     The Apache Tomcat Servlet/JSP Container
@@ -56,6 +56,8 @@
     </menu>
 
     <menu name="Nested Components">
+        <item name="CookieProcessor"       href="cookie-processor.html"/>
+        <item name="CredentialHandler"     href="credentialhandler.html"/>
         <item name="Global Resources"      href="globalresources.html"/>
         <item name="JarScanner"            href="jar-scanner.html"/>
         <item name="JarScanFilter"         href="jar-scan-filter.html"/>

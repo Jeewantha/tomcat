@@ -163,6 +163,13 @@ public class ContextConfig implements LifecycleListener {
             new ConcurrentHashMap<>();
 
 
+    /**
+     * Set used as the value for {@code JavaClassCacheEntry.sciSet} when there
+     * are no SCIs associated with a class.
+     */
+    private static final Set<ServletContainerInitializer> EMPTY_SCI_SET = Collections.emptySet();
+
+
     // ----------------------------------------------------- Instance Variables
     /**
      * Custom mappings of login methods to authenticators
@@ -605,19 +612,20 @@ public class ContextConfig implements LifecycleListener {
             }
         }
 
-        if (docBase.toLowerCase(Locale.ENGLISH).endsWith(".war") && !file.isDirectory() && unpackWARs) {
-            URL war = new URL("jar:" + (new File(docBase)).toURI().toURL() + "!/");
-            docBase = ExpandWar.expand(host, war, pathName);
-            file = new File(docBase);
-            docBase = file.getCanonicalPath();
-            if (context instanceof StandardContext) {
-                ((StandardContext) context).setOriginalDocBase(origDocBase);
+        if (docBase.toLowerCase(Locale.ENGLISH).endsWith(".war") && !file.isDirectory()) {
+            if (unpackWARs) {
+                URL war = new URL("jar:" + (new File(docBase)).toURI().toURL() + "!/");
+                docBase = ExpandWar.expand(host, war, pathName);
+                file = new File(docBase);
+                docBase = file.getCanonicalPath();
+                if (context instanceof StandardContext) {
+                    ((StandardContext) context).setOriginalDocBase(origDocBase);
+                }
+            } else {
+                URL war =
+                        new URL("jar:" + (new File (docBase)).toURI().toURL() + "!/");
+                ExpandWar.validate(host, war, pathName);
             }
-        } else if (docBase.toLowerCase(Locale.ENGLISH).endsWith(".war") &&
-                !file.isDirectory() && !unpackWARs) {
-            URL war =
-                new URL("jar:" + (new File (docBase)).toURI().toURL() + "!/");
-            ExpandWar.validate(host, war, pathName);
         } else {
             File docDir = new File(docBase);
             if (!docDir.exists()) {
@@ -1982,7 +1990,7 @@ public class ContextConfig implements LifecycleListener {
             boolean handlesTypesOnly)
             throws ClassFormatException, IOException {
 
-        ClassParser parser = new ClassParser(is, null);
+        ClassParser parser = new ClassParser(is);
         JavaClass clazz = parser.parse();
         checkHandlesTypes(clazz);
 
@@ -1990,20 +1998,20 @@ public class ContextConfig implements LifecycleListener {
             return;
         }
 
-        String className = clazz.getClassName();
-
         AnnotationEntry[] annotationsEntries = clazz.getAnnotationEntries();
-
-        for (AnnotationEntry ae : annotationsEntries) {
-            String type = ae.getAnnotationType();
-            if ("Ljavax/servlet/annotation/WebServlet;".equals(type)) {
-                processAnnotationWebServlet(className, ae, fragment);
-            }else if ("Ljavax/servlet/annotation/WebFilter;".equals(type)) {
-                processAnnotationWebFilter(className, ae, fragment);
-            }else if ("Ljavax/servlet/annotation/WebListener;".equals(type)) {
-                fragment.addListener(className);
-            } else {
-                // Unknown annotation - ignore
+        if (annotationsEntries != null) {
+            String className = clazz.getClassName();
+            for (AnnotationEntry ae : annotationsEntries) {
+                String type = ae.getAnnotationType();
+                if ("Ljavax/servlet/annotation/WebServlet;".equals(type)) {
+                    processAnnotationWebServlet(className, ae, fragment);
+                }else if ("Ljavax/servlet/annotation/WebFilter;".equals(type)) {
+                    processAnnotationWebFilter(className, ae, fragment);
+                }else if ("Ljavax/servlet/annotation/WebListener;".equals(type)) {
+                    fragment.addListener(className);
+                } else {
+                    // Unknown annotation - ignore
+                }
             }
         }
     }
@@ -2044,7 +2052,7 @@ public class ContextConfig implements LifecycleListener {
                             classHierarchyToString(className, entry)));
                 }
             }
-            if (entry.getSciSet().size() > 0) {
+            if (!entry.getSciSet().isEmpty()) {
                 // Need to try and load the class
                 clazz = Introspection.loadClass(context, className);
                 if (clazz == null) {
@@ -2052,8 +2060,7 @@ public class ContextConfig implements LifecycleListener {
                     return;
                 }
 
-                for (ServletContainerInitializer sci :
-                        entry.getSciSet()) {
+                for (ServletContainerInitializer sci : entry.getSciSet()) {
                     Set<Class<?>> classes = initializerClassMap.get(sci);
                     if (classes == null) {
                         classes = new HashSet<>();
@@ -2065,27 +2072,29 @@ public class ContextConfig implements LifecycleListener {
         }
 
         if (handlesTypesAnnotations) {
-            for (Map.Entry<Class<?>, Set<ServletContainerInitializer>> entry :
-                    typeInitializerMap.entrySet()) {
-                if (entry.getKey().isAnnotation()) {
-                    AnnotationEntry[] annotationEntries =
-                            javaClass.getAnnotationEntries();
-                    for (AnnotationEntry annotationEntry : annotationEntries) {
-                        if (entry.getKey().getName().equals(
-                                getClassName(annotationEntry.getAnnotationType()))) {
-                            if (clazz == null) {
-                                clazz = Introspection.loadClass(
-                                        context, className);
+            AnnotationEntry[] annotationEntries = javaClass.getAnnotationEntries();
+            if (annotationEntries != null) {
+                for (Map.Entry<Class<?>, Set<ServletContainerInitializer>> entry :
+                        typeInitializerMap.entrySet()) {
+                    if (entry.getKey().isAnnotation()) {
+                        String entryClassName = entry.getKey().getName();
+                        for (AnnotationEntry annotationEntry : annotationEntries) {
+                            if (entryClassName.equals(
+                                    getClassName(annotationEntry.getAnnotationType()))) {
                                 if (clazz == null) {
-                                    // Can't load the class so no point
-                                    // continuing
-                                    return;
+                                    clazz = Introspection.loadClass(
+                                            context, className);
+                                    if (clazz == null) {
+                                        // Can't load the class so no point
+                                        // continuing
+                                        return;
+                                    }
                                 }
+                                for (ServletContainerInitializer sci : entry.getValue()) {
+                                    initializerClassMap.get(sci).add(clazz);
+                                }
+                                break;
                             }
-                            for (ServletContainerInitializer sci : entry.getValue()) {
-                                initializerClassMap.get(sci).add(clazz);
-                            }
-                            break;
                         }
                     }
                 }
@@ -2140,7 +2149,7 @@ public class ContextConfig implements LifecycleListener {
                 if (is == null) {
                     return;
                 }
-                ClassParser parser = new ClassParser(is, null);
+                ClassParser parser = new ClassParser(is);
                 JavaClass clazz = parser.parse();
                 populateJavaClassCache(clazz.getClassName(), clazz);
             } catch (ClassFormatException e) {
@@ -2163,7 +2172,7 @@ public class ContextConfig implements LifecycleListener {
 
         // Avoid an infinite loop with java.lang.Object
         if (cacheEntry.equals(superClassCacheEntry)) {
-            cacheEntry.setSciSet(new HashSet<ServletContainerInitializer>());
+            cacheEntry.setSciSet(EMPTY_SCI_SET);
             return;
         }
 
@@ -2192,7 +2201,7 @@ public class ContextConfig implements LifecycleListener {
             result.addAll(getSCIsForClass(interfaceName));
         }
 
-        cacheEntry.setSciSet(result);
+        cacheEntry.setSciSet(result.isEmpty() ? EMPTY_SCI_SET : result);
     }
 
     private Set<ServletContainerInitializer> getSCIsForClass(String className) {
@@ -2205,7 +2214,7 @@ public class ContextConfig implements LifecycleListener {
                 }
             }
         }
-        return Collections.emptySet();
+        return EMPTY_SCI_SET;
     }
 
     private static final String getClassName(String internalForm) {
@@ -2222,7 +2231,7 @@ public class ContextConfig implements LifecycleListener {
             AnnotationEntry ae, WebXml fragment) {
         String servletName = null;
         // must search for name s. Spec Servlet API 3.0 - 8.2.3.3.n.ii page 81
-        ElementValuePair[] evps = ae.getElementValuePairs();
+        List<ElementValuePair> evps = ae.getElementValuePairs();
         for (ElementValuePair evp : evps) {
             String name = evp.getNameString();
             if ("name".equals(name)) {
@@ -2249,7 +2258,7 @@ public class ContextConfig implements LifecycleListener {
         boolean urlPatternsSet = false;
         String[] urlPatterns = null;
 
-        // ElementValuePair[] evps = ae.getElementValuePairs();
+        // List<ElementValuePair> evps = ae.getElementValuePairs();
         for (ElementValuePair evp : evps) {
             String name = evp.getNameString();
             if ("value".equals(name) || "urlPatterns".equals(name)) {
@@ -2332,7 +2341,7 @@ public class ContextConfig implements LifecycleListener {
             AnnotationEntry ae, WebXml fragment) {
         String filterName = null;
         // must search for name s. Spec Servlet API 3.0 - 8.2.3.3.n.ii page 81
-        ElementValuePair[] evps = ae.getElementValuePairs();
+        List<ElementValuePair> evps = ae.getElementValuePairs();
         for (ElementValuePair evp : evps) {
             String name = evp.getNameString();
             if ("filterName".equals(name)) {
@@ -2491,8 +2500,8 @@ public class ContextConfig implements LifecycleListener {
                 ((ArrayElementValue) ev).getElementValuesArray();
             for (ElementValue value : arrayValues) {
                 if (value instanceof AnnotationElementValue) {
-                    ElementValuePair[] evps = ((AnnotationElementValue)
-                            value).getAnnotationEntry().getElementValuePairs();
+                    List<ElementValuePair> evps = ((AnnotationElementValue) value)
+                            .getAnnotationEntry().getElementValuePairs();
                     String initParamName = null;
                     String initParamValue = null;
                     for (ElementValuePair evp : evps) {

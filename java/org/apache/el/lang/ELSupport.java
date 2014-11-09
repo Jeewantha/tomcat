@@ -150,7 +150,7 @@ public class ELSupport {
      * @param obj0 the first object
      * @param obj1 the second object
      * @return true if the objects are equal
-     * @throws ELException
+     * @throws ELException if one of the coercion fails
      */
     public static final boolean equals(final Object obj0, final Object obj1)
             throws ELException {
@@ -220,6 +220,8 @@ public class ELSupport {
      * Convert an object to Boolean.
      * Null and empty string are false.
      * @param obj the object to convert
+     * @param primitive is the target a primitive in which case coercion to null
+     *                  is not permitted
      * @return the Boolean value of the object
      * @throws ELException if object is not Boolean or String
      */
@@ -412,8 +414,8 @@ public class ELSupport {
     }
 
     /**
-     * Coerce an object to a string
-     * @param obj
+     * Coerce an object to a string.
+     * @param obj the object to convert
      * @return the String value of the object
      */
     public static final String coerceToString(final Object obj) {
@@ -463,12 +465,24 @@ public class ELSupport {
         if (obj == null)
             return null;
         if (obj instanceof String) {
-            if ("".equals(obj))
-                return null;
             PropertyEditor editor = PropertyEditorManager.findEditor(type);
-            if (editor != null) {
-                editor.setAsText((String) obj);
-                return editor.getValue();
+            if (editor == null) {
+                if ("".equals(obj)) {
+                    return null;
+                }
+                throw new ELException(MessageFactory.get("error.convert", obj,
+                        obj.getClass(), type));
+            } else {
+                try {
+                    editor.setAsText((String) obj);
+                    return editor.getValue();
+                } catch (RuntimeException e) {
+                    if ("".equals(obj)) {
+                        return null;
+                    }
+                    throw new ELException(MessageFactory.get("error.convert",
+                            obj, obj.getClass(), type), e);
+                }
             }
         }
 
@@ -480,7 +494,7 @@ public class ELSupport {
         }
 
         // Handle arrays
-        if (type.isArray()) {
+        if (type.isArray() && obj.getClass().isArray()) {
             return coerceToArray(obj, type);
         }
 
@@ -492,16 +506,18 @@ public class ELSupport {
             final Class<?> type) {
         // Note: Nested arrays will result in nested calls to this method.
 
+        // Note: Calling method has checked the obj is an array.
+
+        int size = Array.getLength(obj);
         // Cast the input object to an array (calling method has checked it is
         // an array)
-        Object[] array = (Object[]) obj;
         // Get the target type for the array elements
         Class<?> componentType = type.getComponentType();
         // Create a new array of the correct type
-        Object result = Array.newInstance(componentType, array.length);
+        Object result = Array.newInstance(componentType, size);
         // Coerce each element in turn.
-        for (int i = 0; i < array.length; i++) {
-            Array.set(result, i, coerceToType(array[i], componentType));
+        for (int i = 0; i < size; i++) {
+            Array.set(result, i, coerceToType(Array.get(obj, i), componentType));
         }
 
         return result;

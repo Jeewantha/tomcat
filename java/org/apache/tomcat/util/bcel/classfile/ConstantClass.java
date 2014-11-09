@@ -32,8 +32,7 @@ import org.apache.tomcat.util.bcel.Constants;
  */
 public final class ConstantClass extends Constant {
 
-    private static final long serialVersionUID = -6603658849582876642L;
-    private int name_index; // Identical to ConstantString except for the name
+    private final int name_index; // Identical to ConstantString except for the name
 
 
     /**
@@ -43,17 +42,8 @@ public final class ConstantClass extends Constant {
      * @throws IOException
      */
     ConstantClass(DataInput file) throws IOException {
-        this(file.readUnsignedShort());
-    }
-
-
-    /**
-     * @param name_index Name index in constant pool.  Should refer to a
-     * ConstantUtf8.
-     */
-    public ConstantClass(int name_index) {
         super(Constants.CONSTANT_Class);
-        this.name_index = name_index;
+        this.name_index = file.readUnsignedShort();
     }
 
 

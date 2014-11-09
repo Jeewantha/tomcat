@@ -106,6 +106,7 @@ public class RealmRuleSet extends RuleSetBase {
                                     "addRealm",
                                     "org.apache.catalina.Realm");
             }
+            digester.addRuleSet(new CredentialHandlerRuleSet(pattern + "/"));
         }
     }
 }

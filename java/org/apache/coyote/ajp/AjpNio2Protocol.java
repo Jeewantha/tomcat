@@ -27,7 +27,6 @@ import org.apache.tomcat.util.net.Nio2Channel;
 import org.apache.tomcat.util.net.Nio2Endpoint;
 import org.apache.tomcat.util.net.Nio2Endpoint.Handler;
 import org.apache.tomcat.util.net.SSLImplementation;
-import org.apache.tomcat.util.net.SocketStatus;
 import org.apache.tomcat.util.net.SocketWrapper;
 
 
@@ -144,10 +143,7 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
         @Override
         protected AjpNio2Processor createProcessor() {
             AjpNio2Processor processor = new AjpNio2Processor(proto.packetSize, (Nio2Endpoint) proto.endpoint);
-            processor.setAdapter(proto.getAdapter());
-            processor.setTomcatAuthentication(proto.tomcatAuthentication);
-            processor.setRequiredSecret(proto.requiredSecret);
-            processor.setClientCertProvider(proto.getClientCertProvider());
+            proto.configureProcessor(processor);
             register(processor);
             return processor;
         }
@@ -159,7 +155,7 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
         @Override
         public void closeAll() {
             for (Nio2Channel channel : connections.keySet()) {
-                ((Nio2Endpoint) proto.endpoint).closeSocket(channel.getSocket(), SocketStatus.STOP);
+                ((Nio2Endpoint) proto.endpoint).closeSocket(channel.getSocket());
             }
         }
     }

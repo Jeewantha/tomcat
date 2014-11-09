@@ -17,6 +17,7 @@
 package org.apache.coyote.http11;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.ReadPendingException;
 
 import javax.net.ssl.SSLEngine;
@@ -118,7 +119,11 @@ public class Http11Nio2Protocol extends AbstractHttp11JsseProtocol<Nio2Channel> 
 
     @Override
     protected String getNamePrefix() {
-        return ("http-nio2");
+        if (isSSLEnabled()) {
+            return ("https-nio2");
+        } else {
+            return ("http-nio2");
+        }
     }
 
 
@@ -235,7 +240,6 @@ public class Http11Nio2Protocol extends AbstractHttp11JsseProtocol<Nio2Channel> 
                 }
             } else {
                 // Either:
-                //  - this is comet request
                 //  - this is an upgraded connection
                 //  - the request line/headers have not been completely
                 //    read
@@ -250,31 +254,18 @@ public class Http11Nio2Protocol extends AbstractHttp11JsseProtocol<Nio2Channel> 
                     proto.getMaxHttpHeaderSize(), (Nio2Endpoint) proto.endpoint,
                     proto.getMaxTrailerSize(), proto.getMaxExtensionSize(),
                     proto.getMaxSwallowSize());
-            processor.setAdapter(proto.getAdapter());
-            processor.setMaxKeepAliveRequests(proto.getMaxKeepAliveRequests());
-            processor.setKeepAliveTimeout(proto.getKeepAliveTimeout());
-            processor.setConnectionUploadTimeout(
-                    proto.getConnectionUploadTimeout());
-            processor.setDisableUploadTimeout(proto.getDisableUploadTimeout());
-            processor.setCompressionMinSize(proto.getCompressionMinSize());
-            processor.setCompression(proto.getCompression());
-            processor.setNoCompressionUserAgents(proto.getNoCompressionUserAgents());
-            processor.setCompressableMimeTypes(proto.getCompressableMimeTypes());
-            processor.setRestrictedUserAgents(proto.getRestrictedUserAgents());
-            processor.setSocketBuffer(proto.getSocketBuffer());
-            processor.setMaxSavePostSize(proto.getMaxSavePostSize());
-            processor.setServer(proto.getServer());
+            proto.configureProcessor(processor);
             register(processor);
             return processor;
         }
 
         @Override
         protected Processor<Nio2Channel> createUpgradeProcessor(
-                SocketWrapper<Nio2Channel> socket,
+                SocketWrapper<Nio2Channel> socket, ByteBuffer leftoverInput,
                 HttpUpgradeHandler httpUpgradeProcessor)
                 throws IOException {
-            return new Nio2Processor(proto.endpoint, socket, httpUpgradeProcessor,
-                    proto.getUpgradeAsyncWriteBufferSize());
+            return new Nio2Processor(proto.endpoint, socket, leftoverInput,
+                    httpUpgradeProcessor, proto.getUpgradeAsyncWriteBufferSize());
         }
 
         @Override
@@ -287,7 +278,7 @@ public class Http11Nio2Protocol extends AbstractHttp11JsseProtocol<Nio2Channel> 
         @Override
         public void closeAll() {
             for (Nio2Channel channel : connections.keySet()) {
-                ((Nio2Endpoint) proto.endpoint).closeSocket(channel.getSocket(), SocketStatus.STOP);
+                ((Nio2Endpoint) proto.endpoint).closeSocket(channel.getSocket());
             }
         }
     }

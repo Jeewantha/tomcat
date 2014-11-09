@@ -17,7 +17,7 @@
  */
 package org.apache.tomcat.util.bcel.classfile;
 
-import java.io.DataInputStream;
+import java.io.DataInput;
 import java.io.IOException;
 
 /**
@@ -26,13 +26,12 @@ import java.io.IOException;
  */
 public abstract class ElementValue
 {
-    protected int type;
+    protected final int type;
 
-    protected ConstantPool cpool;
+    protected final ConstantPool cpool;
 
 
-    protected ElementValue(int type, ConstantPool cpool)
-    {
+    ElementValue(int type, ConstantPool cpool) {
         this.type = type;
         this.cpool = cpool;
     }
@@ -65,7 +64,7 @@ public abstract class ElementValue
 
     public static final int PRIMITIVE_BOOLEAN = 'Z';
 
-    public static ElementValue readElementValue(DataInputStream dis,
+    public static ElementValue readElementValue(DataInput dis,
             ConstantPool cpool) throws IOException
     {
         byte type = dis.readByte();
@@ -106,7 +105,7 @@ public abstract class ElementValue
             return new ClassElementValue(CLASS, dis.readUnsignedShort(), cpool);
         case '@': // Annotation
             // TODO isRuntimeVisible
-            return new AnnotationElementValue(ANNOTATION, AnnotationEntry.read(
+            return new AnnotationElementValue(ANNOTATION, new AnnotationEntry(
                     dis, cpool), cpool);
         case '[': // Array
             int numArrayVals = dis.readUnsignedShort();
@@ -117,7 +116,7 @@ public abstract class ElementValue
             }
             return new ArrayElementValue(ARRAY, evalues, cpool);
         default:
-            throw new RuntimeException(
+            throw new ClassFormatException(
                     "Unexpected element value kind in annotation: " + type);
         }
     }

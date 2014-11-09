@@ -24,6 +24,8 @@ import static org.junit.Assert.fail;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
+import org.junit.rules.TestName;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -50,6 +52,12 @@ public abstract class LoggingBaseTest {
     private List<File> deleteOnTearDown = new ArrayList<>();
 
     /**
+     * Provides name of the currently executing test method.
+     */
+    @Rule
+    public final TestName testName = new TestName();
+
+    /*
      * Helper method that returns the directory where Tomcat build resides. It
      * is used to access resources that are part of default Tomcat deployment.
      * E.g. the examples webapp.
@@ -59,7 +67,7 @@ public abstract class LoggingBaseTest {
                 "output/build"));
     }
 
-    /**
+    /*
      * Helper method that returns the path of the temporary directory used by
      * the test runs. The directory is configured during {@link #setUp()}.
      *
@@ -104,6 +112,7 @@ public abstract class LoggingBaseTest {
 
         // Get log instance after logging has been configured
         log = LogFactory.getLog(getClass());
+        log.info("Starting test case [" + testName.getMethodName() + "]");
     }
 
     @After

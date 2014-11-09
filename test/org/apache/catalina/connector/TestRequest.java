@@ -255,7 +255,7 @@ public class TestRequest extends TomcatBaseTest {
 
     }
 
-    /**
+    /*
      * Test case for
      * <a href="https://issues.apache.org/bugzilla/show_bug.cgi?id=38113">bug
      * 38118</a>.
@@ -265,9 +265,8 @@ public class TestRequest extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         // Add the Servlet
         Tomcat.addServlet(ctx, "servlet", new EchoQueryStringServlet());
@@ -301,7 +300,7 @@ public class TestRequest extends TomcatBaseTest {
         }
     }
 
-    /**
+    /*
      * Test case for {@link Request#login(String, String)} and
      * {@link Request#logout()}.
      */
@@ -310,9 +309,8 @@ public class TestRequest extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         LoginConfig config = new LoginConfig();
         config.setAuthMethod("BASIC");
@@ -770,9 +768,8 @@ public class TestRequest extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx = tomcat.addContext(deployPath,
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext(deployPath, null);
 
         Tomcat.addServlet(ctx, "servlet", new Bug56501Servelet());
         ctx.addServletMapping("/*", "servlet");

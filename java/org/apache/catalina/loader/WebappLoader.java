@@ -92,7 +92,7 @@ public class WebappLoader extends LifecycleMBeanBase
     /**
      * The class loader being managed by this Loader component.
      */
-    private WebappClassLoader classLoader = null;
+    private WebappClassLoaderBase classLoader = null;
 
 
     /**
@@ -110,11 +110,10 @@ public class WebappLoader extends LifecycleMBeanBase
 
     /**
      * The Java class name of the ClassLoader implementation to be used.
-     * This class should extend WebappClassLoader, otherwise, a different
+     * This class should extend WebappClassLoaderBase, otherwise, a different
      * loader implementation must be used.
      */
-    private String loaderClass =
-        "org.apache.catalina.loader.WebappClassLoader";
+    private String loaderClass = WebappClassLoader.class.getName();
 
 
     /**
@@ -406,9 +405,9 @@ public class WebappLoader extends LifecycleMBeanBase
             if (!contextName.startsWith("/")) {
                 contextName = "/" + contextName;
             }
-            ObjectName cloname = new ObjectName(context.getDomain() +
-                    ":type=WebappClassLoader,host=" + context.getParent().getName() +
-                    ",context=" + contextName);
+            ObjectName cloname = new ObjectName(context.getDomain() + ":type=" +
+                    classLoader.getClass().getSimpleName() + ",host=" +
+                    context.getParent().getName() + ",context=" + contextName);
             Registry.getRegistry(null, null)
                 .registerComponent(classLoader, cloname, null);
 
@@ -442,27 +441,29 @@ public class WebappLoader extends LifecycleMBeanBase
         ServletContext servletContext = context.getServletContext();
         servletContext.removeAttribute(Globals.CLASS_PATH_ATTR);
 
-        // Throw away our current class loader
+        // Throw away our current class loader if any
         if (classLoader != null) {
             try {
                 classLoader.stop();
             } finally {
                 classLoader.destroy();
             }
+
+            // classLoader must be non-null to have been registered
+            try {
+                String contextName = context.getName();
+                if (!contextName.startsWith("/")) {
+                    contextName = "/" + contextName;
+                }
+                ObjectName cloname = new ObjectName(context.getDomain() + ":type=" +
+                        classLoader.getClass().getSimpleName() + ",host=" +
+                        context.getParent().getName() + ",context=" + contextName);
+                Registry.getRegistry(null, null).unregisterComponent(cloname);
+            } catch (Exception e) {
+                log.error("LifecycleException ", e);
+            }
         }
 
-        try {
-            String contextName = context.getName();
-            if (!contextName.startsWith("/")) {
-                contextName = "/" + contextName;
-            }
-            ObjectName cloname = new ObjectName(context.getDomain() +
-                    ":type=WebappClassLoader,host=" + context.getParent().getName() +
-                    ",context=" + contextName);
-            Registry.getRegistry(null, null).unregisterComponent(cloname);
-        } catch (Exception e) {
-            log.error("LifecycleException ", e);
-        }
 
         classLoader = null;
     }
@@ -501,11 +502,11 @@ public class WebappLoader extends LifecycleMBeanBase
     /**
      * Create associated classLoader.
      */
-    private WebappClassLoader createClassLoader()
+    private WebappClassLoaderBase createClassLoader()
         throws Exception {
 
         Class<?> clazz = Class.forName(loaderClass);
-        WebappClassLoader classLoader = null;
+        WebappClassLoaderBase classLoader = null;
 
         if (parentClassLoader == null) {
             parentClassLoader = context.getParentClassLoader();
@@ -513,7 +514,7 @@ public class WebappLoader extends LifecycleMBeanBase
         Class<?>[] argTypes = { ClassLoader.class };
         Object[] args = { parentClassLoader };
         Constructor<?> constr = clazz.getConstructor(argTypes);
-        classLoader = (WebappClassLoader) constr.newInstance(args);
+        classLoader = (WebappClassLoaderBase) constr.newInstance(args);
 
         return classLoader;
     }
