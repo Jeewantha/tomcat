@@ -16,6 +16,8 @@
  */
 package org.apache.tomcat.util.net;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -23,11 +25,14 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
-public class SocketWrapper<E> {
+public abstract class SocketWrapperBase<E> {
 
     private volatile E socket;
+    private final AbstractEndpoint<E> endpoint;
 
     private volatile long lastAccess = System.currentTimeMillis();
+    private volatile long lastAsyncStart = 0;
+    private volatile long asyncTimeout = -1;
     private long timeout = -1;
     private boolean error = false;
     private volatile int keepAliveLeft = 100;
@@ -64,8 +69,9 @@ public class SocketWrapper<E> {
 
     private Set<DispatchType> dispatches = new CopyOnWriteArraySet<>();
 
-    public SocketWrapper(E socket) {
+    public SocketWrapperBase(E socket, AbstractEndpoint<E> endpoint) {
         this.socket = socket;
+        this.endpoint = endpoint;
         ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
         this.blockingStatusReadLock = lock.readLock();
         this.blockingStatusWriteLock = lock.writeLock();
@@ -75,23 +81,53 @@ public class SocketWrapper<E> {
         return socket;
     }
 
+    public AbstractEndpoint<E> getEndpoint() {
+        return endpoint;
+    }
+
     public boolean isAsync() { return async; }
-    public void setAsync(boolean async) { this.async = async; }
+    /**
+     * Sets the async flag for this connection. If this call causes the
+     * connection to transition from non-async to async then the lastAsyncStart
+     * property will be set using the current time. This property is used as the
+     * start time when calculating the async timeout. As per the Servlet spec
+     * the async timeout applies once the dispatch where startAsync() was called
+     * has returned to the container (which is when this method is currently
+     * called).
+     *
+     * @param async The new value of for the async flag
+     */
+    public void setAsync(boolean async) {
+        if (!this.async && async) {
+            lastAsyncStart = System.currentTimeMillis();
+        }
+        this.async = async;
+    }
+    /**
+     * Obtain the time that this connection last transitioned to async
+     * processing.
+     *
+     * @return The time (as returned by {@link System#currentTimeMillis()}) that
+     *         this connection last transitioned to async
+     */
+    public long getLastAsyncStart() {
+       return lastAsyncStart;
+    }
+    public void setAsyncTimeout(long timeout) {
+        asyncTimeout = timeout;
+    }
+    public long getAsyncTimeout() {
+        return asyncTimeout;
+    }
     public boolean isUpgraded() { return upgraded; }
     public void setUpgraded(boolean upgraded) { this.upgraded = upgraded; }
     public boolean isSecure() { return secure; }
     public void setSecure(boolean secure) { this.secure = secure; }
     public long getLastAccess() { return lastAccess; }
     public void access() {
-        // Async timeouts are based on the time between the call to startAsync()
-        // and complete() / dispatch() so don't update the last access time
-        // (that drives the timeout) on every read and write when using async
-        // processing.
-        if (!isAsync()) {
-            access(System.currentTimeMillis());
-        }
+        access(System.currentTimeMillis());
     }
-    public void access(long access) { lastAccess = access; }
+    void access(long access) { lastAccess = access; }
     public void setTimeout(long timeout) {this.timeout = timeout;}
     public long getTimeout() {return this.timeout;}
     public boolean getError() { return error; }
@@ -156,6 +192,8 @@ public class SocketWrapper<E> {
         error = false;
         keepAliveLeft = 100;
         lastAccess = System.currentTimeMillis();
+        lastAsyncStart = 0;
+        asyncTimeout = -1;
         localAddr = null;
         localName = null;
         localPort = -1;
@@ -177,4 +215,24 @@ public class SocketWrapper<E> {
     public String toString() {
         return super.toString() + ":" + String.valueOf(socket);
     }
+
+
+    public abstract int read(boolean block, byte[] b, int off, int len) throws IOException;
+    public abstract boolean isReady() throws IOException;
+    /**
+     * Return input that has been read to the input buffer for re-reading by the
+     * correct component. There are times when a component may read more data
+     * than it needs before it passes control to another component. One example
+     * of this is during HTTP upgrade. If an (arguably misbehaving client) sends
+     * data associated with the upgraded protocol before the HTTP upgrade
+     * completes, the HTTP handler may read it. This method provides a way for
+     * that data to be returned so it can be processed by the correct component.
+     *
+     * @param input The input to return to the input buffer.
+     */
+    public abstract void unRead(ByteBuffer input);
+    public abstract void close() throws IOException;
+
+    public abstract int write(boolean block, byte[] b, int off, int len) throws IOException;
+    public abstract void flush() throws IOException;
 }

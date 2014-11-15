@@ -54,7 +54,7 @@ import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.DispatchType;
 import org.apache.tomcat.util.net.SocketStatus;
-import org.apache.tomcat.util.net.SocketWrapper;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
 public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
@@ -792,8 +792,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
         }
         case ASYNC_START: {
             asyncStateMachine.asyncStart((AsyncContextCallback) param);
-            // Async time out is based on SocketWrapper access time
-            getSocketWrapper().access();
             break;
         }
         case ASYNC_DISPATCHED: {
@@ -848,9 +846,8 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             if (param == null || socketWrapper == null) {
                 return;
             }
-            long timeout = ((Long)param).longValue();
-            // If we are not piggy backing on a worker thread, set the timeout
-            socketWrapper.setTimeout(timeout);
+            long timeout = ((Long) param).longValue();
+            socketWrapper.setAsyncTimeout(timeout);
             break;
         }
         case ASYNC_DISPATCH: {
@@ -897,7 +894,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             break;
         }
         case DISPATCH_EXECUTE: {
-            SocketWrapper<S> wrapper = socketWrapper;
+            SocketWrapperBase<S> wrapper = socketWrapper;
             if (wrapper != null) {
                 getEndpoint().executeNonBlockingDispatches(wrapper);
             }
@@ -958,7 +955,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
      * @throws IOException error during an I/O operation
      */
     @Override
-    public SocketState process(SocketWrapper<S> socketWrapper)
+    public SocketState process(SocketWrapperBase<S> socketWrapper)
         throws IOException {
         RequestInfo rp = request.getRequestProcessor();
         rp.setStage(org.apache.coyote.Constants.STAGE_PARSE);
@@ -1766,7 +1763,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
      * @return true if the keep-alive loop should be broken
      */
     protected abstract boolean breakKeepAliveLoop(
-            SocketWrapper<S> socketWrapper);
+            SocketWrapperBase<S> socketWrapper);
 
 
     @Override

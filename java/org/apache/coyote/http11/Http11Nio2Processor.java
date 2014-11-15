@@ -33,7 +33,7 @@ import org.apache.tomcat.util.net.Nio2Endpoint;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SecureNio2Channel;
 import org.apache.tomcat.util.net.SocketStatus;
-import org.apache.tomcat.util.net.SocketWrapper;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 
 
 /**
@@ -155,7 +155,7 @@ public class Http11Nio2Processor extends AbstractHttp11Processor<Nio2Channel> {
         // Check to see if we have read any of the request line yet
         if (((InternalNio2InputBuffer)
                 inputBuffer).getParsingRequestLinePhase() < 1) {
-            if (socketWrapper.getLastAccess() > -1 || keptAlive) {
+            if (keptAlive) {
                 // Haven't read the request line and have previously processed a
                 // request. Must be keep-alive. Make sure poller uses keepAlive.
                 socketWrapper.setTimeout(endpoint.getKeepAliveTimeout());
@@ -190,7 +190,7 @@ public class Http11Nio2Processor extends AbstractHttp11Processor<Nio2Channel> {
 
     @Override
     protected boolean breakKeepAliveLoop(
-            SocketWrapper<Nio2Channel> socketWrapper) {
+            SocketWrapperBase<Nio2Channel> socketWrapper) {
         openSocket = keepAlive;
         // Do sendfile as needed: add socket to sendfile and end
         if (sendfileData != null && !getErrorState().isError()) {

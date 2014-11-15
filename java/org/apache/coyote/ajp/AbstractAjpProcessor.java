@@ -53,7 +53,7 @@ import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.DispatchType;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SocketStatus;
-import org.apache.tomcat.util.net.SocketWrapper;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -518,8 +518,6 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         }
         case ASYNC_START: {
             asyncStateMachine.asyncStart((AsyncContextCallback) param);
-            // Async time out is based on SocketWrapper access time
-            getSocketWrapper().access();
             break;
         }
         case ASYNC_COMPLETE: {
@@ -542,7 +540,7 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         case ASYNC_SETTIMEOUT: {
             if (param == null) return;
             long timeout = ((Long)param).longValue();
-            socketWrapper.setTimeout(timeout);
+            socketWrapper.setAsyncTimeout(timeout);
             break;
         }
         case ASYNC_TIMEOUT: {
@@ -680,7 +678,6 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
             if(!getAdapter().asyncDispatch(request, response, status)) {
                 setErrorState(ErrorState.CLOSE_NOW, null);
             }
-            resetTimeouts();
         } catch (InterruptedIOException e) {
             setErrorState(ErrorState.CLOSE_NOW, e);
         } catch (Throwable t) {
@@ -699,6 +696,10 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
                 return SocketState.LONG;
             }
         } else {
+            // Set keep alive timeout for next request if enabled
+            if (keepAliveTimeout > 0) {
+                socketWrapper.setTimeout(keepAliveTimeout);
+            }
             request.updateCounters();
             if (getErrorState().isError()) {
                 return SocketState.CLOSED;
@@ -716,7 +717,7 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
      * @throws IOException error during an I/O operation
      */
     @Override
-    public SocketState process(SocketWrapper<S> socket) throws IOException {
+    public SocketState process(SocketWrapperBase<S> socket) throws IOException {
 
         RequestInfo rp = request.getRequestProcessor();
         rp.setStage(org.apache.coyote.Constants.STAGE_PARSE);
@@ -740,7 +741,7 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
                 }
                 // Set back timeout if keep alive timeout is enabled
                 if (keepAliveTimeout > 0) {
-                    setTimeout(socketWrapper, soTimeout);
+                    socketWrapper.setTimeout(soTimeout);
                 }
                 // Check message type, process right away and break if
                 // not regular request processing
@@ -843,9 +844,9 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
             request.updateCounters();
 
             rp.setStage(org.apache.coyote.Constants.STAGE_KEEPALIVE);
-            // Set keep alive timeout if enabled
+            // Set keep alive timeout for next request if enabled
             if (keepAliveTimeout > 0) {
-                setTimeout(socketWrapper, keepAliveTimeout);
+                socketWrapper.setTimeout(keepAliveTimeout);
             }
 
             recycle(false);
@@ -921,24 +922,9 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
     // ------------------------------------------------------ Protected Methods
 
-    // Methods called by asyncDispatch
-    /**
-     * Provides a mechanism for those connector implementations (currently only
-     * NIO) that need to reset timeouts from Async timeouts to standard HTTP
-     * timeouts once async processing completes.
-     */
-    protected abstract void resetTimeouts();
-
-    // Methods called by prepareResponse()
-    protected abstract int output(byte[] src, int offset, int length,
-            boolean block) throws IOException;
-
     // Methods called by process()
-    protected abstract void setupSocket(SocketWrapper<S> socketWrapper)
+    protected abstract void setupSocket(SocketWrapperBase<S> socketWrapper)
             throws IOException;
-
-    protected abstract void setTimeout(SocketWrapper<S> socketWrapper,
-            int timeout) throws IOException;
 
     // Methods used by readMessage
     /**
@@ -1544,6 +1530,15 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         } else {
             output(endMessageArray, 0, endMessageArray.length, true);
         }
+    }
+
+
+    private int output(byte[] src, int offset, int length,
+            boolean block) throws IOException {
+        if (socketWrapper == null || socketWrapper.getSocket() == null)
+            return -1;
+
+        return socketWrapper.write(block, src, offset, length);
     }
 
 

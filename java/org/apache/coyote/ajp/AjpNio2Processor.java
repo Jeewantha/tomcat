@@ -18,7 +18,6 @@ package org.apache.coyote.ajp;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.CompletionHandler;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,8 +26,7 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.Nio2Channel;
 import org.apache.tomcat.util.net.Nio2Endpoint;
-import org.apache.tomcat.util.net.SocketStatus;
-import org.apache.tomcat.util.net.SocketWrapper;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 
 /**
  * Processes AJP requests using NIO2.
@@ -42,54 +40,18 @@ public class AjpNio2Processor extends AbstractAjpProcessor<Nio2Channel> {
     }
 
     /**
-     * The completion handler used for asynchronous write operations
-     */
-    protected CompletionHandler<Integer, SocketWrapper<Nio2Channel>> writeCompletionHandler;
-
-    /**
      * Flipped flag for read buffer.
      */
     protected boolean flipped = false;
 
-    /**
-     * Write pending flag.
-     */
-    protected volatile boolean writePending = false;
-
     public AjpNio2Processor(int packetSize, Nio2Endpoint endpoint0) {
         super(packetSize, endpoint0);
         response.setOutputBuffer(new SocketOutputBuffer());
-        this.writeCompletionHandler = new CompletionHandler<Integer, SocketWrapper<Nio2Channel>>() {
-            @Override
-            public void completed(Integer nBytes, SocketWrapper<Nio2Channel> attachment) {
-                boolean notify = false;
-                synchronized (writeCompletionHandler) {
-                    if (nBytes.intValue() < 0) {
-                        failed(new IOException(sm.getString("ajpprocessor.failedsend")), attachment);
-                        return;
-                    }
-                    writePending = false;
-                    if (!Nio2Endpoint.isInline()) {
-                        notify = true;
-                    }
-                }
-                if (notify) {
-                    endpoint.processSocket(attachment, SocketStatus.OPEN_WRITE, false);
-                }
-            }
-            @Override
-            public void failed(Throwable exc, SocketWrapper<Nio2Channel> attachment) {
-                attachment.setError(true);
-                writePending = false;
-                endpoint.processSocket(attachment, SocketStatus.DISCONNECT, true);
-            }
-        };
     }
 
     @Override
     public void recycle(boolean socketClosing) {
         super.recycle(socketClosing);
-        writePending = false;
         flipped = false;
     }
 
@@ -99,78 +61,11 @@ public class AjpNio2Processor extends AbstractAjpProcessor<Nio2Channel> {
         // already be pending
     }
 
-    @Override
-    protected void resetTimeouts() {
-        // The NIO connector uses the timeout configured on the wrapper in the
-        // poller. Therefore, it needs to be reset once asycn processing has
-        // finished.
-        if (!getErrorState().isError() && socketWrapper != null &&
-                asyncStateMachine.isAsyncDispatching()) {
-            long soTimeout = endpoint.getSoTimeout();
-
-            //reset the timeout
-            if (keepAliveTimeout > 0) {
-                socketWrapper.setTimeout(keepAliveTimeout);
-            } else {
-                socketWrapper.setTimeout(soTimeout);
-            }
-        }
-
-    }
-
 
     @Override
-    protected void setupSocket(SocketWrapper<Nio2Channel> socketWrapper)
+    protected void setupSocket(SocketWrapperBase<Nio2Channel> socketWrapper)
             throws IOException {
         // NO-OP
-    }
-
-
-    @Override
-    protected void setTimeout(SocketWrapper<Nio2Channel> socketWrapper,
-            int timeout) throws IOException {
-        socketWrapper.setTimeout(timeout);
-    }
-
-
-    @Override
-    protected int output(byte[] src, int offset, int length, boolean block)
-            throws IOException {
-
-        if (socketWrapper == null || socketWrapper.getSocket() == null)
-            return -1;
-
-        ByteBuffer writeBuffer =
-                socketWrapper.getSocket().getBufHandler().getWriteBuffer();
-
-        int result = 0;
-        if (block) {
-            writeBuffer.clear();
-            writeBuffer.put(src, offset, length);
-            writeBuffer.flip();
-            try {
-                result = socketWrapper.getSocket().write(writeBuffer)
-                        .get(socketWrapper.getTimeout(), TimeUnit.MILLISECONDS).intValue();
-            } catch (InterruptedException | ExecutionException
-                    | TimeoutException e) {
-                throw new IOException(sm.getString("ajpprocessor.failedsend"), e);
-            }
-        } else {
-            synchronized (writeCompletionHandler) {
-                if (!writePending) {
-                    writeBuffer.clear();
-                    writeBuffer.put(src, offset, length);
-                    writeBuffer.flip();
-                    writePending = true;
-                    Nio2Endpoint.startInline();
-                    socketWrapper.getSocket().write(writeBuffer, socketWrapper.getTimeout(),
-                            TimeUnit.MILLISECONDS, socketWrapper, writeCompletionHandler);
-                    Nio2Endpoint.endInline();
-                    result = length;
-                }
-            }
-        }
-        return result;
     }
 
 

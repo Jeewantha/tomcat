@@ -27,7 +27,7 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.NioChannel;
 import org.apache.tomcat.util.net.NioEndpoint;
 import org.apache.tomcat.util.net.NioSelectorPool;
-import org.apache.tomcat.util.net.SocketWrapper;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 
 /**
  * Processes AJP requests using NIO.
@@ -60,8 +60,8 @@ public class AjpNioProcessor extends AbstractAjpProcessor<NioChannel> {
     @Override
     protected void registerForEvent(boolean read, boolean write) {
         final NioChannel socket = socketWrapper.getSocket();
-        final NioEndpoint.KeyAttachment attach =
-                (NioEndpoint.KeyAttachment) socket.getAttachment(false);
+        final NioEndpoint.NioSocketWrapper attach =
+                (NioEndpoint.NioSocketWrapper) socket.getAttachment(false);
         if (attach == null) {
             return;
         }
@@ -78,72 +78,9 @@ public class AjpNioProcessor extends AbstractAjpProcessor<NioChannel> {
 
 
     @Override
-    protected void resetTimeouts() {
-        // The NIO connector uses the timeout configured on the wrapper in the
-        // poller. Therefore, it needs to be reset once asycn processing has
-        // finished.
-        final NioEndpoint.KeyAttachment attach =
-                (NioEndpoint.KeyAttachment)socketWrapper.getSocket().getAttachment(false);
-        if (!getErrorState().isError() && attach != null &&
-                asyncStateMachine.isAsyncDispatching()) {
-            long soTimeout = endpoint.getSoTimeout();
-
-            //reset the timeout
-            if (keepAliveTimeout > 0) {
-                attach.setTimeout(keepAliveTimeout);
-            } else {
-                attach.setTimeout(soTimeout);
-            }
-        }
-
-    }
-
-
-    @Override
-    protected void setupSocket(SocketWrapper<NioChannel> socketWrapper)
+    protected void setupSocket(SocketWrapperBase<NioChannel> socketWrapper)
             throws IOException {
         // NO-OP
-    }
-
-
-    @Override
-    protected void setTimeout(SocketWrapper<NioChannel> socketWrapper,
-            int timeout) throws IOException {
-        socketWrapper.setTimeout(timeout);
-    }
-
-
-    @Override
-    protected int output(byte[] src, int offset, int length, boolean block)
-            throws IOException {
-
-        NioEndpoint.KeyAttachment att =
-                (NioEndpoint.KeyAttachment) socketWrapper.getSocket().getAttachment(false);
-        if ( att == null ) throw new IOException("Key must be cancelled");
-
-        ByteBuffer writeBuffer =
-                socketWrapper.getSocket().getBufHandler().getWriteBuffer();
-
-        writeBuffer.put(src, offset, length);
-
-        writeBuffer.flip();
-
-        long writeTimeout = att.getWriteTimeout();
-        Selector selector = null;
-        try {
-            selector = pool.get();
-        } catch (IOException x) {
-            //ignore
-        }
-        try {
-            return pool.write(writeBuffer, socketWrapper.getSocket(), selector,
-                    writeTimeout, block);
-        } finally {
-            writeBuffer.clear();
-            if (selector != null) {
-                pool.put(selector);
-            }
-        }
     }
 
 
@@ -185,8 +122,8 @@ public class AjpNioProcessor extends AbstractAjpProcessor<NioChannel> {
                 // Ignore
             }
             try {
-                NioEndpoint.KeyAttachment att =
-                        (NioEndpoint.KeyAttachment) socketWrapper.getSocket().getAttachment(false);
+                NioEndpoint.NioSocketWrapper att =
+                        (NioEndpoint.NioSocketWrapper) socketWrapper.getSocket().getAttachment(false);
                 if ( att == null ) throw new IOException("Key must be cancelled.");
                 nRead = pool.read(readBuffer, socketWrapper.getSocket(),
                         selector, att.getTimeout());

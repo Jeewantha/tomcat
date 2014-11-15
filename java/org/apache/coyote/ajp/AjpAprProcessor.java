@@ -27,7 +27,7 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.jni.Socket;
 import org.apache.tomcat.jni.Status;
 import org.apache.tomcat.util.net.AprEndpoint;
-import org.apache.tomcat.util.net.SocketWrapper;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 
 /**
  * Processes AJP requests.
@@ -57,7 +57,6 @@ public class AjpAprProcessor extends AbstractAjpProcessor<Long> {
         // Allocate input and output buffers
         inputBuffer = ByteBuffer.allocateDirect(packetSize * 2);
         inputBuffer.limit(0);
-        outputBuffer = ByteBuffer.allocateDirect(packetSize * 2);
     }
 
 
@@ -67,113 +66,17 @@ public class AjpAprProcessor extends AbstractAjpProcessor<Long> {
     protected final ByteBuffer inputBuffer;
 
 
-    /**
-     * Direct buffer used for output.
-     */
-    protected final ByteBuffer outputBuffer;
-
-
     @Override
     protected void registerForEvent(boolean read, boolean write) {
         ((AprEndpoint) endpoint).getPoller().add(
                 socketWrapper.getSocket().longValue(), -1, read, write);
     }
 
-    @Override
-    protected void resetTimeouts() {
-        // NO-OP. The AJP APR/native connector only uses the timeout value on
-        //        time SocketWrapper for async timeouts.
-    }
-
 
     @Override
-    protected void setupSocket(SocketWrapper<Long> socketWrapper) {
+    protected void setupSocket(SocketWrapperBase<Long> socketWrapper) {
         long socketRef = socketWrapper.getSocket().longValue();
         Socket.setrbb(socketRef, inputBuffer);
-        Socket.setsbb(socketRef, outputBuffer);
-    }
-
-
-    @Override
-    protected void setTimeout(SocketWrapper<Long> socketWrapper,
-            int timeout) throws IOException {
-        Socket.timeoutSet(
-                socketWrapper.getSocket().longValue(), timeout * 1000);
-    }
-
-
-    @Override
-    protected int output(byte[] src, int offset, int length, boolean block)
-            throws IOException {
-
-        if (length == 0) {
-            return 0;
-        }
-
-        outputBuffer.put(src, offset, length);
-
-        int result = -1;
-
-        if (socketWrapper.getSocket().longValue() != 0) {
-            result = writeSocket(0, outputBuffer.position(), block);
-            if (Status.APR_STATUS_IS_EAGAIN(-result)) {
-                result = 0;
-            }
-            if (result < 0) {
-                // There are no re-tries so clear the buffer to prevent a
-                // possible overflow if the buffer is used again. BZ53119.
-                outputBuffer.clear();
-                throw new IOException(sm.getString("ajpprocessor.failedsend"));
-            }
-        }
-        outputBuffer.clear();
-
-        return result;
-    }
-
-
-    private int writeSocket(int pos, int len, boolean block) {
-
-        Lock readLock = socketWrapper.getBlockingStatusReadLock();
-        WriteLock writeLock = socketWrapper.getBlockingStatusWriteLock();
-        long socket = socketWrapper.getSocket().longValue();
-
-        boolean writeDone = false;
-        int result = 0;
-        readLock.lock();
-        try {
-            if (socketWrapper.getBlockingStatus() == block) {
-                result = Socket.sendbb(socket, pos, len);
-                writeDone = true;
-            }
-        } finally {
-            readLock.unlock();
-        }
-
-        if (!writeDone) {
-            writeLock.lock();
-            try {
-                socketWrapper.setBlockingStatus(block);
-                // Set the current settings for this socket
-                Socket.optSet(socket, Socket.APR_SO_NONBLOCK, (block ? 0 : 1));
-                // Downgrade the lock
-                readLock.lock();
-                try {
-                    writeLock.unlock();
-                    result = Socket.sendbb(socket, pos, len);
-                } finally {
-                    readLock.unlock();
-                }
-            } finally {
-                // Should have been released above but may not have been on some
-                // exception paths
-                if (writeLock.isHeldByCurrentThread()) {
-                    writeLock.unlock();
-                }
-            }
-        }
-
-        return result;
     }
 
 
@@ -283,7 +186,5 @@ public class AjpAprProcessor extends AbstractAjpProcessor<Long> {
 
         inputBuffer.clear();
         inputBuffer.limit(0);
-        outputBuffer.clear();
-
     }
 }
