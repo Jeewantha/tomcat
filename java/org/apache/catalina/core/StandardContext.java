@@ -168,31 +168,7 @@ public class StandardContext extends ContainerBase
     }
 
 
-    // ----------------------------------------------------- Class Variables
-
-
-    /**
-     * Array containing the safe characters set.
-     */
-    protected static URLEncoder urlEncoder;
-
-
-    /**
-     * GMT timezone - all HTTP dates are on GMT
-     */
-    static {
-        urlEncoder = new URLEncoder();
-        urlEncoder.addSafeCharacter('~');
-        urlEncoder.addSafeCharacter('-');
-        urlEncoder.addSafeCharacter('_');
-        urlEncoder.addSafeCharacter('.');
-        urlEncoder.addSafeCharacter('*');
-        urlEncoder.addSafeCharacter('/');
-    }
-
-
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * Allow multipart/form-data requests to be parsed even when the
@@ -1001,18 +977,15 @@ public class StandardContext extends ContainerBase
 
     @Override
     public Authenticator getAuthenticator() {
-        if (this instanceof Authenticator)
-            return (Authenticator) this;
-
         Pipeline pipeline = getPipeline();
         if (pipeline != null) {
             Valve basic = pipeline.getBasic();
-            if ((basic != null) && (basic instanceof Authenticator))
+            if (basic instanceof Authenticator)
                 return (Authenticator) basic;
-            Valve valves[] = pipeline.getValves();
-            for (int i = 0; i < valves.length; i++) {
-                if (valves[i] instanceof Authenticator)
-                    return (Authenticator) valves[i];
+            for (Valve valve : pipeline.getValves()) {
+                if (valve instanceof Authenticator) {
+                    return (Authenticator) valve;
+                }
             }
         }
         return null;
@@ -1162,27 +1135,12 @@ public class StandardContext extends ContainerBase
     }
 
 
-    /**
-     * Return the set of initialized application event listener objects,
-     * in the order they were specified in the web application deployment
-     * descriptor, for this application.
-     *
-     * @exception IllegalStateException if this method is called before
-     *  this application has started, or after it has been stopped
-     */
     @Override
     public Object[] getApplicationEventListeners() {
         return (applicationEventListenersObjects);
     }
 
 
-    /**
-     * Store the set of initialized application event listener objects,
-     * in the order they were specified in the web application deployment
-     * descriptor, for this application.
-     *
-     * @param listeners The set of instantiated listener objects.
-     */
     @Override
     public void setApplicationEventListeners(Object listeners[]) {
         applicationEventListenersObjects = listeners;
@@ -1202,14 +1160,6 @@ public class StandardContext extends ContainerBase
     }
 
 
-    /**
-     * Return the set of initialized application lifecycle listener objects,
-     * in the order they were specified in the web application deployment
-     * descriptor, for this application.
-     *
-     * @exception IllegalStateException if this method is called before
-     *  this application has started, or after it has been stopped
-     */
     @Override
     public Object[] getApplicationLifecycleListeners() {
         return (applicationLifecycleListenersObjects);
@@ -1312,37 +1262,21 @@ public class StandardContext extends ContainerBase
     }
 
 
-    /**
-     * Return the URL of the XML descriptor for this context.
-     */
     @Override
     public URL getConfigFile() {
-
-        return (this.configFile);
-
+        return this.configFile;
     }
 
 
-    /**
-     * Set the URL of the XML descriptor for this context.
-     *
-     * @param configFile The URL of the XML descriptor for this context.
-     */
     @Override
     public void setConfigFile(URL configFile) {
-
         this.configFile = configFile;
     }
 
 
-    /**
-     * Return the "correctly configured" flag for this Context.
-     */
     @Override
     public boolean getConfigured() {
-
-        return (this.configured);
-
+        return this.configured;
     }
 
 
@@ -1365,14 +1299,9 @@ public class StandardContext extends ContainerBase
     }
 
 
-    /**
-     * Return the "use cookies for session ids" flag.
-     */
     @Override
     public boolean getCookies() {
-
-        return (this.cookies);
-
+        return this.cookies;
     }
 
 
@@ -1519,14 +1448,9 @@ public class StandardContext extends ContainerBase
     }
 
 
-    /**
-     * Return the "allow crossing servlet contexts" flag.
-     */
     @Override
     public boolean getCrossContext() {
-
-        return (this.crossContext);
-
+        return this.crossContext;
     }
 
 
@@ -2008,14 +1932,25 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public void setPath(String path) {
-        if (path == null || (!path.equals("") && !path.startsWith("/"))) {
+        boolean invalid = false;
+        if (path == null || path.equals("/")) {
+            invalid = true;
+            this.path = "";
+        } else if ("".equals(path) || path.startsWith("/")) {
+            this.path = path;
+        } else {
+            invalid = true;
             this.path = "/" + path;
+        }
+        if (this.path.endsWith("/")) {
+            invalid = true;
+            this.path = this.path.substring(0, this.path.length() - 1);
+        }
+        if (invalid) {
             log.warn(sm.getString(
                     "standardContext.pathInvalid", path, this.path));
-        } else {
-            this.path = path;
         }
-        encodedPath = urlEncoder.encode(this.path);
+        encodedPath = URLEncoder.DEFAULT.encode(this.path);
         if (getName() == null) {
             setName(this.path);
         }
@@ -4943,11 +4878,12 @@ public class StandardContext extends ContainerBase
                 try {
                     wrapper.load();
                 } catch (ServletException e) {
-                    getLogger().error(sm.getString("standardWrapper.loadException",
-                                      getName()), StandardWrapper.getRootCause(e));
+                    getLogger().error(sm.getString("standardContext.loadOnStartup.loadException",
+                          getName(), wrapper.getName()), StandardWrapper.getRootCause(e));
                     // NOTE: load errors (including a servlet that throws
-                    // UnavailableException from tht init() method) are NOT
-                    // fatal to application startup, excepted if failDeploymentIfServletLoadedOnStartupFails is specified
+                    // UnavailableException from the init() method) are NOT
+                    // fatal to application startup
+                    // unless failCtxIfServletStartFails="true" is specified
                     if(getComputedFailCtxIfServletStartFails()) {
                         return false;
                     }
@@ -5060,8 +4996,9 @@ public class StandardContext extends ContainerBase
             if (ok) {
                 // Start our subordinate components, if any
                 Loader loader = getLoader();
-                if ((loader != null) && (loader instanceof Lifecycle))
+                if (loader instanceof Lifecycle) {
                     ((Lifecycle) loader).start();
+                }
 
                 // since the loader just started, the webapp classloader is now
                 // created.
@@ -5085,11 +5022,13 @@ public class StandardContext extends ContainerBase
                 getLogger();
 
                 Cluster cluster = getClusterInternal();
-                if ((cluster != null) && (cluster instanceof Lifecycle))
+                if (cluster instanceof Lifecycle) {
                     ((Lifecycle) cluster).start();
+                }
                 Realm realm = getRealmInternal();
-                if ((realm != null) && (realm instanceof Lifecycle))
+                if (realm instanceof Lifecycle) {
                     ((Lifecycle) realm).start();
+                }
 
                 // Notify our interested LifecycleListeners
                 fireLifecycleEvent(Lifecycle.CONFIGURE_START_EVENT, null);
@@ -5209,7 +5148,7 @@ public class StandardContext extends ContainerBase
             try {
                 // Start manager
                 Manager manager = getManager();
-                if ((manager != null) && (manager instanceof Lifecycle)) {
+                if (manager instanceof Lifecycle) {
                     ((Lifecycle) manager).start();
                 }
             } catch(Exception e) {
@@ -5404,8 +5343,7 @@ public class StandardContext extends ContainerBase
             filterStop();
 
             Manager manager = getManager();
-            if (manager != null && manager instanceof Lifecycle &&
-                    ((Lifecycle) manager).getState().isAvailable()) {
+            if (manager instanceof Lifecycle && ((Lifecycle) manager).getState().isAvailable()) {
                 ((Lifecycle) manager).stop();
             }
 
@@ -5440,15 +5378,15 @@ public class StandardContext extends ContainerBase
                 context.clearAttributes();
 
             Realm realm = getRealmInternal();
-            if ((realm != null) && (realm instanceof Lifecycle)) {
+            if (realm instanceof Lifecycle) {
                 ((Lifecycle) realm).stop();
             }
             Cluster cluster = getClusterInternal();
-            if ((cluster != null) && (cluster instanceof Lifecycle)) {
+            if (cluster instanceof Lifecycle) {
                 ((Lifecycle) cluster).stop();
             }
             Loader loader = getLoader();
-            if ((loader != null) && (loader instanceof Lifecycle)) {
+            if (loader instanceof Lifecycle) {
                 ((Lifecycle) loader).stop();
             }
 
@@ -5522,12 +5460,12 @@ public class StandardContext extends ContainerBase
         }
 
         Loader loader = getLoader();
-        if ((loader != null) && (loader instanceof Lifecycle)) {
+        if (loader instanceof Lifecycle) {
             ((Lifecycle) loader).destroy();
         }
 
         Manager manager = getManager();
-        if ((manager != null) && (manager instanceof Lifecycle)) {
+        if (manager instanceof Lifecycle) {
             ((Lifecycle) manager).destroy();
         }
 

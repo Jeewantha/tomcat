@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.naming.Binding;
 import javax.naming.NamingEnumeration;
@@ -53,13 +54,12 @@ import org.apache.catalina.Session;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.StandardHost;
-import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.startup.ExpandWar;
 import org.apache.catalina.util.ContextName;
-import org.apache.catalina.util.RequestUtil;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.tomcat.util.Diagnostics;
 import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.http.HttpMessages;
 import org.apache.tomcat.util.modeler.Registry;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -108,10 +108,13 @@ import org.apache.tomcat.util.res.StringManager;
  * <li><b>/expire?path=/xxx&amp;idle=mm</b> - Expire sessions
  *     for the context path <code>/xxx</code> which were idle for at
  *     least mm minutes.</li>
+ * <li><b>/sslConnectorCiphers</b> - Display diagnostic info on SSL/TLS ciphers
+ *     that are currently configured for each connector.
  * <li><b>/start?path=/xxx</b> - Start the web application attached to
  *     context path <code>/xxx</code> for this virtual host.</li>
  * <li><b>/stop?path=/xxx</b> - Stop the web application attached to
  *     context path <code>/xxx</code> for this virtual host.</li>
+ * <li><b>/threaddump</b> - Write a JVM thread dump.</li>
  * <li><b>/undeploy?path=/xxx</b> - Shutdown and remove the web application
  *     attached to context path <code>/xxx</code> for this virtual host,
  *     and remove the underlying WAR file or document base directory.
@@ -119,6 +122,12 @@ import org.apache.tomcat.util.res.StringManager;
  *     base is stored in the <code>appBase</code> directory of this host,
  *     typically as a result of being placed there via the <code>/deploy</code>
  *     command.</li>
+ * <li><b>/vminfo</b> - Write some VM info.</li>
+ * <li><b>/save</b> - Save the current server configuration to server.xml</li>
+ * <li><b>/save?path=/xxx</b> - Save the context configuration for the web
+ *     application deployed with path <code>/xxx</code> to an appropriately
+ *     named context.xml file in the <code>xmlBase</code> for the associated
+ *     Host.</li>
  * </ul>
  * <p>Use <code>path=/</code> for the ROOT context.</p>
  * <p>The syntax of the URL for a web application archive must conform to one
@@ -362,9 +371,9 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
         } else if (command.equals("/findleaks")) {
             findleaks(statusLine, writer, smClient);
         } else if (command.equals("/vminfo")) {
-            vmInfo(writer, request.getLocales());
+            vmInfo(writer, smClient, request.getLocales());
         } else if (command.equals("/threaddump")) {
-            threadDump(writer, request.getLocales());
+            threadDump(writer, smClient, request.getLocales());
         } else if (command.equals("/sslConnectorCiphers")) {
             sslConnectorCiphers(writer, smClient);
         } else {
@@ -535,8 +544,9 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
      *
      * @param writer
      */
-    protected void vmInfo(PrintWriter writer,
+    protected void vmInfo(PrintWriter writer, StringManager smClient,
             Enumeration<Locale> requestedLocales) {
+        writer.println(smClient.getString("managerServlet.vminfo"));
         writer.print(Diagnostics.getVMInfo(requestedLocales));
     }
 
@@ -546,8 +556,9 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
      *
      * @param writer
      */
-    protected void threadDump(PrintWriter writer,
+    protected void threadDump(PrintWriter writer, StringManager smClient,
             Enumeration<Locale> requestedLocales) {
+        writer.println(smClient.getString("managerServlet.threaddump"));
         writer.print(Diagnostics.getThreadDump(requestedLocales));
     }
 
@@ -569,22 +580,32 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
     /**
      * Store server configuration.
      *
-     * @param path Optional context path to save
+     * @param writer   Destination for any user message(s) during this operation
+     * @param path     Optional context path to save
+     * @param smClient i18n support for current client's locale
      */
-    protected synchronized void save(PrintWriter writer, String path,
-            StringManager smClient) {
+    protected synchronized void save(PrintWriter writer, String path, StringManager smClient) {
 
-        Server server = ((Engine)host.getParent()).getService().getServer();
+        ObjectName storeConfigOname;
+        try {
+            // Note: Hard-coded domain used since this object is per Server/JVM
+            storeConfigOname = new ObjectName("Catalina:type=StoreConfig");
+        } catch (MalformedObjectNameException e) {
+            // Should never happen. The name above is valid.
+            log(sm.getString("managerServlet.exception"), e);
+            writer.println(smClient.getString("managerServlet.exception", e.toString()));
+            return;
+        }
 
-        if (!(server instanceof StandardServer)) {
-            writer.println(smClient.getString("managerServlet.saveFail",
-                    server));
+        if (!mBeanServer.isRegistered(storeConfigOname)) {
+            writer.println(smClient.getString(
+                    "managerServlet.storeConfig.noMBean", storeConfigOname));
             return;
         }
 
         if ((path == null) || path.length() == 0 || !path.startsWith("/")) {
             try {
-                ((StandardServer) server).storeConfig();
+                mBeanServer.invoke(storeConfigOname, "storeConfig", null, null);
                 writer.println(smClient.getString("managerServlet.saved"));
             } catch (Exception e) {
                 log("managerServlet.storeConfig", e);
@@ -604,7 +625,9 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
                 return;
             }
             try {
-                ((StandardServer) server).storeContext(context);
+                mBeanServer.invoke(storeConfigOname, "store",
+                        new Object[] {context},
+                        new String [] { "java.lang.String"});
                 writer.println(smClient.getString("managerServlet.savedContext",
                         path));
             } catch (Exception e) {
@@ -614,7 +637,6 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
                 return;
             }
         }
-
     }
 
 
@@ -973,7 +995,7 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
             Context context = (Context) host.findChild(cn.getName());
             if (context == null) {
                 writer.println(smClient.getString("managerServlet.noContext",
-                        RequestUtil.filter(cn.getDisplayName())));
+                        HttpMessages.filter(cn.getDisplayName())));
                 return;
             }
             // It isn't possible for the manager to reload itself
@@ -1141,13 +1163,13 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
             Context context = (Context) host.findChild(cn.getName());
             if (context == null) {
                 writer.println(smClient.getString("managerServlet.noContext",
-                        RequestUtil.filter(displayPath)));
+                        HttpMessages.filter(displayPath)));
                 return;
             }
             Manager manager = context.getManager() ;
             if(manager == null) {
                 writer.println(smClient.getString("managerServlet.noManager",
-                        RequestUtil.filter(displayPath)));
+                        HttpMessages.filter(displayPath)));
                 return;
             }
             int maxCount = 60;
@@ -1170,7 +1192,7 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
                     "managerServlet.sessiondefaultmax",
                     "" + maxInactiveInterval));
             Session [] sessions = manager.findSessions();
-            int [] timeout = new int[maxCount];
+            int[] timeout = new int[maxCount + 1];
             int notimeout = 0;
             int expired = 0;
             for (int i = 0; i < sessions.length; i++) {
@@ -1183,7 +1205,7 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
                 if (time < 0)
                     notimeout++;
                 else if (time >= maxCount)
-                    timeout[maxCount-1]++;
+                    timeout[maxCount]++;
                 else
                     timeout[time]++;
             }
@@ -1197,6 +1219,12 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
                             "managerServlet.sessiontimeout",
                             "" + (i)*histoInterval + " - <" + (i+1)*histoInterval,
                             "" + timeout[i]));
+            }
+            if (timeout[maxCount] > 0) {
+                writer.println(smClient.getString(
+                        "managerServlet.sessiontimeout",
+                        ">=" + maxCount*histoInterval,
+                        "" + timeout[maxCount]));
             }
             if (notimeout > 0)
                 writer.println(smClient.getString(
@@ -1259,7 +1287,7 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
             Context context = (Context) host.findChild(cn.getName());
             if (context == null) {
                 writer.println(smClient.getString("managerServlet.noContext",
-                        RequestUtil.filter(displayPath)));
+                        HttpMessages.filter(displayPath)));
                 return;
             }
             context.start();
@@ -1304,7 +1332,7 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
             Context context = (Context) host.findChild(cn.getName());
             if (context == null) {
                 writer.println(smClient.getString("managerServlet.noContext",
-                        RequestUtil.filter(displayPath)));
+                        HttpMessages.filter(displayPath)));
                 return;
             }
             // It isn't possible for the manager to stop itself
@@ -1351,13 +1379,13 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
             Context context = (Context) host.findChild(name);
             if (context == null) {
                 writer.println(smClient.getString("managerServlet.noContext",
-                        RequestUtil.filter(displayPath)));
+                        HttpMessages.filter(displayPath)));
                 return;
             }
 
             if (!isDeployed(name)) {
                 writer.println(smClient.getString("managerServlet.notDeployed",
-                        RequestUtil.filter(displayPath)));
+                        HttpMessages.filter(displayPath)));
                 return;
             }
 
@@ -1550,7 +1578,7 @@ public class ManagerServlet extends HttpServlet implements ContainerServlet {
 
         String path = null;
         if (cn != null) {
-            path = RequestUtil.filter(cn.getPath());
+            path = HttpMessages.filter(cn.getPath());
         }
         writer.println(sm.getString("managerServlet.invalidPath", path));
         return false;

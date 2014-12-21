@@ -19,6 +19,7 @@ package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
 
+import org.apache.catalina.CredentialHandler;
 import org.apache.catalina.Realm;
 import org.apache.catalina.realm.CombinedRealm;
 import org.apache.juli.logging.Log;
@@ -80,6 +81,11 @@ public class RealmSF extends StoreFactoryBase {
             // Store nested <Realm> element
             Realm[] realms = combinedRealm.getNestedRealms();
             storeElementArray(aWriter, indent, realms);
+        }
+        // Store nested <CredentialHandler> element
+        CredentialHandler credentialHandler = ((Realm) aRealm).getCredentialHandler();
+        if (credentialHandler != null) {
+            storeElement(aWriter, indent, credentialHandler);
         }
     }
 

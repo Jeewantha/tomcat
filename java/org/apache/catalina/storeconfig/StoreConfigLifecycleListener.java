@@ -17,25 +17,28 @@
 package org.apache.catalina.storeconfig;
 
 import javax.management.DynamicMBean;
-import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
-import org.apache.catalina.core.StandardServer;
+import org.apache.catalina.Server;
 import org.apache.catalina.mbeans.MBeanUtils;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.modeler.ManagedBean;
 import org.apache.tomcat.util.modeler.Registry;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Load and Register StoreConfig MBean <i>Catalina:type=StoreConfig,resource="url"</i>
+ * Loads and registers a StoreConfig MBean with the name
+ * <i>Catalina:type=StoreConfig</i>. This listener should only be used with a
+ * {@link Server}.
  */
 public class StoreConfigLifecycleListener implements LifecycleListener {
-    private static Log log = LogFactory
-            .getLog(StoreConfigLifecycleListener.class);
+
+    private static Log log = LogFactory.getLog(StoreConfigLifecycleListener.class);
+    private static StringManager sm = StringManager.getManager(StoreConfigLifecycleListener.class);
 
     /**
      * The configuration information registry for our managed beans.
@@ -48,6 +51,7 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
     private String storeConfigClass = "org.apache.catalina.storeconfig.StoreConfig";
 
     private String storeRegistry = null;
+    private ObjectName oname = null;
 
     /*
      * register StoreRegistry after Start the complete Server
@@ -57,17 +61,24 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
         if (Lifecycle.AFTER_START_EVENT.equals(event.getType())) {
-            if (event.getSource() instanceof StandardServer) {
-                createMBean((StandardServer) event.getSource());
+            if (event.getSource() instanceof Server) {
+                createMBean((Server) event.getSource());
+            } else {
+                log.warn(sm.getString("storeConfigListener.notServer"));
+            }
+        } else if (Lifecycle.AFTER_STOP_EVENT.equals(event.getType())) {
+            if (oname != null) {
+                registry.unregisterComponent(oname);
+                oname = null;
             }
         }
-    }
+     }
 
     /**
      * create StoreConfig MBean and load StoreRgistry MBeans name is
      * <i>Catalina:type=StoreConfig </i>
      */
-    protected void createMBean(StandardServer server) {
+    protected void createMBean(Server server) {
         StoreLoader loader = new StoreLoader();
         try {
             Class<?> clazz = Class.forName(getStoreConfigClass(), true, this
@@ -77,7 +88,7 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
                 // default Loading
                 loader.load();
             else
-                // load a spezial file registry (url)
+                // load a special file registry (url)
                 loader.load(getStoreRegistry());
             // use the loader Registry
             storeConfig.setRegistry(loader.getRegistry());
@@ -86,12 +97,10 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
             log.error("createMBean load", e);
             return;
         }
-        MBeanServer mserver = MBeanUtils.createServer();
         try {
-            ObjectName objectName = new ObjectName("Catalina:type=StoreConfig" );
-            if (!mserver.isRegistered(objectName)) {
-                registry.registerComponent(storeConfig, objectName, "StoreConfig");
-            }
+            // Note: Hard-coded domain used since this object is per Server/JVM
+            oname = new ObjectName("Catalina:type=StoreConfig" );
+            registry.registerComponent(storeConfig, oname, "StoreConfig");
         } catch (Exception ex) {
             log.error("createMBean register MBean", ex);
         }

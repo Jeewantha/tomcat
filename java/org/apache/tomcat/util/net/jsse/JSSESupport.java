@@ -85,12 +85,6 @@ class JSSESupport implements SSLSupport, SSLSessionManager {
         return session.getCipherSuite();
     }
 
-    @Override
-    public Object[] getPeerCertificateChain()
-        throws IOException {
-        return getPeerCertificateChain(false);
-    }
-
     protected java.security.cert.X509Certificate [] getX509Certificates(
             SSLSession session) {
         Certificate [] certs=null;
@@ -132,7 +126,7 @@ class JSSESupport implements SSLSupport, SSLSessionManager {
     }
 
     @Override
-    public Object[] getPeerCertificateChain(boolean force)
+    public java.security.cert.X509Certificate[] getPeerCertificateChain(boolean force)
         throws IOException {
         // Look up the current SSLSession
         if (session == null)

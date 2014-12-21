@@ -83,7 +83,7 @@ example:</p>
 <ul>
 <li>As an application with a user interface you use in your browser.
 Here is an example URL where you can replace <code>localhost</code> with
-your website host name:  <code>http://localhost/manager/html/</code> .</li>
+your website host name:  <code>http://localhost:8080/manager/html</code> .</li>
 <li>A minimal version using HTTP requests only which is suitable for use
 by scripts setup by system administrators.  Commands are given as part of the
 request URI, and responses are in the form of simple text that can be easily
@@ -133,22 +133,25 @@ web application. The available roles are:</p>
 </ul>
 
 <p>The HTML interface is protected against CSRF (Cross-Site Request Forgery)
-attacks, but the text and JMX interfaces cannot be protected. To maintain
-the CSRF protection:</p>
+attacks, but the text and JMX interfaces cannot be protected. It means that
+users who are allowed access to the text and JMX interfaces have to be cautious
+when accessing the Manager application with a web browser.
+To maintain the CSRF protection:</p>
 
 <ul>
-  <li>Users with the <strong>manager-gui</strong> role should not be granted
-      the <strong>manager-script</strong> or <strong>manager-jmx</strong>
-      roles.</li>
   <li>If you use web browser to access the Manager application using
       a user that has either <strong>manager-script</strong> or
       <strong>manager-jmx</strong> roles (for example for testing
-      the plain text or JMX interfaces),
-      then all windows of the browser MUST be closed afterwards to terminate
-      the session.</li>
+      the plain text or JMX interfaces), you MUST close all windows
+      of the browser afterwards to terminate the session.
+      If you do not close the browser and visit other sites, you may become
+      victim of a CSRF attack.</li>
+  <li>It is recommended to never grant
+      the <strong>manager-script</strong> or <strong>manager-jmx</strong>
+      roles to users that have the <strong>manager-gui</strong> role.</li>
 </ul>
 
-<p>Note that JMX proxy interface is effectively low-level root-like
+<p><strong>Note</strong> that JMX proxy interface is effectively low-level root-like
 administrative interface of Tomcat. One can do a lot, if he knows
 what commands to call. You should be cautious when enabling the
 <strong>manager-jmx</strong> role.</p>
@@ -162,13 +165,13 @@ As the majority of this document describes the commands of plain textual
 interface, let the role name for further example to be
 <strong>manager-script</strong>.
 Exactly how the usernames/passwords are configured depends on which
-<code>Realm</code> implementation you are using:</p>
+<a href="config/realm.html">Realm implementation</a> you are using:</p>
 <ul>
-<li><em>MemoryRealm</em> &#8212; This one is configured in the default
-    <code>$CATALINA_BASE/conf/server.xml</code>.
-    If you have not configured it differently, or replaced it with
-    a different <code>Realm</code> implementation, this realm
-    reads an XML-format file stored at
+<li><em>UserDatabaseRealm</em> plus <em>MemoryUserDatabase</em>, or <em>MemoryRealm</em>
+    &#8212; The <em>UserDatabaseRealm</em> and <em>MemoryUserDatabase</em> are
+    configured in the default <code>$CATALINA_BASE/conf/server.xml</code>.
+    Both <em>MemoryUserDatabase</em> and <em>MemoryRealm</em> read an
+    XML-format file by default stored at
     <code>$CATALINA_BASE/conf/tomcat-users.xml</code>, which can be
     edited with any text editor.  This file contains an XML
     <code>&lt;user&gt;</code> for each individual user, which might
@@ -179,7 +182,8 @@ Exactly how the usernames/passwords are configured depends on which
     add the <strong>manager-script</strong> role to the comma-delimited
     <code>roles</code> attribute for one or more existing users, and/or
     create new users with that assigned role.</li>
-<li><em>JDBCRealm</em> &#8212; Your user and role information is stored in
+<li><em>DataSourceRealm</em> or <em>JDBCRealm</em>
+    &#8212; Your user and role information is stored in
     a database accessed via JDBC.  Add the <strong>manager-script</strong> role
     to one or more existing users, and/or create one or more new users
     with this role assigned, following the standard procedures for your
@@ -210,6 +214,28 @@ an example of restricting access to the localhost by IP address:</p>
 
 </section>
 
+<section name="HTML User-friendly Interface">
+
+<p>The user-friendly HTML interface of Manager web application is located at</p>
+
+<source>http://{host}:{port}/manager/html</source>
+
+<p>As has already been mentioned above, you need <strong>manager-gui</strong>
+role to be allowed to access it. There is a separate document that provides
+help on this interface. See:</p>
+
+<ul>
+  <li><a href="html-manager-howto.html">HTML Manager documentation</a></li>
+</ul>
+
+<p>The HTML interface is protected against CSRF (Cross-Site Request Forgery)
+attacks. Each access to the HTML pages generates a random token, which is
+stored in your session and is included in all links on the page. If your next
+action does not have correct value of the token, the action will be denied.
+If the token has expired you can start again from the main page or
+<em>List Applications</em> page of Manager.</p>
+
+</section>
 
 <section name="Supported Manager Commands">
 
@@ -223,16 +249,21 @@ represents the Manager command you wish to execute, and
 that are specific to that command.  In the illustrations below, customize
 the host and port appropriately for your installation.</p>
 
+<p>The commands are usually executed by HTTP GET requests. The
+<code>/deploy</code> command has a form that is executed by an HTTP PUT request.</p>
+
+<subsection name="Common Parameters">
+
 <p>Most commands accept one or more of the following query parameters:</p>
 <ul>
 <li><strong>path</strong> - The context path (including the leading slash)
     of the web application you are dealing with.  To select the ROOT web
-    application, specify "/".  <strong>NOTE</strong> -
+    application, specify "/".  <strong>NOTE</strong>:
     It is not possible to perform administrative commands on the
     Manager application itself.</li>
 <li><strong>version</strong> - The version of this web application as used by
-    the parallel deployment feature,</li>
-<li><strong>war</strong> - URL of a web application archive (WAR) file,
+    the <a href="config/context.html">parallel deployment</a> feature,</li>
+<li><strong>war</strong> - URL of a web application archive (WAR) file, or
     pathname of a directory which contains the web application, or a
     Context configuration ".xml" file.  You can use URLs in any of the
     following formats:
@@ -272,7 +303,9 @@ its message strings in resource bundles, so it is possible that the strings
 have been translated for your platform.  The examples below show the English
 version of the messages.</p>
 
-<subsection name="Deploy A New Application Remotely">
+</subsection>
+
+<subsection name="Deploy A New Application Archive (WAR) Remotely">
 
 <source>http://localhost:8080/manager/text/deploy?path=/foo</source>
 
@@ -282,6 +315,8 @@ directory of our corresponding virtual host, and start , using the directory
 name or the war file name without the .war extension as the path.  The
 application can later be undeployed (and the corresponding application directory
 removed) by use of the <code>/undeploy</code> command.</p>
+
+<p>This command is executed by an HTTP PUT request.</p>
 
 <p>The .WAR file may include Tomcat specific deployment configuration, by
 including a Context configuration XML file in
@@ -332,18 +367,21 @@ error message.  Possible causes for problems include:</p>
 <code>path</code> (which must not be in use by any other web application).
 This command is the logical opposite of the <code>/undeploy</code> command.</p>
 
-<p>There are a number of different ways the deploy command can be used.</p>
+<p>This command is executed by an HTTP GET request.
+There are a number of different ways the deploy command can be used.</p>
 
-<h5>Deploy a previously deployed webapp</h5>
+<subsection name="Deploy a previously deployed webapp">
+
+<source>http://localhost:8080/manager/text/deploy?path=/footoo&amp;tag=footag</source>
 
 <p>This can be used to deploy a previously deployed web application, which
 has been deployed using the <code>tag</code> attribute. Note that the work
-directory for the Manager webapp will contain the previously deployed WARs;
+directory of the Manager webapp will contain the previously deployed WARs;
 removing it would make the deployment fail.</p>
-<source>http://localhost:8080/manager/text/deploy?path=/footoo&amp;tag=footag</source>
 
+</subsection>
 
-<h5>Deploy a Directory or WAR by URL</h5>
+<subsection name="Deploy a Directory or WAR by URL">
 
 <p>Deploy a web application directory or ".war" file located on the Tomcat
 server. If no <code>path</code> is specified, the directory name or the war file
@@ -367,8 +405,9 @@ so the context path defaults to the name of the web application archive
 file without the ".war" extension.</p>
 <source>http://localhost:8080/manager/text/deploy?war=jar:file:/path/to/bar.war!/</source>
 
+</subsection>
 
-<h5>Deploy a Directory or War from the Host appBase</h5>
+<subsection name="Deploy a Directory or War from the Host appBase">
 
 <p>Deploy a web application directory or ".war" file located in your Host
 appBase directory. The directory name or the war file name without the ".war"
@@ -386,8 +425,9 @@ Host appBase directory on the Tomcat server is deployed as the web
 application context named <code>/bar</code>.</p>
 <source>http://localhost:8080/manager/text/deploy?war=bar.war</source>
 
+</subsection>
 
-<h5>Deploy using a Context configuration ".xml" file</h5>
+<subsection name="Deploy using a Context configuration &quot;.xml&quot; file">
 
 <p>If the Host deployXML flag is set to true you can deploy a web
 application using a Context configuration ".xml" file and an optional
@@ -418,8 +458,9 @@ on the server.</p>
 <source>http://localhost:8080/manager/text/deploy
  ?config=file:/path/context.xml&amp;war=jar:file:/path/bar.war!/</source>
 
+</subsection>
 
-<h5>Deployment Notes</h5>
+<subsection name="Deployment Notes">
 
 <p>If the Host is configured with unpackWARs=true and you deploy a war
 file, the war will be unpacked into a directory in your Host appBase
@@ -436,8 +477,9 @@ from deploying web applications using a configuration XML file and
 also prevents them from deploying application directories or ".war"
 files located outside of their Host appBase.</p>
 
+</subsection>
 
-<h5>Deploy Response</h5>
+<subsection name="Deploy Response">
 
 <p>If installation and startup is successful, you will receive a response
 like this:</p>
@@ -493,6 +535,7 @@ error message.  Possible causes for problems include:</p>
      </p></li>
 </ul>
 
+</subsection>
 </subsection>
 
 <subsection name="List Currently Deployed Applications">
@@ -628,16 +671,37 @@ include an error message.  Possible causes for problems include:</p>
 <source>http://localhost:8080/manager/text/sessions?path=/examples</source>
 
 <p>Display the default session timeout for a web application, and the
-number of currently active sessions that fall within ten-minute ranges of
+number of currently active sessions that fall within one-minute ranges of
 their actual timeout times.  For example, after restarting Tomcat and then
 executing one of the JSP samples in the <code>/examples</code> web app,
 you might get something like this:</p>
-<source>OK - Session information for application at context path /examples
+
+<source><![CDATA[OK - Session information for application at context path /examples
 Default maximum session inactive interval 30 minutes
-30 - &lt;40 minutes:1 sessions</source>
+<1 minutes: 1 sessions
+1 - <2 minutes: 1 sessions]]></source>
 
 </subsection>
 
+<subsection name="Expire Sessions">
+
+<source>http://localhost:8080/manager/text/expire?path=/examples&amp;idle=num</source>
+
+<p>Display the session statistics (like the above <code>/sessions</code>
+command) and expire sessions that are idle for longer than <code>num</code>
+minutes. To expire all sessions, use <code>&amp;idle=0</code> .</p>
+
+<source><![CDATA[OK - Session information for application at context path /examples
+Default maximum session inactive interval 30 minutes
+1 - <2 minutes: 1 sessions
+3 - <4 minutes: 1 sessions
+>0 minutes: 2 sessions were expired]]></source>
+
+<p>Actually <code>/sessions</code> and <code>/expire</code> are synonims for
+the same command. The difference is in the presence of <code>idle</code>
+parameter.</p>
+
+</subsection>
 
 <subsection name="Start an Existing Application">
 
@@ -793,15 +857,15 @@ has been reloaded several times, it may be listed several times.</p>
 
 </subsection>
 
-<subsection name="Connector SSL diagnostics">
+<subsection name="Connector SSL/TLS diagnostics">
 
 <source>http://localhost:8080/manager/text/sslConnectorCiphers</source>
 
-<p>The SSL Connector/Ciphers diagnostic lists the SSL ciphers that are currently
+<p>The SSL Connector/Ciphers diagnostic lists the SSL/TLS ciphers that are currently
 configured for each connector. For NIO and NIO2, the names of the individual
 cipher suites are listed. For APR, the value of SSLCipherSuite is returned.</p>
 
-<p>The response will ook something like this:</p>
+<p>The response will look something like this:</p>
 <source>OK - Connector / SSL Cipher information
 Connector[HTTP/1.1-8080]
   SSL is not enabled for this connector
@@ -814,15 +878,105 @@ Connector[HTTP/1.1-8443]
 
 </subsection>
 
-<subsection name="Server Status">
+<subsection name="Thread Dump">
 
-<p>From this link , you can view information about the server.</p>
+<source>http://localhost:8080/manager/text/threaddump</source>
+
+<p>Write a JVM thread dump.</p>
+
+<p>The response will look something like this:</p>
+<source><![CDATA[OK - JVM thread dump
+2014-12-08 07:24:40.080
+Full thread dump Java HotSpot(TM) Client VM (25.25-b02 mixed mode):
+
+"http-nio-8080-exec-2" Id=26 cpu=46800300 ns usr=46800300 ns blocked 0 for -1 ms waited 0 for -1 ms
+   java.lang.Thread.State: RUNNABLE
+        locks java.util.concurrent.ThreadPoolExecutor$Worker@1738ad4
+        at sun.management.ThreadImpl.dumpThreads0(Native Method)
+        at sun.management.ThreadImpl.dumpAllThreads(ThreadImpl.java:446)
+        at org.apache.tomcat.util.Diagnostics.getThreadDump(Diagnostics.java:440)
+        at org.apache.tomcat.util.Diagnostics.getThreadDump(Diagnostics.java:409)
+        at org.apache.catalina.manager.ManagerServlet.threadDump(ManagerServlet.java:557)
+        at org.apache.catalina.manager.ManagerServlet.doGet(ManagerServlet.java:371)
+        at javax.servlet.http.HttpServlet.service(HttpServlet.java:618)
+        at javax.servlet.http.HttpServlet.service(HttpServlet.java:725)
+...
+]]></source>
+
+</subsection>
+
+<subsection name="VM Info">
+
+<source>http://localhost:8080/manager/text/vminfo</source>
+
+<p>Write some diagnostic information about Java Virtual Machine.</p>
+
+<p>The response will look something like this:</p>
+<source><![CDATA[OK - VM info
+2014-12-08 07:27:32.578
+Runtime information:
+  vmName: Java HotSpot(TM) Client VM
+  vmVersion: 25.25-b02
+  vmVendor: Oracle Corporation
+  specName: Java Virtual Machine Specification
+  specVersion: 1.8
+  specVendor: Oracle Corporation
+  managementSpecVersion: 1.2
+  name: ...
+  startTime: 1418012458849
+  uptime: 393855
+  isBootClassPathSupported: true
+
+OS information:
+...
+]]></source>
+
+</subsection>
+
+<subsection name="Save Configuration">
+
+<source>http://localhost:8080/manager/text/save</source>
+
+<p>If specified without any parameters, this command saves the current
+configuration of the server to server.xml. The existing file will be renamed as
+a backup if required.</p>
+
+<p>If specified with a <code>path</code> parameter that matches the path of
+a deployed web application then the configuration for that web application will
+be saved to an appropriately named context.xml file in the <code>xmlBase</code>
+for the current Host.</p>
+
+<p>To use the command a StoreConfig MBean must be present. Typically this is
+configured using the <a
+href="config/listeners.html#StoreConfig_Lifecycle_Listener_-_org.apache.catalina.storeconfig.StoreConfigLifecycleListener">StoreConfigLifecycleListener</a>.
+</p>
+
+<p>If the command does not succeed, the response will start with
+<code>FAIL</code> and include an error message.</p>
+
+</subsection>
+
+</section>
+
+<section name="Server Status">
+
+<p>From the following links you can view Status information about the server.
+Any one of <strong>manager-**</strong> roles allows access to this page.</p>
+
+<source>http://localhost:8080/manager/status
+http://localhost:8080/manager/status/all</source>
+
+<p>Displays server status information in HTML format.</p>
+
+<source>http://localhost:8080/manager/status?XML=true
+http://localhost:8080/manager/status/all?XML=true</source>
+
+<p>Displays server status information in XML format.</p>
 
 <p>First, you have the server and JVM version number, JVM provider, OS name
 and number followed by the architecture type.</p>
 
-<p>Second, there is several information about the memory usage of the JVM
-(available, total and max memory).</p>
+<p>Second, there is information about the memory usage of the JVM.</p>
 
 <p>Then, there is information about the Tomcat AJP and HTTP connectors.
 The same information is available for both of them :
@@ -850,7 +1004,7 @@ The same information is available for both of them :
         appropriate.</p></li>
         <li><p><em>"Keep-Alive"</em> : The thread keeps the connection open to
         the client in case the client sends another request. If another request
-        is received, the next stage will br "Parse and Prepare Requst". If no
+        is received, the next stage will be "Parse and Prepare Request". If no
         request is received before the keep alive times out, the connection will
         be closed and the next stage will be "Ready".</p></li>
         <li><p><em>"Ready"</em> : The thread is at rest and ready to be
@@ -858,8 +1012,127 @@ The same information is available for both of them :
     </ul>
     </li>
 </ul>
-</subsection>
 
+<p>If you are using <code>/status/all</code> command, additional information
+on each of deployed web applications will be available.</p>
+
+</section>
+
+<section name="Using the JMX Proxy Servlet">
+
+  <subsection name="What is JMX Proxy Servlet">
+    The JMX Proxy Servlet is a lightweight proxy to get and set the
+    tomcat internals. (Or any class that has been exposed via an MBean)
+    Its usage is not very user friendly but the UI is
+    extremely help for integrating command line scripts for monitoring
+    and changing the internals of tomcat. You can do two things with the proxy:
+    get information and set information. For you to really understand the
+    JMX Proxy Servlet, you should have a general understanding of JMX.
+    If you don't know what JMX is, then prepare to be confused.
+  </subsection>
+
+  <subsection name="JMX Query command">
+    <p>This takes the form:</p>
+<source>http://webserver/manager/jmxproxy/?qry=STUFF</source>
+    <p>Where <code>STUFF</code> is the JMX query you wish to perform. For example,
+    here are some queries you might wish to run:</p>
+    <ul>
+      <li>
+        <code>qry=*%3Atype%3DRequestProcessor%2C* -->
+         type=RequestProcessor</code> which will locate all
+         workers which can process requests and report
+         their state.
+      </li>
+      <li>
+        <code>qry=*%3Aj2eeType=Servlet%2c* -->
+            j2eeType=Servlet</code> which return all loaded servlets.
+      </li>
+      <li>
+        <code>qry=Catalina%3Atype%3DEnvironment%2Cresourcetype%3DGlobal%2Cname%3DsimpleValue -->
+            Catalina:type=Environment,resourcetype=Global,name=simpleValue</code>
+            which look for a specific MBean by the given name.
+      </li>
+    </ul>
+    <p>
+    You'll need to experiment with this to really understand its capabilites.
+    If you provide no <code>qry</code> parameter, then all of the MBeans will
+    be displayed. We really recommend looking at the tomcat source code and
+    understand the JMX spec to get a better understanding of all the queries
+    you may run.
+    </p>
+  </subsection>
+
+  <subsection name="JMX Get command">
+  <p>
+    The JXMProxyServlet also supports a "get" command that you can use to
+    fetch the value of a specific MBean's attribute. The general form of
+    the <code>get</code> command is:
+  </p>
+
+<source>http://webserver/manager/jmxproxy/?get=BEANNAME&amp;att=MYATTRIBUTE&amp;key=MYKEY</source>
+
+    <p>You must provide the following parameters:</p>
+    <ol>
+      <li><code>get</code>: The full bean name</li>
+      <li><code>att</code>: The attribute you wish to fetch</li>
+      <li><code>key</code>: (optional) The key into a CompositeData MBean attribute</li>
+    </ol>
+    <p>
+    If all goes well, then it will say OK, otherwise an error message will
+    be shown. For example, let's say we wish to fetch the current heap memory
+    data:
+    </p>
+
+<source>http://webserver/manager/jmxproxy/?get=java.lang:type=Memory&amp;att=HeapMemoryUsage</source>
+
+    <p>Or, if you only want the "used" key:</p>
+
+<source>http://webserver/manager/jmxproxy/
+ ?get=java.lang:type=Memory&amp;att=HeapMemoryUsage&amp;key=used</source>
+  </subsection>
+
+  <subsection name="JMX Set command">
+    <p>
+    Now that you can query an MBean, its time to muck with Tomcat's internals!
+    The general form of the set command is :
+    </p>
+<source>http://webserver/manager/jmxproxy/?set=BEANNAME&amp;att=MYATTRIBUTE&amp;val=NEWVALUE</source>
+    <p>So you need to provide 3 request parameters:</p>
+    <ol>
+      <li><code>set</code>: The full bean name</li>
+      <li><code>att</code>: The attribute you wish to alter</li>
+      <li><code>val</code>: The new value </li>
+    </ol>
+    <p>
+    If all goes ok, then it will say OK, otherwise an error message will be
+    shown. For example, lets say we wish to turn up debugging on the fly for the
+    <code>ErrorReportValve</code>. The following will set debugging to 10.
+    </p>
+<source>http://localhost:8080/manager/jmxproxy/
+ ?set=Catalina%3Atype%3DValve%2Cname%3DErrorReportValve%2Chost%3Dlocalhost
+ &amp;att=debug&amp;val=10</source>
+    <p>and my result is (YMMV):</p>
+<source>Result: ok</source>
+
+    <p>Here is what I see if I pass in a bad value. Here is the URL I used,
+    I try set debugging equal to 'cow':</p>
+<source>http://localhost:8080/manager/jmxproxy/
+ ?set=Catalina%3Atype%3DValve%2Cname%3DErrorReportValve%2Chost%3Dlocalhost
+ &amp;att=debug&amp;val=cow</source>
+    <p>When I try that, my result is</p>
+<source>Error: java.lang.NumberFormatException: For input string: "cow"</source>
+  </subsection>
+
+  <subsection name="JMX Invoke command">
+    <p>The <code>invoke</code> command enables methods to be called on MBeans. The
+    general form of the command is:</p>
+<source>http://webserver/manager/jmxproxy/
+ ?invoke=BEANNAME&amp;op=METHODNAME&amp;ps=COMMASEPARATEDPARAMETERS</source>
+    <p>For example, to call the <code>findConnectors()</code> method of the
+    <strong>Service</strong> use:</p>
+<source>http://localhost:8080/manager/jmxproxy/
+ ?invoke=Catalina%3Atype%3DService&amp;op=findConnectors&amp;ps=</source>
+  </subsection>
 </section>
 
 <section name="Executing Manager Commands With Ant">
@@ -901,14 +1174,18 @@ file might look something like this:</p>
   <property name="password" value="mypassword"/>
 
   <!-- Configure the custom Ant tasks for the Manager application -->
-  <taskdef name="deploy"    classname="org.apache.catalina.ant.DeployTask"/>
   <taskdef name="list"      classname="org.apache.catalina.ant.ListTask"/>
-  <taskdef name="reload"    classname="org.apache.catalina.ant.ReloadTask"/>
-  <taskdef name="findleaks" classname="org.apache.catalina.ant.FindLeaksTask"/>
-  <taskdef name="resources" classname="org.apache.catalina.ant.ResourcesTask"/>
+  <taskdef name="deploy"    classname="org.apache.catalina.ant.DeployTask"/>
   <taskdef name="start"     classname="org.apache.catalina.ant.StartTask"/>
+  <taskdef name="reload"    classname="org.apache.catalina.ant.ReloadTask"/>
   <taskdef name="stop"      classname="org.apache.catalina.ant.StopTask"/>
   <taskdef name="undeploy"  classname="org.apache.catalina.ant.UndeployTask"/>
+  <taskdef name="resources" classname="org.apache.catalina.ant.ResourcesTask"/>
+  <typedef name="sessions"  classname="org.apache.catalina.ant.SessionsTask"/>
+  <taskdef name="findleaks" classname="org.apache.catalina.ant.FindLeaksTask"/>
+  <typedef name="vminfo"    classname="org.apache.catalina.ant.VminfoTask"/>
+  <typedef name="threaddump" classname="org.apache.catalina.ant.ThreaddumpTask"/>
+  <typedef name="sslConnectorCiphers" classname="org.apache.catalina.ant.SslConnectorCiphersTask"/>
 
   <!-- Executable Targets -->
   <target name="compile" description="Compile web application">
@@ -1141,124 +1418,6 @@ see the output of each task call appended to the file.
 </subsection>
 
 </section>
-
-<section name="Using the JMX Proxy Servlet">
-
-  <subsection name="What is JMX Proxy Servlet">
-    The JMX Proxy Servlet is a lightweight proxy to get and set the
-    tomcat internals. (Or any class that has been exposed via an MBean)
-    Its usage is not very user friendly but the UI is
-    extremely help for integrating command line scripts for monitoring
-    and changing the internals of tomcat. You can do two things with the proxy:
-    get information and set information. For you to really understand the
-    JMX Proxy Servlet, you should have a general understanding of JMX.
-    If you don't know what JMX is, then prepare to be confused.
-  </subsection>
-
-  <subsection name="JMX Query command">
-    <p>This takes the form:</p>
-<source>http://webserver/manager/jmxproxy/?qry=STUFF</source>
-    <p>Where <code>STUFF</code> is the JMX query you wish to perform. For example,
-    here are some queries you might wish to run:</p>
-    <ul>
-      <li>
-        <code>qry=*%3Atype%3DRequestProcessor%2C* -->
-         type=RequestProcessor</code> which will locate all
-         workers which can process requests and report
-         their state.
-      </li>
-      <li>
-        <code>qry=*%3Aj2eeType=Servlet%2c* -->
-            j2eeType=Servlet</code> which return all loaded servlets.
-      </li>
-      <li>
-        <code>qry=Catalina%3Atype%3DEnvironment%2Cresourcetype%3DGlobal%2Cname%3DsimpleValue -->
-            Catalina:type=Environment,resourcetype=Global,name=simpleValue</code>
-            which look for a specific MBean by the given name.
-      </li>
-    </ul>
-    <p>
-    You'll need to experiment with this to really understand its capabilites.
-    If you provide no <code>qry</code> parameter, then all of the MBeans will
-    be displayed. We really recommend looking at the tomcat source code and
-    understand the JMX spec to get a better understanding of all the queries
-    you may run.
-    </p>
-  </subsection>
-
-  <subsection name="JMX Get command">
-  <p>
-    The JXMProxyServlet also supports a "get" command that you can use to
-    fetch the value of a specific MBean's attribute. The general form of
-    the <code>get</code> command is:
-  </p>
-
-<source>http://webserver/manager/jmxproxy/?get=BEANNAME&amp;att=MYATTRIBUTE&amp;key=MYKEY</source>
-
-    <p>You must provide the following parameters:</p>
-    <ol>
-      <li><code>get</code>: The full bean name</li>
-      <li><code>att</code>: The attribute you wish to fetch</li>
-      <li><code>key</code>: (optional) The key into a CompositeData MBean attribute</li>
-    </ol>
-    <p>
-    If all goes well, then it will say OK, otherwise an error message will
-    be shown. For example, let's say we wish to fetch the current heap memory
-    data:
-    </p>
-
-<source>http://webserver/manager/jmxproxy/?get=java.lang:type=Memory&amp;att=HeapMemoryUsage</source>
-
-    <p>Or, if you only want the "used" key:</p>
-
-<source>http://webserver/manager/jmxproxy/
- ?get=java.lang:type=Memory&amp;att=HeapMemoryUsage&amp;key=used</source>
-  </subsection>
-
-  <subsection name="JMX Set command">
-    <p>
-    Now that you can query an MBean, its time to muck with Tomcat's internals!
-    The general form of the set command is :
-    </p>
-<source>http://webserver/manager/jmxproxy/?set=BEANNAME&amp;att=MYATTRIBUTE&amp;val=NEWVALUE</source>
-    <p>So you need to provide 3 request parameters:</p>
-    <ol>
-      <li><code>set</code>: The full bean name</li>
-      <li><code>att</code>: The attribute you wish to alter</li>
-      <li><code>val</code>: The new value </li>
-    </ol>
-    <p>
-    If all goes ok, then it will say OK, otherwise an error message will be
-    shown. For example, lets say we wish to turn up debugging on the fly for the
-    <code>ErrorReportValve</code>. The following will set debugging to 10.
-    </p>
-<source>http://localhost:8080/manager/jmxproxy/
- ?set=Catalina%3Atype%3DValve%2Cname%3DErrorReportValve%2Chost%3Dlocalhost
- &amp;att=debug&amp;val=10</source>
-    <p>and my result is (YMMV):</p>
-<source>Result: ok</source>
-
-    <p>Here is what I see if I pass in a bad value. Here is the URL I used,
-    I try set debugging equal to 'cow':</p>
-<source>http://localhost:8080/manager/jmxproxy/
- ?set=Catalina%3Atype%3DValve%2Cname%3DErrorReportValve%2Chost%3Dlocalhost
- &amp;att=debug&amp;val=cow</source>
-    <p>When I try that, my result is</p>
-<source>Error: java.lang.NumberFormatException: For input string: "cow"</source>
-  </subsection>
-
-  <subsection name="JMX Invoke command">
-    <p>The <code>invoke</code> command enables methods to be called on MBeans. The
-    general form of the command is:</p>
-<source>http://webserver/manager/jmxproxy/
- ?invoke=BEANNAME&amp;op=METHODNAME&amp;ps=COMMASEPARATEDPARAMETERS</source>
-    <p>For example, to call the <code>findConnectors()</code> method of the
-    <strong>Service</strong> use:</p>
-<source>http://localhost:8080/manager/jmxproxy/
- ?invoke=Catalina%3Atype%3DService&amp;op=findConnectors&amp;ps=</source>
-  </subsection>
-</section>
-
 
 
 </body>

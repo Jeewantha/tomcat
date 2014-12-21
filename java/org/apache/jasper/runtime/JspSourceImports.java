@@ -14,24 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.catalina.util;
+package org.apache.jasper.runtime;
 
-import java.io.IOException;
+import java.util.Set;
 
-import static org.junit.Assert.assertEquals;
-import org.junit.Test;
-
-public class TestConversions {
-
-    @Test
-    public void testByteArrayToLong() throws IOException {
-        assertEquals(0L, Conversions.byteArrayToLong(new byte[] { 0 }));
-        assertEquals(1L, Conversions.byteArrayToLong(new byte[] { 1 }));
-        assertEquals(0xFF, Conversions.byteArrayToLong(new byte[] { -1 }));
-        assertEquals(0xFFFF,
-                Conversions.byteArrayToLong(new byte[] { -1, -1 }));
-        assertEquals(0xFFFFFF,
-                Conversions.byteArrayToLong(new byte[] { -1, -1, -1 }));
-    }
-
+/**
+ * The EL engine needs access to the imports used in the JSP page to configure
+ * the ELContext. The imports are available at compile time but the ELContext
+ * is created lazily per page. This interface exposes the imports at runtime so
+ * that they may be added to the ELContext when it is created.
+ */
+public interface JspSourceImports {
+    Set<String> getPackageImports();
+    Set<String> getClassImports();
 }

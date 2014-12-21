@@ -17,8 +17,15 @@
 package org.apache.coyote.http11;
 
 import org.apache.coyote.AbstractProtocol;
+import org.apache.tomcat.util.net.AbstractEndpoint;
 
 public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
+
+    public AbstractHttp11Protocol(AbstractEndpoint<S> endpoint) {
+        super(endpoint);
+        setSoTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
+    }
+
 
     @Override
     protected String getProtocolName() {
@@ -189,9 +196,9 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     // ------------------------------------------------ HTTP specific properties
     // ------------------------------------------ passed through to the EndPoint
 
-    public boolean isSSLEnabled() { return endpoint.isSSLEnabled();}
+    public boolean isSSLEnabled() { return getEndpoint().isSSLEnabled();}
     public void setSSLEnabled(boolean SSLEnabled) {
-        endpoint.setSSLEnabled(SSLEnabled);
+        getEndpoint().setSSLEnabled(SSLEnabled);
     }
 
 
@@ -200,10 +207,10 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
      * connection. The default is the same as for Apache HTTP Server.
      */
     public int getMaxKeepAliveRequests() {
-        return endpoint.getMaxKeepAliveRequests();
+        return getEndpoint().getMaxKeepAliveRequests();
     }
     public void setMaxKeepAliveRequests(int mkar) {
-        endpoint.setMaxKeepAliveRequests(mkar);
+        getEndpoint().setMaxKeepAliveRequests(mkar);
     }
 
     protected NpnHandler<S> npnHandler;

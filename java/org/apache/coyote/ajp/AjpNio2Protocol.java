@@ -18,11 +18,9 @@ package org.apache.coyote.ajp;
 
 import javax.net.ssl.SSLEngine;
 
-import org.apache.coyote.AbstractProtocol;
 import org.apache.coyote.Processor;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.Nio2Channel;
 import org.apache.tomcat.util.net.Nio2Endpoint;
 import org.apache.tomcat.util.net.Nio2Endpoint.Handler;
@@ -31,12 +29,9 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
 
 
 /**
- * Abstract the protocol implementation, including threading, etc.
- * Processor is single threaded and specific to stream-based protocols,
- * will not fit Jk protocols like JNI.
+ * This the NIO2 based protocol handler implementation for AJP.
  */
 public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
-
 
     private static final Log log = LogFactory.getLog(AjpNio2Protocol.class);
 
@@ -44,34 +39,14 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
     protected Log getLog() { return log; }
 
 
-    @Override
-    protected AbstractEndpoint.Handler getHandler() {
-        return cHandler;
-    }
-
-
     // ------------------------------------------------------------ Constructor
 
-
     public AjpNio2Protocol() {
-        endpoint = new Nio2Endpoint();
-        cHandler = new AjpConnectionHandler(this);
-        ((Nio2Endpoint) endpoint).setHandler(cHandler);
-        setSoLinger(Constants.DEFAULT_CONNECTION_LINGER);
-        setSoTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
-        setTcpNoDelay(Constants.DEFAULT_TCP_NO_DELAY);
-        // AJP does not use Send File
-        ((Nio2Endpoint) endpoint).setUseSendfile(false);
+        super(new Nio2Endpoint());
+        AjpConnectionHandler cHandler = new AjpConnectionHandler(this);
+        setHandler(cHandler);
+        ((Nio2Endpoint) getEndpoint()).setHandler(cHandler);
     }
-
-
-    // ----------------------------------------------------- Instance Variables
-
-
-    /**
-     * Connection handler for AJP.
-     */
-    private final AjpConnectionHandler cHandler;
 
 
     // ----------------------------------------------------- JMX related methods
@@ -84,20 +59,12 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
 
     // --------------------------------------  AjpConnectionHandler Inner Class
 
-
     protected static class AjpConnectionHandler
-            extends AbstractAjpConnectionHandler<Nio2Channel, AjpNio2Processor>
+            extends AbstractAjpConnectionHandler<Nio2Channel>
             implements Handler {
 
-        protected final AjpNio2Protocol proto;
-
         public AjpConnectionHandler(AjpNio2Protocol proto) {
-            this.proto = proto;
-        }
-
-        @Override
-        protected AbstractProtocol<Nio2Channel> getProtocol() {
-            return proto;
+            super(proto);
         }
 
         @Override
@@ -133,19 +100,13 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
         public void release(SocketWrapperBase<Nio2Channel> socket,
                 Processor<Nio2Channel> processor, boolean isSocketClosing,
                 boolean addToPoller) {
+            if (getLog().isDebugEnabled()) {
+                log.debug("Socket: [" + socket + "], Processor: [" + processor +
+                        "], isSocketClosing: [" + isSocketClosing +
+                        "], addToPoller: [" + addToPoller + "]");
+            }
             processor.recycle(isSocketClosing);
             recycledProcessors.push(processor);
-            if (addToPoller) {
-                ((Nio2Endpoint) proto.endpoint).awaitBytes(socket);
-            }
-        }
-
-        @Override
-        protected AjpNio2Processor createProcessor() {
-            AjpNio2Processor processor = new AjpNio2Processor(proto.packetSize, (Nio2Endpoint) proto.endpoint);
-            proto.configureProcessor(processor);
-            register(processor);
-            return processor;
         }
 
         @Override
@@ -155,7 +116,7 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
         @Override
         public void closeAll() {
             for (Nio2Channel channel : connections.keySet()) {
-                ((Nio2Endpoint) proto.endpoint).closeSocket(channel.getSocket());
+                ((Nio2Endpoint) getProtocol().getEndpoint()).closeSocket(channel.getSocket());
             }
         }
     }

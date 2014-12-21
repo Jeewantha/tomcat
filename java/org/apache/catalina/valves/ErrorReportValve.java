@@ -26,10 +26,10 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
-import org.apache.catalina.util.RequestUtil;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.coyote.ActionCode;
 import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.http.HttpMessages;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -97,8 +97,10 @@ public class ErrorReportValve extends ValveBase {
 
         Throwable throwable = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
 
-        if (request.isAsyncStarted() && ((response.getStatus() < 400 &&
-                throwable == null) || request.isAsyncDispatching())) {
+        // If an async request is in progress and is not going to end once this
+        // container thread finishes, do not trigger error page handling - it
+        // will be triggered later if required.
+        if (request.isAsync() && !request.isAsyncCompleting()) {
             return;
         }
 
@@ -121,11 +123,6 @@ public class ErrorReportValve extends ValveBase {
             report(request, response, throwable);
         } catch (Throwable tt) {
             ExceptionUtils.handleThrowable(tt);
-        }
-
-        if (request.isAsyncStarted() && !request.isAsyncCompleting() &&
-                !request.isAsyncDispatching()) {
-            request.getAsyncContext().complete();
         }
     }
 
@@ -152,12 +149,12 @@ public class ErrorReportValve extends ValveBase {
         if (statusCode < 400 || response.getContentWritten() > 0 || !response.setErrorReported()) {
             return;
         }
-        String message = RequestUtil.filter(response.getMessage());
+        String message = HttpMessages.filter(response.getMessage());
         if (message == null) {
             if (throwable != null) {
                 String exceptionMessage = throwable.getMessage();
                 if (exceptionMessage != null && exceptionMessage.length() > 0) {
-                    message = RequestUtil.filter((new Scanner(exceptionMessage)).nextLine());
+                    message = HttpMessages.filter((new Scanner(exceptionMessage)).nextLine());
                 }
             }
             if (message == null) {
@@ -230,7 +227,7 @@ public class ErrorReportValve extends ValveBase {
                 sb.append("<p><b>");
                 sb.append(smClient.getString("errorReportValve.exception"));
                 sb.append("</b></p><pre>");
-                sb.append(RequestUtil.filter(stackTrace));
+                sb.append(HttpMessages.filter(stackTrace));
                 sb.append("</pre>");
 
                 int loops = 0;
@@ -240,7 +237,7 @@ public class ErrorReportValve extends ValveBase {
                     sb.append("<p><b>");
                     sb.append(smClient.getString("errorReportValve.rootCause"));
                     sb.append("</b></p><pre>");
-                    sb.append(RequestUtil.filter(stackTrace));
+                    sb.append(HttpMessages.filter(stackTrace));
                     sb.append("</pre>");
                     // In case root cause is somehow heavily nested
                     rootCause = rootCause.getCause();

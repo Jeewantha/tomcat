@@ -93,11 +93,6 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
     private ServerSocketChannel serverSock = null;
 
     /**
-     * use send file
-     */
-    private boolean useSendfile = true;
-
-    /**
      * The size of the OOM parachute.
      */
     private int oomParachute = 1024*1024;
@@ -213,10 +208,6 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
 
     public void setSocketProperties(SocketProperties socketProperties) {
         this.socketProperties = socketProperties;
-    }
-
-    public void setUseSendfile(boolean useSendfile) {
-        this.useSendfile = useSendfile;
     }
 
     /**
@@ -487,11 +478,6 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
 
     public NioSelectorPool getSelectorPool() {
         return selectorPool;
-    }
-
-    @Override
-    public boolean getUseSendfile() {
-        return useSendfile;
     }
 
     public int getOomParachute() {
@@ -838,12 +824,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
         private volatile int keyCount = 0;
 
         public Poller() throws IOException {
-            synchronized (Selector.class) {
-                // Selector.open() isn't thread safe
-                // http://bugs.sun.com/view_bug.do?bug_id=6427854
-                // Affects 1.6.0_29, fixed in 1.7.0_01
-                this.selector = Selector.open();
-            }
+            this.selector = Selector.open();
         }
 
         public int getKeyCount() { return keyCount; }
@@ -887,7 +868,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
             }
             addEvent(r);
             if (close) {
-                NioEndpoint.NioSocketWrapper ka = (NioEndpoint.NioSocketWrapper)socket.getAttachment(false);
+                NioEndpoint.NioSocketWrapper ka = (NioEndpoint.NioSocketWrapper)socket.getAttachment();
                 processSocket(ka, SocketStatus.STOP, false);
             }
         }
@@ -937,11 +918,11 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
             addEvent(r);
         }
 
-        public void cancelledKey(SelectionKey key) {
+        public NioSocketWrapper cancelledKey(SelectionKey key) {
+            NioSocketWrapper ka = null;
             try {
-                if ( key == null ) return;//nothing to do
-                NioSocketWrapper ka = (NioSocketWrapper) key.attachment();
-                key.attach(null);
+                if ( key == null ) return null;//nothing to do
+                ka = (NioSocketWrapper) key.attach(null);
                 if (ka!=null) handler.release(ka);
                 else handler.release((SocketChannel)key.channel());
                 if (key.isValid()) key.cancel();
@@ -981,6 +962,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
                 ExceptionUtils.handleThrowable(e);
                 if (log.isDebugEnabled()) log.error("",e);
             }
+            return ka;
         }
         /**
          * The background thread that listens for incoming TCP/IP connections and
@@ -1323,7 +1305,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
         private boolean callBackNotify = false;
         private CountDownLatch readLatch = null;
         private CountDownLatch writeLatch = null;
-        private SendfileData sendfileData = null;
+        private volatile SendfileData sendfileData = null;
         private long writeTimeout = -1;
 
         public NioSocketWrapper(NioChannel channel, NioEndpoint endpoint) {
@@ -1506,7 +1488,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
                 }
                 try {
                     NioEndpoint.NioSocketWrapper att =
-                            (NioEndpoint.NioSocketWrapper) channel.getAttachment(false);
+                            (NioEndpoint.NioSocketWrapper) channel.getAttachment();
                     if (att == null) {
                         throw new IOException("Key must be cancelled.");
                     }
@@ -1560,7 +1542,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
                 throws IOException {
 
             NioEndpoint.NioSocketWrapper att =
-                    (NioEndpoint.NioSocketWrapper) getSocket().getAttachment(false);
+                    (NioEndpoint.NioSocketWrapper) getSocket().getAttachment();
             if (att == null) {
                 throw new IOException("Key must be cancelled");
             }
@@ -1596,7 +1578,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
         @Override
         public void flush() throws IOException {
             NioEndpoint.NioSocketWrapper att =
-                    (NioEndpoint.NioSocketWrapper) getSocket().getAttachment(false);
+                    (NioEndpoint.NioSocketWrapper) getSocket().getAttachment();
             if (att == null) {
                 throw new IOException("Key must be cancelled");
             }
@@ -1619,6 +1601,20 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
                 }
             }
         }
+
+        @Override
+        public void regsiterForEvent(boolean read, boolean write) {
+            SelectionKey key = getSocket().getIOChannel().keyFor(
+                    getSocket().getPoller().getSelector());
+            if (read) {
+                this.interestOps(this.interestOps() | SelectionKey.OP_READ);
+                key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+            }
+            if (write) {
+                this.interestOps(this.interestOps() | SelectionKey.OP_WRITE);
+                key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+            }
+        }
     }
 
 
@@ -1628,13 +1624,16 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
         private ByteBuffer writebuf = null;
 
         public NioBufferHandler(int readsize, int writesize, boolean direct) {
-            if ( direct ) {
+            if (direct) {
                 readbuf = ByteBuffer.allocateDirect(readsize);
                 writebuf = ByteBuffer.allocateDirect(writesize);
-            }else {
+            } else {
                 readbuf = ByteBuffer.allocate(readsize);
                 writebuf = ByteBuffer.allocate(writesize);
             }
+            // TODO AJP and HTTPS have different expectations for the state of
+            // the buffer at the start of a read. These need to be reconciled.
+            readbuf.limit(0);
         }
 
         @Override
@@ -1654,9 +1653,7 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
      * stored in the ThreadWithAttributes extra folders, or alternately in
      * thread local fields.
      */
-    public interface Handler extends AbstractEndpoint.Handler {
-        public SocketState process(SocketWrapperBase<NioChannel> socket,
-                SocketStatus status);
+    public interface Handler extends AbstractEndpoint.Handler<NioChannel> {
         public void release(SocketWrapperBase<NioChannel> socket);
         public void release(SocketChannel socket);
         public SSLImplementation getSslImplementation();
@@ -1746,13 +1743,20 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
                     if (state == SocketState.CLOSED) {
                         // Close socket and pool
                         try {
-                            socket.getPoller().cancelledKey(key);
-                            if (running && !paused) {
-                                nioChannels.push(socket);
-                            }
-                            socket = null;
-                            if (running && !paused) {
-                                keyCache.push(ka);
+                            if (socket.getPoller().cancelledKey(key) != null) {
+                                // SocketWrapper (attachment) was removed from the
+                                // key - recycle both. This can only happen once
+                                // per attempted closure so it is used to determine
+                                // whether or not to return socket and ka to
+                                // their respective caches. We do NOT want to do
+                                // this more than once - see BZ 57340.
+                                if (running && !paused) {
+                                    nioChannels.push(socket);
+                                }
+                                socket = null;
+                                if (running && !paused) {
+                                    keyCache.push(ka);
+                                }
                             }
                             ka = null;
                         } catch (Exception x) {
@@ -1821,11 +1825,11 @@ public class NioEndpoint extends AbstractEndpoint<NioChannel> {
      */
     public static class SendfileData {
         // File
-        public String fileName;
-        public FileChannel fchannel;
-        public long pos;
-        public long length;
+        public volatile String fileName;
+        public volatile FileChannel fchannel;
+        public volatile long pos;
+        public volatile long length;
         // KeepAlive flag
-        public boolean keepAlive;
+        public volatile boolean keepAlive;
     }
 }

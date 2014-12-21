@@ -55,7 +55,8 @@ public abstract class AbstractEndpoint<S> {
     protected static final StringManager sm = StringManager.getManager(
             AbstractEndpoint.class.getPackage().getName());
 
-    public static interface Handler {
+    public static interface Handler<S> {
+
         /**
          * Different types of socket states to react upon.
          */
@@ -64,6 +65,18 @@ public abstract class AbstractEndpoint<S> {
             //      ASYNC_END (if possible)
             OPEN, CLOSED, LONG, ASYNC_END, SENDFILE, UPGRADING, UPGRADED
         }
+
+
+        /**
+         * Process the provided socket with the given current status.
+         *
+         * @param socket The socket to process
+         * @param status The current socket status
+         *
+         * @return The state of the socket after processing
+         */
+        public SocketState process(SocketWrapperBase<S> socket,
+                SocketStatus status);
 
 
         /**
@@ -197,6 +210,20 @@ public abstract class AbstractEndpoint<S> {
 
 
     // ----------------------------------------------------------------- Properties
+
+    /**
+     * Has the user requested that send file be used where possible?
+     */
+    private boolean useSendfile = true;
+    public boolean getUseSendfile() {
+        return useSendfile;
+    }
+    public void setUseSendfile(boolean useSendfile) {
+        this.useSendfile = useSendfile;
+    }
+
+
+
 
     /**
      * Time to wait for the internal executor (if used) to terminate when the
@@ -821,10 +848,6 @@ public abstract class AbstractEndpoint<S> {
     }
 
     protected abstract Log getLog();
-    // Flags to indicate optional feature support
-    // Some of these are always hard-coded, some are hard-coded to false (i.e.
-    // the endpoint does not support them) and some are configurable.
-    public abstract boolean getUseSendfile();
 
     protected LimitLatch initializeConnectionLatch() {
         if (maxConnections==-1) return null;

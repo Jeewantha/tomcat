@@ -101,7 +101,7 @@ public class AntCompiler extends Compiler {
         @Override
         protected void log(String message) {
             reportBuf.append(message);
-            reportBuf.append(Constants.NEWLINE);
+            reportBuf.append(System.lineSeparator());
         }
 
         protected String getReport() {
@@ -130,8 +130,6 @@ public class AntCompiler extends Compiler {
         String javaFileName = ctxt.getServletJavaFileName();
         String classpath = ctxt.getClassPath();
 
-        String sep = System.getProperty("path.separator");
-
         StringBuilder errorReport = new StringBuilder();
 
         StringBuilder info=new StringBuilder();
@@ -149,7 +147,7 @@ public class AntCompiler extends Compiler {
         Path path = new Path(project);
         path.setPath(System.getProperty("java.class.path"));
         info.append("    cp=" + System.getProperty("java.class.path") + "\n");
-        StringTokenizer tokenizer = new StringTokenizer(classpath, sep);
+        StringTokenizer tokenizer = new StringTokenizer(classpath, File.pathSeparator);
         while (tokenizer.hasMoreElements()) {
             String pathElement = tokenizer.nextToken();
             File repository = new File(pathElement);
@@ -157,9 +155,10 @@ public class AntCompiler extends Compiler {
             info.append("    cp=" + repository + "\n");
         }
 
-        if( log.isDebugEnabled() )
-            log.debug( "Using classpath: " + System.getProperty("java.class.path") + sep
-                    + classpath);
+        if (log.isDebugEnabled()) {
+            log.debug( "Using classpath: " + System.getProperty("java.class.path") +
+                    File.pathSeparator + classpath);
+        }
 
         // Initializing sourcepath
         Path srcPath = new Path(project);
@@ -245,7 +244,7 @@ public class AntCompiler extends Compiler {
         // Stop capturing the System.err output for this thread
         String errorCapture = SystemLogHandler.unsetThread();
         if (errorCapture != null) {
-            errorReport.append(Constants.NEWLINE);
+            errorReport.append(System.lineSeparator());
             errorReport.append(errorCapture);
         }
 

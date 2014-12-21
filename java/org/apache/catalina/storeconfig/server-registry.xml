@@ -158,11 +158,19 @@
         tag="Realm"
         standard="false"
         default="false"
-        children="false"
+        children="true"
         tagClass="org.apache.catalina.Realm"
         storeFactoryClass="org.apache.catalina.storeconfig.RealmSF">
         <TransientAttribute>domain</TransientAttribute>
         <TransientAttribute>realmPath</TransientAttribute>
+     </Description>
+     <Description
+        tag="CredentialHandler"
+        standard="false"
+        default="false"
+        children="false"
+        tagClass="org.apache.catalina.CredentialHandler"
+        storeFactoryClass="org.apache.catalina.storeconfig.CredentialHandlerSF">
      </Description>
      <Description
         tag="Parameter"
@@ -256,7 +264,7 @@
         storeFactoryClass="org.apache.catalina.storeconfig.WebResourceRootSF">
         <TransientAttribute>allowLinking</TransientAttribute>
         <TransientAttribute>cachingAllowed</TransientAttribute>
-        <TransientAttribute>cacheTTL</TransientAttribute>
+        <TransientAttribute>cacheTtl</TransientAttribute>
         <TransientAttribute>cacheMaxSize</TransientAttribute>
         <TransientAttribute>cacheObjectMaxSize</TransientAttribute>
         <TransientAttribute>cached</TransientAttribute>

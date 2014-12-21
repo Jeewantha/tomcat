@@ -123,7 +123,7 @@ import org.apache.catalina.util.IOTools;
  * or an instance where the specification cited differs from Best
  * Community Practice (BCP).
  * Such instances should be well-documented here.  Please email the
- * <a href="mailto:dev@tomcat.apache.org">Tomcat group [dev@tomcat.apache.org]</a>
+ * <a href="http://tomcat.apache.org/lists.html">Tomcat group</a>
  * with amendments.
  *
  * </p>
@@ -374,10 +374,9 @@ public final class CGIServlet extends HttpServlet {
         Enumeration<String> params = req.getParameterNames();
         while (params.hasMoreElements()) {
             String param = params.nextElement();
-            String values[] = req.getParameterValues(param);
-            for (int i = 0; i < values.length; i++)
-                out.println("<li><b>parameter</b> " + param + " = " +
-                               values[i]);
+            for (String value : req.getParameterValues(param)) {
+                out.println("<li><b>parameter</b> " + param + " = " + value);
+            }
         }
         out.println("<li><b>protocol</b> = " + req.getProtocol());
         out.println("<li><b>remoteAddr</b> = " + req.getRemoteAddr());
@@ -1234,8 +1233,7 @@ public final class CGIServlet extends HttpServlet {
             sb.append("</td></tr>");
 
             sb.append("<tr><td>Command Line Params</td><td>");
-            for (int i=0; i < cmdLineParameters.size(); i++) {
-                String param = cmdLineParameters.get(i);
+            for (String param : cmdLineParameters) {
                 sb.append("<p>");
                 sb.append(param);
                 sb.append("</p>");

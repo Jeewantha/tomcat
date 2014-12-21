@@ -14,29 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.catalina.util;
+package org.apache.catalina.ha.session;
 
-import java.io.IOException;
+import java.io.Serializable;
 
-public class Conversions {
+import org.apache.catalina.SessionListener;
 
-    private Conversions() {
-        // Utility class. Hide default constructor.
-    }
-
-    public static long byteArrayToLong(byte[] input) throws IOException {
-        if (input.length > 8) {
-            // TODO: Better message
-            throw new IOException();
-        }
-
-        int shift = 0;
-        long result = 0;
-        for (int i = input.length - 1; i >= 0; i--) {
-            result = result + ((input[i] & 0xFF) << shift);
-            shift += 8;
-        }
-
-        return result;
-    }
+/**
+ * This is a marker interface used to indicate an implementation of
+ * {@link SessionListener} that should be replicated with the session across the
+ * cluster.
+ */
+public interface ReplicatedSessionListener extends SessionListener, Serializable {
 }

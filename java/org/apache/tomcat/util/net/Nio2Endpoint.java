@@ -74,11 +74,6 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
     private AsynchronousServerSocketChannel serverSock = null;
 
     /**
-     * use send file
-     */
-    private boolean useSendfile = true;
-
-    /**
      * The size of the OOM parachute.
      */
     private int oomParachute = 1024*1024;
@@ -141,14 +136,6 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
 
 
     /**
-     * Priority of the poller threads.
-     */
-    private int pollerThreadPriority = Thread.NORM_PRIORITY;
-    public void setPollerThreadPriority(int pollerThreadPriority) { this.pollerThreadPriority = pollerThreadPriority; }
-    public int getPollerThreadPriority() { return pollerThreadPriority; }
-
-
-    /**
      * Handling of accepted sockets.
      */
     private Handler handler = null;
@@ -158,10 +145,6 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
 
     public void setSocketProperties(SocketProperties socketProperties) {
         this.socketProperties = socketProperties;
-    }
-
-    public void setUseSendfile(boolean useSendfile) {
-        this.useSendfile = useSendfile;
     }
 
     /**
@@ -199,7 +182,7 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
         } else {
             try {
                 SocketAddress sa = ssc.getLocalAddress();
-                if (sa != null && sa instanceof InetSocketAddress) {
+                if (sa instanceof InetSocketAddress) {
                     return ((InetSocketAddress) sa).getPort();
                 } else {
                     return -1;
@@ -460,11 +443,6 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
 
     public int getReadBufSize() {
         return socketProperties.getRxBufSize();
-    }
-
-    @Override
-    public boolean getUseSendfile() {
-        return useSendfile;
     }
 
     public int getOomParachute() {
@@ -755,6 +733,9 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
                 @Override
                 public void completed(Integer nBytes, SocketWrapperBase<Nio2Channel> attachment) {
                     boolean notify = false;
+                    if (log.isDebugEnabled()) {
+                        log.debug("Socket: [ + " + attachment + "], Interest: [" + interest + "]");
+                    }
                     synchronized (readCompletionHandler) {
                         if (nBytes.intValue() < 0) {
                             failed(new EOFException(), attachment);
@@ -879,8 +860,15 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
         @Override
         public int read(boolean block, byte[] b, int off, int len) throws IOException {
 
+            if (log.isDebugEnabled()) {
+                log.debug("Socket: [" + this + "], block: [" + block + "], length: [" + len + "]");
+            }
+
             synchronized (readCompletionHandler) {
                 if (readPending) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Socket: [" + this + "], Read: [0]");
+                    }
                     return 0;
                 }
 
@@ -894,6 +882,9 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
                 // Is there enough data in the read buffer to satisfy this request?
                 if (remaining >= len) {
                     readBuffer.get(b, off, len);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Socket: [" + this + "], Read from buffer: [" + len + "]");
+                    }
                     return len;
                 }
 
@@ -931,9 +922,15 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
                             readBuffer.flip();
                             flipped = true;
                         }
+                    } else {
+                        interest = true;
                     }
                 } else if (nRead == -1) {
                     throw new EOFException();
+                }
+
+                if (log.isDebugEnabled()) {
+                    log.debug("Socket: [" + this + "], Read: [" + (len - leftToWrite) + "]");
                 }
 
                 return len - leftToWrite;
@@ -1092,6 +1089,11 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
                 throw ex;
             }
         }
+
+        @Override
+        public void regsiterForEvent(boolean read, boolean write) {
+            // NO-OP. Appropriate handlers will already have been registered.
+        }
     }
 
 
@@ -1125,9 +1127,7 @@ public class Nio2Endpoint extends AbstractEndpoint<Nio2Channel> {
      * stored in the ThreadWithAttributes extra folders, or alternately in
      * thread local fields.
      */
-    public interface Handler extends AbstractEndpoint.Handler {
-        public SocketState process(SocketWrapperBase<Nio2Channel> socket,
-                SocketStatus status);
+    public interface Handler extends AbstractEndpoint.Handler<Nio2Channel> {
         public void release(SocketWrapperBase<Nio2Channel> socket);
         public void closeAll();
         public SSLImplementation getSslImplementation();

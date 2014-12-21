@@ -38,7 +38,6 @@ import org.apache.catalina.ha.CatalinaCluster;
 import org.apache.catalina.ha.ClusterManager;
 import org.apache.catalina.ha.ClusterMessage;
 import org.apache.catalina.ha.ClusterSession;
-import org.apache.catalina.realm.GenericPrincipal;
 import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.session.StandardSession;
 import org.apache.catalina.tribes.io.ReplicationStream;
@@ -501,6 +500,33 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         return (sb.toString());
     }
 
+    @Override
+    public void addSessionListener(SessionListener listener) {
+        lock();
+        try {
+            super.addSessionListener(listener);
+            if (deltaRequest != null && listener instanceof ReplicatedSessionListener) {
+                deltaRequest.addSessionListener(listener);
+            }
+        } finally {
+            unlock();
+        }
+    }
+
+    @Override
+    public void removeSessionListener(SessionListener listener) {
+        lock();
+        try {
+            super.removeSessionListener(listener);
+            if (deltaRequest != null && listener instanceof ReplicatedSessionListener) {
+                deltaRequest.removeSessionListener(listener);
+            }
+        } finally {
+            unlock();
+        }
+    }
+
+
     // ------------------------------------------------ Session Package Methods
 
     @Override
@@ -721,7 +747,7 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         boolean hasPrincipal = stream.readBoolean();
         principal = null;
         if (hasPrincipal) {
-            principal = SerializablePrincipal.readPrincipal(stream);
+            principal = (Principal) stream.readObject();
         }
 
         //        setId((String) stream.readObject());
@@ -742,9 +768,14 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         }
         isValid = isValidSave;
 
-        if (listeners == null) {
-            ArrayList<SessionListener> arrayList = new ArrayList<>();
-            listeners = arrayList;
+        // Session listeners
+        n = ((Integer) stream.readObject()).intValue();
+        if (listeners == null || n > 0) {
+            listeners = new ArrayList<>();
+        }
+        for (int i = 0; i < n; i++) {
+            SessionListener listener = (SessionListener) stream.readObject();
+            listeners.add(listener);
         }
 
         if (notes == null) {
@@ -799,9 +830,9 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         stream.writeObject(Boolean.valueOf(isValid));
         stream.writeObject(Long.valueOf(thisAccessedTime));
         stream.writeObject(Long.valueOf(version));
-        stream.writeBoolean(getPrincipal() != null);
-        if (getPrincipal() != null) {
-            SerializablePrincipal.writePrincipal((GenericPrincipal) principal,stream);
+        stream.writeBoolean(getPrincipal() instanceof Serializable);
+        if (getPrincipal() instanceof Serializable) {
+            stream.writeObject(getPrincipal());
         }
 
         stream.writeObject(id);
@@ -836,6 +867,17 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
             }
         }
 
+        // Serializable listeners
+        ArrayList<SessionListener> saveListeners = new ArrayList<>();
+        for (SessionListener listener : listeners) {
+            if (listener instanceof ReplicatedSessionListener) {
+                saveListeners.add(listener);
+            }
+        }
+        stream.writeObject(Integer.valueOf(saveListeners.size()));
+        for (SessionListener listener : saveListeners) {
+            stream.writeObject(listener);
+        }
     }
 
 

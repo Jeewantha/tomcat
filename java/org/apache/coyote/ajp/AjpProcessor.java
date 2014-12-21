@@ -42,6 +42,8 @@ import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Request;
 import org.apache.coyote.RequestInfo;
 import org.apache.coyote.Response;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.HexUtils;
@@ -57,15 +59,15 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Base class for AJP Processor implementations.
+ * AJP Processor implementations.
  */
-public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
+public class AjpProcessor<S> extends AbstractProcessor<S> {
 
+    private static final Log log = LogFactory.getLog(AjpProcessor.class);
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(AjpProcessor.class);
 
 
     /**
@@ -161,8 +163,8 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
 
     /**
-     * Location of next write of the response message (used withnon-blocking
-     * writes when the message may not be written in a single write). Avalue of
+     * Location of next write of the response message (used with non-blocking
+     * writes when the message may not be written in a single write). A value of
      * -1 indicates that no message has been written to the buffer.
      */
     private int responseMsgPos = -1;
@@ -265,7 +267,7 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
     // ------------------------------------------------------------ Constructor
 
-    public AbstractAjpProcessor(int packetSize, AbstractEndpoint<S> endpoint) {
+    public AjpProcessor(int packetSize, AbstractEndpoint<S> endpoint) {
 
         super(endpoint);
 
@@ -291,6 +293,8 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         getBodyMessageArray = new byte[getBodyMessage.getLen()];
         System.arraycopy(getBodyMessage.getBuffer(), 0, getBodyMessageArray,
                 0, getBodyMessage.getLen());
+
+        response.setOutputBuffer(new SocketOutputBuffer());
     }
 
 
@@ -725,8 +729,6 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         // Setting up the socket
         this.socketWrapper = socket;
 
-        setupSocket(socket);
-
         int soTimeout = endpoint.getSoTimeout();
         boolean cping = false;
 
@@ -922,29 +924,6 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
     // ------------------------------------------------------ Protected Methods
 
-    // Methods called by process()
-    protected abstract void setupSocket(SocketWrapperBase<S> socketWrapper)
-            throws IOException;
-
-    // Methods used by readMessage
-    /**
-     * Read at least the specified amount of bytes, and place them
-     * in the input buffer. Note that if any data is available to read then this
-     * method will always block until at least the specified number of bytes
-     * have been read.
-     *
-     * @param buf   Buffer to read data into
-     * @param pos   Start position
-     * @param n     The minimum number of bytes to read
-     * @param block If there is no data available to read when this method is
-     *              called, should this call block until data becomes available?
-     * @return  <code>true</code> if the requested number of bytes were read
-     *          else <code>false</code>
-     * @throws IOException
-     */
-    protected abstract boolean read(byte[] buf, int pos, int n, boolean block)
-            throws IOException;
-
     // Methods used by SocketInputBuffer
     /**
      * Read an AJP body message. Used to read both the 'special' packet in ajp13
@@ -997,9 +976,8 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         throws IOException {
 
         byte[] buf = message.getBuffer();
-        int headerLength = message.getHeaderLength();
 
-        if (!read(buf, 0, headerLength, block)) {
+        if (!read(buf, 0, Constants.H_SIZE, block)) {
             return false;
         }
 
@@ -1022,7 +1000,7 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
                         Integer.valueOf(messageLength),
                         Integer.valueOf(buf.length)));
             }
-            read(buf, headerLength, messageLength, true);
+            read(buf, Constants.H_SIZE, messageLength, true);
             return true;
         }
     }
@@ -1409,6 +1387,7 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
 
         response.setCommitted(true);
 
+        tmpMB.recycle();
         responseMsgPos = -1;
         responseMessage.reset();
         responseMessage.appendByte(Constants.JK_AJP13_SEND_HEADERS);
@@ -1560,6 +1539,31 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
     }
 
 
+    /**
+     * Read at least the specified amount of bytes, and place them
+     * in the input buffer. Note that if any data is available to read then this
+     * method will always block until at least the specified number of bytes
+     * have been read.
+     *
+     * @param buf   Buffer to read data into
+     * @param pos   Start position
+     * @param n     The minimum number of bytes to read
+     * @param block If there is no data available to read when this method is
+     *              called, should this call block until data becomes available?
+     * @return  <code>true</code> if the requested number of bytes were read
+     *          else <code>false</code>
+     * @throws IOException
+     */
+    private boolean read(byte[] buf, int pos, int n, boolean block) throws IOException {
+        int read = socketWrapper.read(block, buf, pos, n);
+        if (!block && read > 0 && read < n) {
+            socketWrapper.read(true, buf, pos + n, n - read);
+        }
+
+        return read > 0;
+    }
+
+
     private void writeData(ByteChunk chunk) throws IOException {
         // Prevent timeout
         socketWrapper.access();
@@ -1674,8 +1678,20 @@ public abstract class AbstractAjpProcessor<S> extends AbstractProcessor<S> {
         }
     }
 
-    // ------------------------------------- InputStreamInputBuffer Inner Class
 
+    @Override
+    protected void registerForEvent(boolean read, boolean write) {
+        socketWrapper.regsiterForEvent(read, write);
+    }
+
+
+    @Override
+    protected Log getLog() {
+        return log;
+    }
+
+
+    // ------------------------------------- InputStreamInputBuffer Inner Class
 
     /**
      * This class is an input buffer which will read its data from an input

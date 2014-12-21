@@ -31,6 +31,7 @@ import javax.servlet.AsyncListener;
 import javax.servlet.DispatcherType;
 import javax.servlet.GenericServlet;
 import javax.servlet.RequestDispatcher;
+import javax.servlet.Servlet;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletRequestEvent;
@@ -463,8 +464,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
 
-        TimeoutServlet timeout =
-                new TimeoutServlet(completeOnTimeout, dispatchUrl);
+        TimeoutServlet timeout = new TimeoutServlet(completeOnTimeout, dispatchUrl);
 
         Wrapper wrapper = Tomcat.addServlet(ctx, "time", timeout);
         wrapper.setAsyncSupported(true);
@@ -541,8 +541,8 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             long timeoutDelay = TimeoutServlet.ASYNC_TIMEOUT;
             if (asyncDispatch != null && asyncDispatch.booleanValue() &&
                     !completeOnTimeout.booleanValue()) {
-                // Extra timeout in this case
-                timeoutDelay += TimeoutServlet.ASYNC_TIMEOUT;
+                // The async dispatch includes a sleep
+                timeoutDelay += AsyncStartRunnable.THREAD_SLEEP_TIME;
             }
             alvGlobal.validateAccessLog(1, 200, timeoutDelay,
                     timeoutDelay + TIMEOUT_MARGIN + REQUEST_TIME);
@@ -557,7 +557,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         private final Boolean completeOnTimeout;
         private final String dispatchUrl;
 
-        public static final long ASYNC_TIMEOUT = 3000;
+        public static final long ASYNC_TIMEOUT = 100;
 
         public TimeoutServlet(Boolean completeOnTimeout, String dispatchUrl) {
             this.completeOnTimeout = completeOnTimeout;
@@ -856,6 +856,21 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         @Override
         public void onStartAsync(AsyncEvent event) throws IOException {
             TestAsyncContextImpl.track("onStartAsync-");
+        }
+    }
+
+    private static class StickyTrackingListener extends TrackingListener {
+
+        public StickyTrackingListener(boolean completeOnError,
+                boolean completeOnTimeout, String dispatchUrl) {
+            super(completeOnError, completeOnTimeout, dispatchUrl);
+        }
+
+        @Override
+        public void onStartAsync(AsyncEvent event) throws IOException {
+            super.onStartAsync(event);
+            // Re-add this listener to the new AsyncContext
+            event.getAsyncContext().addListener(this);
         }
     }
 
@@ -1243,15 +1258,25 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
 
     @Test
     public void testBug51197a() throws Exception {
-        doTestBug51197(false);
+        doTestBug51197(false, false);
     }
 
     @Test
     public void testBug51197b() throws Exception {
-        doTestBug51197(true);
+        doTestBug51197(true, false);
     }
 
-    private void doTestBug51197(boolean threaded) throws Exception {
+    @Test
+    public void testBug51197c() throws Exception {
+        doTestBug51197(false, true);
+    }
+
+    @Test
+    public void testBug51197d() throws Exception {
+        doTestBug51197(true, true);
+    }
+
+    private void doTestBug51197(boolean threaded, boolean customError) throws Exception {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
@@ -1264,6 +1289,17 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             Tomcat.addServlet(ctx, "asyncErrorServlet", asyncErrorServlet);
         wrapper.setAsyncSupported(true);
         ctx.addServletMapping("/asyncErrorServlet", "asyncErrorServlet");
+
+        if (customError) {
+            CustomErrorServlet customErrorServlet = new CustomErrorServlet();
+            Tomcat.addServlet(ctx, "customErrorServlet", customErrorServlet);
+            ctx.addServletMapping("/customErrorServlet", "customErrorServlet");
+
+            ErrorPage ep = new ErrorPage();
+            ep.setLocation("/customErrorServlet");
+
+            ctx.addErrorPage(ep);
+        }
 
         TesterAccessLogValve alv = new TesterAccessLogValve();
         ctx.getPipeline().addValve(alv);
@@ -1284,7 +1320,14 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         // responsibility when an error occurs on an application thread.
         // Calling sendError() followed by complete() and expecting the standard
         // error page mechanism to kick in could be viewed as handling the error
-        assertTrue(res.getLength() > 0);
+        String responseBody = res.toString();
+        Assert.assertNotNull(responseBody);
+        assertTrue(responseBody.length() > 0);
+        if (customError) {
+            assertTrue(responseBody, responseBody.contains(CustomErrorServlet.ERROR_MESSAGE));
+        } else {
+            assertTrue(responseBody, responseBody.contains(AsyncErrorServlet.ERROR_MESSAGE));
+        }
 
         // Without this test may complete before access log has a chance to log
         // the request
@@ -1294,6 +1337,21 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         alv.validateAccessLog(1, HttpServletResponse.SC_BAD_REQUEST, 0,
                 REQUEST_TIME);
     }
+
+    private static class CustomErrorServlet extends GenericServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final String ERROR_MESSAGE = "Custom error page";
+
+        @Override
+        public void service(ServletRequest req, ServletResponse res)
+                throws ServletException, IOException {
+            res.getWriter().println(ERROR_MESSAGE);
+        }
+
+    }
+
 
     private static class AsyncErrorServlet extends HttpServlet {
 
@@ -1310,21 +1368,17 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
         }
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+        protected void doGet(HttpServletRequest req, final HttpServletResponse resp)
                 throws ServletException, IOException {
 
-            final AsyncContext actxt = req.startAsync();
+            AsyncContext actxt = req.startAsync();
             actxt.setTimeout(TIMEOUT);
             if (threaded) {
                 actxt.start(new Runnable() {
                     @Override
                     public void run() {
                         try {
-                            HttpServletResponse resp =
-                                    (HttpServletResponse) actxt.getResponse();
                             resp.sendError(status, ERROR_MESSAGE);
-                            // Complete so there is no delay waiting for the
-                            // timeout
                             actxt.complete();
                         } catch (IOException e) {
                             // Ignore
@@ -1332,7 +1386,8 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
                     }
                 });
             } else {
-                resp.sendError(status);
+                resp.sendError(status, ERROR_MESSAGE);
+                actxt.complete();
             }
         }
     }
@@ -2025,5 +2080,68 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             count ++;
         }
         Assert.assertEquals(expectedTrack, getTrack());
+    }
+
+
+    // https://issues.apache.org/bugzilla/show_bug.cgi?id=57326
+    @Test
+    public void testAsyncContextListenerClearing() throws Exception {
+        resetTracker();
+
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
+        Servlet stage1 = new DispatchingServletTracking("/stage2", true);
+        Wrapper wrapper1 = Tomcat.addServlet(ctx, "stage1", stage1);
+        wrapper1.setAsyncSupported(true);
+        ctx.addServletMapping("/stage1", "stage1");
+
+        Servlet stage2 = new DispatchingServletTracking("/stage3", false);
+        Wrapper wrapper2 = Tomcat.addServlet(ctx, "stage2", stage2);
+        wrapper2.setAsyncSupported(true);
+        ctx.addServletMapping("/stage2", "stage2");
+
+        Servlet stage3 = new NonAsyncServlet();
+        Tomcat.addServlet(ctx, "stage3", stage3);
+        ctx.addServletMapping("/stage3", "stage3");
+
+        TesterAccessLogValve alv = new TesterAccessLogValve();
+        ctx.getPipeline().addValve(alv);
+
+        tomcat.start();
+
+        getUrl("http://localhost:" + getPort()+ "/stage1");
+
+        assertEquals("doGet-startAsync-doGet-startAsync-onStartAsync-NonAsyncServletGet-onComplete-", getTrack());
+
+        // Check the access log
+        alv.validateAccessLog(1, 200, 0, REQUEST_TIME);
+    }
+
+    private static class DispatchingServletTracking extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        private final String target;
+        private final boolean addTrackingListener;
+
+        public DispatchingServletTracking(String target, boolean addTrackingListener) {
+            this.target = target;
+            this.addTrackingListener = addTrackingListener;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            track("doGet-startAsync-");
+            AsyncContext ac = req.startAsync();
+            if (addTrackingListener) {
+                ac.addListener(new StickyTrackingListener(false, false, null));
+            }
+            ac.dispatch(target);
+         }
     }
 }

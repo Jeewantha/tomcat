@@ -25,17 +25,22 @@ import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URL;
+import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 import static org.junit.Assert.fail;
 
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 
 import org.apache.catalina.Container;
@@ -228,6 +233,359 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
                 throws ServletException, IOException {
             PrintWriter out = resp.getWriter();
             out.print(RESPONSE_TEXT);
+        }
+    }
+
+
+    public static final class RequestDescriptor {
+
+        private final Map<String, String> requestInfo = new HashMap<>();
+        private final Map<String, String> contextInitParameters = new HashMap<>();
+        private final Map<String, String> contextAttributes = new HashMap<>();
+        private final Map<String, String> headers = new HashMap<>();
+        private final Map<String, String> attributes = new HashMap<>();
+        private final Map<String, String> params = new HashMap<>();
+        private final Map<String, String> sessionAttributes = new HashMap<>();
+
+        public Map<String, String> getRequestInfo() {
+            return requestInfo;
+        }
+
+        public Map<String, String> getContextInitParameters() {
+            return contextInitParameters;
+        }
+
+        public Map<String, String> getContextAttributes() {
+            return contextAttributes;
+        }
+
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+
+        public Map<String, String> getAttributes() {
+            return attributes;
+        }
+
+        public Map<String, String> getParams() {
+            return params;
+        }
+
+        public Map<String, String> getSessionAttributes() {
+            return sessionAttributes;
+        }
+
+        public String getRequestInfo(String name) {
+            return requestInfo.get(name);
+        }
+
+        public void putRequestInfo(String name, String value) {
+            requestInfo.put(name, value);
+        }
+
+        public String getContextInitParameter(String name) {
+            return contextInitParameters.get(name);
+        }
+
+        public void putContextInitParameter(String name, String value) {
+            contextInitParameters.put(name, value);
+        }
+
+        public String getContextAttribute(String name) {
+            return contextAttributes.get(name);
+        }
+
+        public void putContextAttribute(String name, String value) {
+            contextAttributes.put(name, value);
+        }
+
+        public String getHeader(String name) {
+            return headers.get(name);
+        }
+
+        public void putHeader(String name, String value) {
+            headers.put(name, value);
+        }
+
+        public String getAttribute(String name) {
+            return attributes.get(name);
+        }
+
+        public void putAttribute(String name, String value) {
+            attributes.put(name, value);
+        }
+
+        public String getParam(String name) {
+            return params.get(name);
+        }
+
+        public void putParam(String name, String value) {
+            params.put(name, value);
+        }
+
+        public String getSessionAttribute(String name) {
+            return sessionAttributes.get(name);
+        }
+
+        public void putSessionAttribute(String name, String value) {
+            sessionAttributes.put(name, value);
+        }
+
+        public void compare (RequestDescriptor request) {
+            Map<String, String> base;
+            Map<String, String> cmp;
+            base = request.getRequestInfo();
+            cmp = this.getRequestInfo();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Request info " + name, base.get(name), cmp.get(name));
+            }
+            base = request.getContextInitParameters();
+            cmp = this.getContextInitParameters();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Context parameter " + name, base.get(name), cmp.get(name));
+            }
+            base = request.getContextAttributes();
+            cmp = this.getContextAttributes();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Context attribute " + name, base.get(name), cmp.get(name));
+            }
+            base = request.getHeaders();
+            cmp = this.getHeaders();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Header " + name, base.get(name), cmp.get(name));
+            }
+            base = request.getAttributes();
+            cmp = this.getAttributes();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Attribute " + name, base.get(name), cmp.get(name));
+            }
+            base = request.getParams();
+            cmp = this.getParams();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Param " + name, base.get(name), cmp.get(name));
+            }
+            base = request.getSessionAttributes();
+            cmp = this.getSessionAttributes();
+            for (String name: base.keySet()) {
+                Assert.assertEquals("Session attribute " + name, base.get(name), cmp.get(name));
+            }
+        }
+    }
+
+
+    public static final class SnoopResult {
+
+        public static RequestDescriptor parse(String body) {
+
+            int n;
+            int m;
+            String key;
+            String value;
+            String name;
+
+            RequestDescriptor request = new RequestDescriptor();
+
+            for (String line: body.split(System.lineSeparator())) {
+                n = line.indexOf(": ");
+                if (n > 0) {
+                    key = line.substring(0, n);
+                    value = line.substring(n + 2);
+                    m = key.indexOf(':');
+                    if (m > 0) {
+                        name = key.substring(m + 1);
+                        key = key.substring(0, m);
+                        if (key.equals("CONTEXT-PARAM")) {
+                            request.putContextInitParameter(name, value);
+                        } else if (key.equals("CONTEXT-ATTRIBUTE")) {
+                            request.putContextAttribute(name, value);
+                        } else if (key.equals("HEADER")) {
+                            request.putHeader(name, value);
+                        } else if (key.equals("ATTRIBUTE")) {
+                            request.putAttribute(name, value);
+                        } else if (key.equals("PARAM")) {
+                            request.putParam(name, value);
+                        } else if (key.equals("SESSION-ATTRIBUTE")) {
+                            request.putSessionAttribute(name, value);
+                        } else {
+                            request.putRequestInfo(key + ":" + name, value);
+                        }
+                    } else {
+                        request.putRequestInfo(key, value);
+                    }
+                }
+            }
+
+            return request;
+        }
+    }
+
+    /**
+     * Simple servlet that dumps request information. Tests using this should
+     * note that additional information may be added to in the future and should
+     * therefore test return values using SnoopResult.
+     */
+    public static final class SnoopServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @SuppressWarnings("deprecation")
+        @Override
+        public void service(HttpServletRequest request,
+                            HttpServletResponse response)
+                throws ServletException, IOException {
+
+            String name;
+            StringBuilder value;
+            Object attribute;
+
+            ServletContext ctx = this.getServletContext();
+            HttpSession session = request.getSession(false);
+            PrintWriter out = response.getWriter();
+
+            response.setContentType("text/plain");
+
+            out.println("CONTEXT-NAME: " + ctx.getServletContextName());
+            out.println("CONTEXT-PATH: " + ctx.getContextPath());
+            out.println("CONTEXT-MAJOR-VERSION: " + ctx.getMajorVersion());
+            out.println("CONTEXT-MINOR-VERSION: " + ctx.getMinorVersion());
+            out.println("CONTEXT-SERVER-INFO: " + ctx.getServerInfo());
+            for (Enumeration<String> e = ctx.getInitParameterNames();
+                 e.hasMoreElements();) {
+                name = e.nextElement();
+                out.println("CONTEXT-INIT-PARAM:" + name + ": " +
+                            ctx.getInitParameter(name));
+            }
+            for (Enumeration<String> e = ctx.getAttributeNames();
+                 e.hasMoreElements();) {
+                name = e.nextElement();
+                out.println("CONTEXT-ATTRIBUTE:" + name + ": " +
+                            ctx.getAttribute(name));
+            }
+            out.println("REQUEST-CONTEXT-PATH: " + request.getContextPath());
+            out.println("REQUEST-SERVER-NAME: " + request.getServerName());
+            out.println("REQUEST-SERVER-PORT: " + request.getServerPort());
+            out.println("REQUEST-LOCAL-NAME: " + request.getLocalName());
+            out.println("REQUEST-LOCAL-ADDR: " + request.getLocalAddr());
+            out.println("REQUEST-LOCAL-PORT: " + request.getLocalPort());
+            out.println("REQUEST-REMOTE-HOST: " + request.getRemoteHost());
+            out.println("REQUEST-REMOTE-ADDR: " + request.getRemoteAddr());
+            out.println("REQUEST-REMOTE-PORT: " + request.getRemotePort());
+            out.println("REQUEST-PROTOCOL: " + request.getProtocol());
+            out.println("REQUEST-SCHEME: " + request.getScheme());
+            out.println("REQUEST-IS-SECURE: " + request.isSecure());
+            out.println("REQUEST-URI: " + request.getRequestURI());
+            out.println("REQUEST-URL: " + request.getRequestURL());
+            out.println("REQUEST-SERVLET-PATH: " + request.getServletPath());
+            out.println("REQUEST-METHOD: " + request.getMethod());
+            out.println("REQUEST-PATH-INFO: " + request.getPathInfo());
+            out.println("REQUEST-PATH-TRANSLATED: " +
+                        request.getPathTranslated());
+            out.println("REQUEST-QUERY-STRING: " + request.getQueryString());
+            out.println("REQUEST-REMOTE-USER: " + request.getRemoteUser());
+            out.println("REQUEST-AUTH-TYPE: " + request.getAuthType());
+            out.println("REQUEST-USER-PRINCIPAL: " +
+                        request.getUserPrincipal());
+            out.println("REQUEST-CHARACTER-ENCODING: " +
+                        request.getCharacterEncoding());
+            out.println("REQUEST-CONTENT-LENGTH: " +
+                        request.getContentLength());
+            out.println("REQUEST-CONTENT-TYPE: " + request.getContentType());
+            out.println("REQUEST-LOCALE: " + request.getLocale());
+
+            for (Enumeration<String> e = request.getHeaderNames();
+                 e.hasMoreElements();) {
+                name = e.nextElement();
+                value = new StringBuilder();
+                for (Enumeration<String> h = request.getHeaders(name);
+                     h.hasMoreElements();) {
+                    value.append(h.nextElement());
+                    if (h.hasMoreElements()) {
+                        value.append(";");
+                    }
+                }
+                out.println("HEADER:" + name + ": " + value);
+            }
+
+            for (Enumeration<String> e = request.getAttributeNames();
+                 e.hasMoreElements();) {
+                name = e.nextElement();
+                attribute = request.getAttribute(name);
+                out.println("ATTRIBUTE:" + name + ": " +
+                            (attribute != null ? attribute : "(null)"));
+            }
+
+            for (Enumeration<String> e = request.getParameterNames();
+                 e.hasMoreElements();) {
+                name = e.nextElement();
+                value = new StringBuilder();
+                String values[] = request.getParameterValues(name);
+                int m = values.length;
+                for (int j = 0; j < m; j++) {
+                    value.append(values[j]);
+                    if (j < m - 1) {
+                        value.append(";");
+                    }
+                }
+                out.println("PARAM/" + name + ": " + value);
+            }
+
+            out.println("SESSION-REQUESTED-ID: " +
+                        request.getRequestedSessionId());
+            out.println("SESSION-REQUESTED-ID-COOKIE: " +
+                        request.isRequestedSessionIdFromCookie());
+            out.println("SESSION-REQUESTED-ID-URL: " +
+                        request.isRequestedSessionIdFromUrl());
+            out.println("SESSION-REQUESTED-ID-VALID: " +
+                        request.isRequestedSessionIdValid());
+
+            if (session != null) {
+                out.println("SESSION-ID: " + session.getId());
+                out.println("SESSION-CREATION-TIME: " +
+                        session.getCreationTime());
+                out.println("SESSION-LAST-ACCESSED-TIME: " +
+                        session.getLastAccessedTime());
+                out.println("SESSION-MAX-INACTIVE-INTERVAL: " +
+                        session.getMaxInactiveInterval());
+                out.println("SESSION-IS-NEW: " + session.isNew());
+                for (Enumeration<String> e = session.getAttributeNames();
+                     e.hasMoreElements();) {
+                    name = e.nextElement();
+                    attribute = session.getAttribute(name);
+                    out.println("SESSION-ATTRIBUTE:" + name + ": " +
+                                (attribute != null ? attribute : "(null)"));
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Servlet that simply echos the request body back as the response body.
+     */
+    public static class EchoBodyServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            // NO-OP - No body to echo
+        }
+
+        @Override
+        protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            // Beware of clients that try to send the whole request body before
+            // reading any of the response. They may cause this test to lock up.
+            byte[] buffer = new byte[8096];
+            int read = 0;
+            try (InputStream is = req.getInputStream();
+                    OutputStream os = resp.getOutputStream()) {
+                while (read > -1) {
+                    os.write(buffer, 0, read);
+                    read = is.read(buffer);
+                }
+            }
         }
     }
 

@@ -650,7 +650,7 @@ public final class CorsFilter implements Filter {
                                 requestType = CORSRequestType.ACTUAL;
                             }
                         }
-                    } else if (COMPLEX_HTTP_METHODS.contains(method)) {
+                    } else {
                         requestType = CORSRequestType.ACTUAL;
                     }
                 }
@@ -1032,11 +1032,6 @@ public final class CorsFilter implements Filter {
     public static final Collection<String> HTTP_METHODS =
             new HashSet<>(Arrays.asList("OPTIONS", "GET", "HEAD", "POST", "PUT",
                     "DELETE", "TRACE", "CONNECT"));
-    /**
-     * {@link Collection} of non-simple HTTP methods. Case sensitive.
-     */
-    public static final Collection<String> COMPLEX_HTTP_METHODS =
-            new HashSet<>(Arrays.asList("PUT", "DELETE", "TRACE", "CONNECT"));
     /**
      * {@link Collection} of Simple HTTP methods. Case sensitive.
      *

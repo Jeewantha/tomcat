@@ -87,7 +87,16 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
      * ProtocolHandler implementation (ProtocolHandler using NIO, requires NIO
      * Endpoint etc.).
      */
-    protected AbstractEndpoint<S> endpoint = null;
+    private final AbstractEndpoint<S> endpoint;
+
+    private Handler<S> handler;
+
+
+    public AbstractProtocol(AbstractEndpoint<S> endpoint) {
+        this.endpoint = endpoint;
+        setSoLinger(Constants.DEFAULT_CONNECTION_LINGER);
+        setTcpNoDelay(Constants.DEFAULT_TCP_NO_DELAY);
+    }
 
 
     // ----------------------------------------------- Generic property handling
@@ -306,6 +315,22 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
     }
 
 
+    // ----------------------------------------------- Accessors for sub-classes
+
+    protected AbstractEndpoint<S> getEndpoint() {
+        return endpoint;
+    }
+
+
+    protected Handler<S> getHandler() {
+        return handler;
+    }
+
+    protected void setHandler(Handler<S> handler) {
+        this.handler = handler;
+    }
+
+
     // -------------------------------------------------------- Abstract methods
 
     /**
@@ -326,12 +351,6 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
      * Obtain the name of the protocol, (Http, Ajp, etc.). Used with JMX.
      */
     protected abstract String getProtocolName();
-
-
-    /**
-     * Obtain the handler associated with the underlying Endpoint
-     */
-    protected abstract Handler getHandler();
 
 
     // ----------------------------------------------------- JMX related methods
@@ -549,7 +568,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
     // ------------------------------------------- Connection handler base class
 
     protected abstract static class AbstractConnectionHandler<S,P extends Processor<S>>
-            implements AbstractEndpoint.Handler {
+            implements AbstractEndpoint.Handler<S> {
 
         protected abstract Log getLog();
 
@@ -577,6 +596,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
         }
 
 
+        @Override
         public SocketState process(SocketWrapperBase<S> wrapper,
                 SocketStatus status) {
             if (wrapper == null) {

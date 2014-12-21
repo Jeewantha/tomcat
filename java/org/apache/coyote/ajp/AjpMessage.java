@@ -45,8 +45,7 @@ public class AjpMessage {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(AjpMessage.class);
 
 
     // ------------------------------------------------------------ Constructor
@@ -297,16 +296,6 @@ public class AjpMessage {
         b1 |= (buf[pos++] & 0xFF);
         validatePos(pos);
         return  b1;
-    }
-
-
-    public int getHeaderLength() {
-        return Constants.H_SIZE;
-    }
-
-
-    public int getPacketSize() {
-        return buf.length;
     }
 
 

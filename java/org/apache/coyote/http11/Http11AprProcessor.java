@@ -17,7 +17,6 @@
 package org.apache.coyote.http11;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
@@ -59,10 +58,10 @@ public class Http11AprProcessor extends AbstractHttp11Processor<Long> {
         super(endpoint);
 
         inputBuffer = new InternalAprInputBuffer(request, headerBufferSize);
-        request.setInputBuffer(inputBuffer);
+        request.setInputBuffer(getInputBuffer());
 
         outputBuffer = new InternalAprOutputBuffer(response, headerBufferSize);
-        response.setOutputBuffer(outputBuffer);
+        response.setOutputBuffer(getOutputBuffer());
 
         initializeFilters(maxTrailerSize, maxExtensionSize, maxSwallowSize);
     }
@@ -91,36 +90,6 @@ public class Http11AprProcessor extends AbstractHttp11Processor<Long> {
 
 
     // --------------------------------------------------------- Public Methods
-
-
-    @Override
-    protected boolean disableKeepAlive() {
-        return false;
-    }
-
-
-    @Override
-    protected void setRequestLineReadTimeout() throws IOException {
-        // Timeouts while in the poller are handled entirely by the poller
-        // Only need to be concerned with socket timeouts
-
-        // APR uses simulated blocking so if some request line data is present
-        // then it must all be presented (with the normal socket timeout).
-
-        // When entering the processing loop for the first time there will
-        // always be some data to read so the keep-alive timeout is not required
-
-        // For the second and subsequent executions of the processing loop, if
-        // there is no request line data present then no further data will be
-        // read from the socket. If there is request line data present then it
-        // must all be presented (with the normal socket timeout)
-
-        // When the socket is created it is given the correct timeout.
-        // sendfile may change the timeout but will restore it
-        // This processor may change the timeout for uploads but will restore it
-
-        // NO-OP
-    }
 
 
     @Override
@@ -183,7 +152,6 @@ public class Http11AprProcessor extends AbstractHttp11Processor<Long> {
 
     @Override
     public void recycleInternal() {
-        socketWrapper = null;
         sendfileData = null;
     }
 
@@ -369,9 +337,9 @@ public class Http11AprProcessor extends AbstractHttp11Processor<Long> {
             if (endpoint.isSSLEnabled() && (socketRef != 0)) {
                 // Consume and buffer the request body, so that it does not
                 // interfere with the client's handshake messages
-                InputFilter[] inputFilters = inputBuffer.getFilters();
+                InputFilter[] inputFilters = getInputBuffer().getFilters();
                 ((BufferedInputFilter) inputFilters[Constants.BUFFERED_FILTER]).setLimit(maxSavePostSize);
-                inputBuffer.addActiveFilter(inputFilters[Constants.BUFFERED_FILTER]);
+                getInputBuffer().addActiveFilter(inputFilters[Constants.BUFFERED_FILTER]);
                 try {
                     // Configure connection to require a certificate
                     SSLSocket.setVerify(socketRef, SSL.SSL_CVERIFY_REQUIRE,
@@ -421,7 +389,7 @@ public class Http11AprProcessor extends AbstractHttp11Processor<Long> {
                 org.apache.coyote.Constants.SENDFILE_FILENAME_ATTR);
         if (fileName != null) {
             // No entity body sent here
-            outputBuffer.addActiveFilter(outputFilters[Constants.VOID_FILTER]);
+            getOutputBuffer().addActiveFilter(outputFilters[Constants.VOID_FILTER]);
             contentDelimitation = true;
             sendfileData = new AprEndpoint.SendfileData();
             sendfileData.fileName = fileName;
@@ -432,15 +400,5 @@ public class Http11AprProcessor extends AbstractHttp11Processor<Long> {
             return true;
         }
         return false;
-    }
-
-    @Override
-    protected AbstractInputBuffer<Long> getInputBuffer() {
-        return inputBuffer;
-    }
-
-    @Override
-    protected AbstractOutputBuffer<Long> getOutputBuffer() {
-        return outputBuffer;
     }
 }

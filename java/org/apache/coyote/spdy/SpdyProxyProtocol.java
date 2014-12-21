@@ -30,7 +30,6 @@ import org.apache.tomcat.spdy.SpdyConnection;
 import org.apache.tomcat.spdy.SpdyContext;
 import org.apache.tomcat.spdy.SpdyContext.SpdyHandler;
 import org.apache.tomcat.spdy.SpdyStream;
-import org.apache.tomcat.util.net.AbstractEndpoint.Handler;
 import org.apache.tomcat.util.net.NioChannel;
 import org.apache.tomcat.util.net.NioEndpoint;
 import org.apache.tomcat.util.net.SSLImplementation;
@@ -60,17 +59,15 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
 public class SpdyProxyProtocol extends AbstractProtocol<NioChannel> {
     private static final Log log = LogFactory.getLog(SpdyProxyProtocol.class);
 
-    private final NioEndpoint.Handler cHandler = new TomcatNioHandler();
     private SpdyContext spdyContext;
 
     private boolean compress = false;
 
     public SpdyProxyProtocol() {
-        endpoint = new NioEndpoint();
-        ((NioEndpoint) endpoint).setHandler(cHandler);
-        setSoLinger(Constants.DEFAULT_CONNECTION_LINGER);
+        super(new NioEndpoint());
+        NioEndpoint.Handler cHandler = new TomcatNioHandler();
+        ((NioEndpoint) getEndpoint()).setHandler(cHandler);
         setSoTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
-        setTcpNoDelay(Constants.DEFAULT_TCP_NO_DELAY);
     }
 
     @Override
@@ -89,11 +86,6 @@ public class SpdyProxyProtocol extends AbstractProtocol<NioChannel> {
     }
 
     @Override
-    protected Handler getHandler() {
-        return cHandler;
-    }
-
-    @Override
     public void start() throws Exception {
         super.start();
         spdyContext = new SpdyContext();
@@ -101,13 +93,13 @@ public class SpdyProxyProtocol extends AbstractProtocol<NioChannel> {
         spdyContext.setHandler(new SpdyHandler() {
             @Override
             public void onStream(SpdyConnection con, SpdyStream ch) throws IOException {
-                SpdyProcessor<NioChannel> sp = new SpdyProcessor<>(con, endpoint);
+                SpdyProcessor<NioChannel> sp = new SpdyProcessor<>(con, getEndpoint());
                 sp.setAdapter(getAdapter());
                 sp.onSynStream(ch);
             }
         });
         spdyContext.setNetSupport(new NetSupportSocket());
-        spdyContext.setExecutor(endpoint.getExecutor());
+        spdyContext.setExecutor(getEndpoint().getExecutor());
     }
 
     public boolean isCompress() {

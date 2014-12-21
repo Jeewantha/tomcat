@@ -587,16 +587,6 @@ public class StandardWrapper extends ContainerBase
     }
 
 
-    /**
-     * Gets the names of the methods supported by the underlying servlet.
-     *
-     * This is the same set of methods included in the Allow response header
-     * in response to an OPTIONS request method processed by the underlying
-     * servlet.
-     *
-     * @return Array of names of the methods supported by the underlying
-     * servlet
-     */
     @Override
     public String[] getServletMethods() throws ServletException {
 
@@ -675,7 +665,7 @@ public class StandardWrapper extends ContainerBase
         if (!getState().isAvailable())
             return;
 
-        if (getServlet() != null && (getServlet() instanceof PeriodicEventListener)) {
+        if (getServlet() instanceof PeriodicEventListener) {
             ((PeriodicEventListener) getServlet()).periodicEvent();
         }
     }

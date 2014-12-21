@@ -72,7 +72,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
     /**
      * Input.
      */
-    protected AbstractInputBuffer<S> inputBuffer ;
+    protected AbstractInputBuffer<S> inputBuffer;
 
 
     /**
@@ -629,14 +629,18 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
      * Exposes input buffer to super class to allow better code re-use.
      * @return  The input buffer used by the processor.
      */
-    protected abstract AbstractInputBuffer<S> getInputBuffer();
+    protected AbstractInputBuffer<S> getInputBuffer() {
+        return inputBuffer;
+    }
 
 
     /**
      * Exposes output buffer to super class to allow better code re-use.
      * @return  The output buffer used by the processor.
      */
-    protected abstract AbstractOutputBuffer<S> getOutputBuffer();
+    protected AbstractOutputBuffer<S> getOutputBuffer() {
+        return outputBuffer;
+    }
 
 
     /**
@@ -863,7 +867,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             break;
         }
         case AVAILABLE: {
-            request.setAvailable(inputBuffer.available());
+            request.setAvailable(getInputBuffer().available());
             break;
         }
         case NB_WRITE_INTEREST: {
@@ -917,20 +921,6 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
 
     /**
-     * Processors (currently only HTTP BIO) may elect to disable HTTP keep-alive
-     * in some circumstances. This method allows the processor implementation to
-     * determine if keep-alive should be disabled or not.
-     */
-    protected abstract boolean disableKeepAlive();
-
-
-    /**
-     * Configures the timeout to be used for reading the request line.
-     */
-    protected abstract void setRequestLineReadTimeout() throws IOException;
-
-
-    /**
      * Defines how a connector handles an incomplete request line read.
      *
      * @return <code>true</code> if the processor should break out of the
@@ -972,17 +962,11 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
         readComplete = true;
         keptAlive = false;
 
-        if (disableKeepAlive()) {
-            socketWrapper.setKeepAliveLeft(0);
-        }
-
         while (!getErrorState().isError() && keepAlive && !isAsync() &&
                 httpUpgradeHandler == null && !endpoint.isPaused()) {
 
             // Parsing the request header
             try {
-                setRequestLineReadTimeout();
-
                 if (!getInputBuffer().parseRequestLine(keptAlive)) {
                     if (handleIncompleteRequestLineRead()) {
                         break;
@@ -1114,16 +1098,11 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                     // input. This way uploading a 100GB file doesn't tie up the
                     // thread if the servlet has rejected it.
                     getInputBuffer().setSwallowInput(false);
-                } else if (expectation &&
-                        (response.getStatus() < 200 || response.getStatus() > 299)) {
-                    // Client sent Expect: 100-continue but received a
-                    // non-2xx final response. Disable keep-alive (if enabled)
-                    // to ensure that the connection is closed. Some clients may
-                    // still send the body, some may send the next request.
-                    // No way to differentiate, so close the connection to
-                    // force the client to send the next request.
-                    getInputBuffer().setSwallowInput(false);
-                    keepAlive = false;
+                } else {
+                    // Need to check this again here in case the response was
+                    // committed before the error that requires the connection
+                    // to be closed occurred.
+                    checkExpectationAndResponseStatus();
                 }
                 endRequest();
             }
@@ -1181,6 +1160,20 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
                     return SocketState.CLOSED;
                 }
             }
+        }
+    }
+
+
+    private void checkExpectationAndResponseStatus() {
+        if (expectation && (response.getStatus() < 200 || response.getStatus() > 299)) {
+            // Client sent Expect: 100-continue but received a
+            // non-2xx final response. Disable keep-alive (if enabled)
+            // to ensure that the connection is closed. Some clients may
+            // still send the body, some may send the next request.
+            // No way to differentiate, so close the connection to
+            // force the client to send the next request.
+            getInputBuffer().setSwallowInput(false);
+            keepAlive = false;
         }
     }
 
@@ -1509,6 +1502,10 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
             keepAlive = false;
         }
 
+        // This may disabled keep-alive to check before working out the
+        // Connection header.
+        checkExpectationAndResponseStatus();
+
         // If we know that the request is bad this early, add the
         // Connection: close header.
         keepAlive = keepAlive && !statusDropsConnection(statusCode);
@@ -1649,7 +1646,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
         } else if (status == SocketStatus.OPEN_READ &&
                 request.getReadListener() != null) {
             try {
-                if (inputBuffer.available() > 0) {
+                if (getInputBuffer().available() > 0) {
                     asyncStateMachine.asyncOperation();
                 }
             } catch (IllegalStateException x) {
@@ -1781,6 +1778,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
         }
         httpUpgradeHandler = null;
         resetErrorState();
+        socketWrapper = null;
         recycleInternal();
     }
 
@@ -1789,7 +1787,7 @@ public abstract class AbstractHttp11Processor<S> extends AbstractProcessor<S> {
 
     @Override
     public ByteBuffer getLeftoverInput() {
-        return inputBuffer.getLeftover();
+        return getInputBuffer().getLeftover();
     }
 
 }

@@ -130,9 +130,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
     /**
      * Handling of accepted sockets.
      */
-    protected Handler handler = null;
-    public void setHandler(Handler handler ) { this.handler = handler; }
-    public Handler getHandler() { return handler; }
+    protected Handler<Long> handler = null;
+    public void setHandler(Handler<Long> handler ) { this.handler = handler; }
+    public Handler<Long> getHandler() { return handler; }
 
 
     /**
@@ -144,10 +144,6 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
     public void setPollTime(int pollTime) { if (pollTime > 0) { this.pollTime = pollTime; } }
 
 
-    /**
-     * Use sendfile for sending static files.
-     */
-    protected boolean useSendfile = false;
     /*
      * When the endpoint is created and configured, the APR library will not
      * have been initialised. This flag is used to determine if the default
@@ -156,12 +152,17 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
      * by configuration, that configuration will always take priority.
      */
     private boolean useSendFileSet = false;
+    @Override
     public void setUseSendfile(boolean useSendfile) {
         useSendFileSet = true;
-        this.useSendfile = useSendfile;
+        super.setUseSendfile(useSendfile);
     }
-    @Override
-    public boolean getUseSendfile() { return useSendfile; }
+    /*
+     * For internal use to avoid setting the useSendFileSet flag
+     */
+    private void setUseSendfileInternal(boolean useSendfile) {
+        super.setUseSendfile(useSendfile);
+    }
 
 
     /**
@@ -457,9 +458,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
         // Enable Sendfile by default if it has not been configured but usage on
         // systems which don't support it cause major problems
         if (!useSendFileSet) {
-            useSendfile = Library.APR_HAS_SENDFILE;
-        } else if (useSendfile && !Library.APR_HAS_SENDFILE) {
-            useSendfile = false;
+            setUseSendfileInternal(Library.APR_HAS_SENDFILE);
+        } else if (getUseSendfile() && !Library.APR_HAS_SENDFILE) {
+            setUseSendfileInternal(false);
         }
 
         // Initialize thread count default for acceptor
@@ -596,8 +597,8 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
             }
             SSLContext.setVerify(sslContext, value, SSLVerifyDepth);
             // For now, sendfile is not supported with SSL
-            if (useSendfile) {
-                useSendfile = false;
+            if (getUseSendfile()) {
+                setUseSendfileInternal(false);
                 if (useSendFileSet) {
                     log.warn(sm.getString("endpoint.apr.noSendfileWithSSL"));
                 }
@@ -635,7 +636,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
             pollerThread.start();
 
             // Start sendfile thread
-            if (useSendfile) {
+            if (getUseSendfile()) {
                 sendfile = new Sendfile();
                 sendfile.init();
                 Thread sendfileThread =
@@ -701,7 +702,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
             }
             poller = null;
             connections.clear();
-            if (useSendfile) {
+            if (getUseSendfile()) {
                 try {
                     sendfile.destroy();
                 } catch (Exception e) {
@@ -2214,19 +2215,6 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
 
     }
 
-    // ------------------------------------------------ Handler Inner Interface
-
-
-    /**
-     * Bare bones interface used for socket processing. Per thread data is to be
-     * stored in the ThreadWithAttributes extra folders, or alternately in
-     * thread local fields.
-     */
-    public interface Handler extends AbstractEndpoint.Handler {
-        public SocketState process(SocketWrapperBase<Long> socket,
-                SocketStatus status);
-    }
-
 
     // --------------------------------- SocketWithOptionsProcessor Inner Class
 
@@ -2596,6 +2584,13 @@ public class AprEndpoint extends AbstractEndpoint<Long> {
         @Override
         public void flush() {
             // NO-OP
+        }
+
+
+        @Override
+        public void regsiterForEvent(boolean read, boolean write) {
+            ((AprEndpoint) getEndpoint()).getPoller().add(
+                    getSocket().longValue(), -1, read, write);
         }
     }
 }

@@ -22,16 +22,32 @@ import javax.servlet.http.HttpUpgradeHandler;
 
 import org.apache.coyote.AbstractProtocol;
 import org.apache.coyote.Processor;
+import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * The is the base implementation for the AJP protocol handlers. Implementations
+ * typically extend this base class rather than implement {@link
+ * org.apache.coyote.ProtocolHandler}. All of the implementations that ship with
+ * Tomcat are implemented this way.
+ *
+ * @param <S> The type of socket used by the implementation
+ */
 public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
 
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(AbstractAjpProtocol.class);
+
+
+    public AbstractAjpProtocol(AbstractEndpoint<S> endpoint) {
+        super(endpoint);
+        setSoTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
+        // AJP does not use Send File
+        getEndpoint().setUseSendfile(false);
+    }
 
 
     @Override
@@ -39,6 +55,16 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         return "Ajp";
     }
 
+
+    /**
+     * {@inheritDoc}
+     *
+     * Overridden to make getter accessible to other classes in this package.
+     */
+    @Override
+    protected AbstractEndpoint<S> getEndpoint() {
+        return super.getEndpoint();
+    }
 
 
     // ------------------------------------------------- AJP specific properties
@@ -48,7 +74,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
      * Should authentication be done in the native webserver layer,
      * or in the Servlet container ?
      */
-    protected boolean tomcatAuthentication = true;
+    private boolean tomcatAuthentication = true;
     public boolean getTomcatAuthentication() { return tomcatAuthentication; }
     public void setTomcatAuthentication(boolean tomcatAuthentication) {
         this.tomcatAuthentication = tomcatAuthentication;
@@ -58,7 +84,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     /**
      * Required secret.
      */
-    protected String requiredSecret = null;
+    private String requiredSecret = null;
     public void setRequiredSecret(String requiredSecret) {
         this.requiredSecret = requiredSecret;
     }
@@ -67,7 +93,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     /**
      * AJP packet size.
      */
-    protected int packetSize = Constants.MAX_PACKET_SIZE;
+    private int packetSize = Constants.MAX_PACKET_SIZE;
     public int getPacketSize() { return packetSize; }
     public void setPacketSize(int packetSize) {
         if(packetSize < Constants.MAX_PACKET_SIZE) {
@@ -77,7 +103,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         }
     }
 
-    protected void configureProcessor(AbstractAjpProcessor<S> processor) {
+    protected void configureProcessor(AjpProcessor<S> processor) {
         processor.setAdapter(getAdapter());
         processor.setTomcatAuthentication(getTomcatAuthentication());
         processor.setRequiredSecret(requiredSecret);
@@ -85,8 +111,29 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         processor.setClientCertProvider(getClientCertProvider());
     }
 
-    protected abstract static class AbstractAjpConnectionHandler<S,P extends AbstractAjpProcessor<S>>
-            extends AbstractConnectionHandler<S, P> {
+    protected abstract static class AbstractAjpConnectionHandler<S>
+            extends AbstractConnectionHandler<S,AjpProcessor<S>> {
+
+        private final AbstractAjpProtocol<S> proto;
+
+        public AbstractAjpConnectionHandler(AbstractAjpProtocol<S> proto) {
+            this.proto = proto;
+        }
+
+        @Override
+        protected AbstractAjpProtocol<S> getProtocol() {
+            return proto;
+        }
+
+
+        @Override
+        protected AjpProcessor<S> createProcessor() {
+            AjpProcessor<S> processor =
+                    new AjpProcessor<>(proto.getPacketSize(), proto.getEndpoint());
+            proto.configureProcessor(processor);
+            register(processor);
+            return processor;
+        }
 
         @Override
         protected void initSsl(SocketWrapperBase<S> socket, Processor<S> processor) {
@@ -101,8 +148,8 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         }
 
         @Override
-        protected P createUpgradeProcessor(SocketWrapperBase<S> socket, ByteBuffer leftoverInput,
-                HttpUpgradeHandler httpUpgradeHandler) {
+        protected AjpProcessor<S> createUpgradeProcessor(SocketWrapperBase<S> socket,
+                ByteBuffer leftoverInput, HttpUpgradeHandler httpUpgradeHandler) {
             // TODO should fail - throw IOE
             return null;
         }
