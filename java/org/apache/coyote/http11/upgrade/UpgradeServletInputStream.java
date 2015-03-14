@@ -21,17 +21,24 @@ import java.io.IOException;
 import javax.servlet.ReadListener;
 import javax.servlet.ServletInputStream;
 
+import org.apache.coyote.ContainerThreadMarker;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.net.DispatchType;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
 public class UpgradeServletInputStream extends ServletInputStream {
 
-    protected static final StringManager sm =
+    private static final Log log = LogFactory.getLog(UpgradeServletInputStream.class);
+    private static final StringManager sm =
             StringManager.getManager(UpgradeServletInputStream.class);
 
     private final SocketWrapperBase<?> socketWrapper;
 
-    private volatile boolean closeRequired = false;
+    private volatile boolean closed = false;
+    private volatile boolean eof = false;
     // Start in blocking-mode
     private volatile Boolean ready = Boolean.TRUE;
     private volatile ReadListener listener = null;
@@ -49,9 +56,7 @@ public class UpgradeServletInputStream extends ServletInputStream {
             throw new IllegalStateException(
                     sm.getString("upgrade.sis.isFinished.ise"));
         }
-        // The only way to finish an HTTP Upgrade connection is to close the
-        // socket.
-        return false;
+        return eof;
     }
 
 
@@ -62,13 +67,17 @@ public class UpgradeServletInputStream extends ServletInputStream {
                     sm.getString("upgrade.sis.isReady.ise"));
         }
 
+        if (eof || closed) {
+            return false;
+        }
+
         // If we already know the current state, return it.
         if (ready != null) {
             return ready.booleanValue();
         }
 
         try {
-            ready = Boolean.valueOf(socketWrapper.isReady());
+            ready = Boolean.valueOf(socketWrapper.isReadyForRead());
         } catch (IOException e) {
             onError(e);
         }
@@ -86,6 +95,17 @@ public class UpgradeServletInputStream extends ServletInputStream {
             throw new IllegalArgumentException(
                     sm.getString("upgrade.sis.readListener.set"));
         }
+        if (closed) {
+            throw new IllegalStateException(sm.getString("upgrade.sis.read.closed"));
+        }
+
+        // Container is responsible for first call to onDataAvailable().
+        if (ContainerThreadMarker.isContainerThread()) {
+            socketWrapper.addDispatch(DispatchType.NON_BLOCKING_READ);
+        } else {
+            socketWrapper.registerReadInterest();
+        }
+
         this.listener = listener;
         this.applicationLoader = Thread.currentThread().getContextClassLoader();
         // Switching to non-blocking. Don't know if data is available.
@@ -126,9 +146,13 @@ public class UpgradeServletInputStream extends ServletInputStream {
         preReadChecks();
 
         try {
-            return socketWrapper.read(listener == null, b, off, len);
+            int result = socketWrapper.read(listener == null, b, off, len);
+            if (result == -1) {
+                eof = true;
+            }
+            return result;
         } catch (IOException ioe) {
-            closeRequired = true;
+            close();
             throw ioe;
         }
     }
@@ -137,15 +161,17 @@ public class UpgradeServletInputStream extends ServletInputStream {
 
     @Override
     public void close() throws IOException {
-        closeRequired = true;
-        socketWrapper.close();
+        eof = true;
+        closed = true;
     }
 
 
     private void preReadChecks() {
         if (listener != null && (ready == null || !ready.booleanValue())) {
-            throw new IllegalStateException(
-                    sm.getString("upgrade.sis.read.ise"));
+            throw new IllegalStateException(sm.getString("upgrade.sis.read.ise"));
+        }
+        if (closed) {
+            throw new IllegalStateException(sm.getString("upgrade.sis.read.closed"));
         }
         // No longer know if data is available
         ready = null;
@@ -160,15 +186,13 @@ public class UpgradeServletInputStream extends ServletInputStream {
         try {
             result = socketWrapper.read(listener == null, b, 0, 1);
         } catch (IOException ioe) {
-            closeRequired = true;
+            close();
             throw ioe;
         }
         if (result == 0) {
             return -1;
         } else if (result == -1) {
-            // Will never happen with a network socket. An IOException will be
-            // thrown when the client closes the connection.
-            // Echo back the -1 to be safe.
+            eof = true;
             return -1;
         } else {
             return b[0] & 0xFF;
@@ -176,7 +200,7 @@ public class UpgradeServletInputStream extends ServletInputStream {
     }
 
 
-    protected final void onDataAvailable() throws IOException {
+    final void onDataAvailable() {
         if (listener == null) {
             return;
         }
@@ -185,14 +209,22 @@ public class UpgradeServletInputStream extends ServletInputStream {
         ClassLoader originalClassLoader = thread.getContextClassLoader();
         try {
             thread.setContextClassLoader(applicationLoader);
-            listener.onDataAvailable();
+            if (!eof) {
+                listener.onDataAvailable();
+            }
+            if (eof) {
+                listener.onAllDataRead();
+            }
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            onError(t);
         } finally {
             thread.setContextClassLoader(originalClassLoader);
         }
     }
 
 
-    protected final void onError(Throwable t) {
+    private final void onError(Throwable t) {
         if (listener == null) {
             return;
         }
@@ -201,14 +233,24 @@ public class UpgradeServletInputStream extends ServletInputStream {
         try {
             thread.setContextClassLoader(applicationLoader);
             listener.onError(t);
+        } catch (Throwable t2) {
+            ExceptionUtils.handleThrowable(t2);
+            log.warn(sm.getString("upgrade.sis.onErrorFail"), t2);
         } finally {
             thread.setContextClassLoader(originalClassLoader);
+        }
+        try {
+            close();
+        } catch (IOException ioe) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("upgrade.sis.errorCloseFail"), ioe);
+            }
         }
         ready = Boolean.FALSE;
     }
 
 
-    protected final boolean isCloseRequired() {
-        return closeRequired;
+    final boolean isClosed() {
+        return closed;
     }
 }

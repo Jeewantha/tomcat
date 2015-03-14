@@ -21,6 +21,9 @@ import java.io.IOException;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.WriteListener;
 
+import org.apache.coyote.ContainerThreadMarker;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.net.DispatchType;
 import org.apache.tomcat.util.net.SocketWrapperBase;
@@ -28,15 +31,15 @@ import org.apache.tomcat.util.res.StringManager;
 
 public class UpgradeServletOutputStream extends ServletOutputStream {
 
-    protected static final StringManager sm =
+    private static final Log log = LogFactory.getLog(UpgradeServletOutputStream.class);
+    private static final StringManager sm =
             StringManager.getManager(UpgradeServletOutputStream.class);
 
-    protected final SocketWrapperBase<?> socketWrapper;
+    private final SocketWrapperBase<?> socketWrapper;
 
     // Used to ensure that isReady() and onWritePossible() have a consistent
-    // view of buffer and fireListener when determining if the listener should
-    // fire.
-    private final Object fireListenerLock = new Object();
+    // view of buffer and registered.
+    private final Object registeredLock = new Object();
 
     // Used to ensure that only one thread writes to the socket at a time and
     // that buffer is consistently updated with any unwritten data after the
@@ -45,28 +48,21 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
     // synchronization may be required (see fireListenerLock for an example).
     private final Object writeLock = new Object();
 
-    private volatile boolean closeRequired = false;
+    private volatile boolean flushing = false;
+
+    private volatile boolean closed = false;
 
     // Start in blocking-mode
     private volatile WriteListener listener = null;
 
-    // Guarded by fireListenerLock
-    private volatile boolean fireListener = false;
+    // Guarded by registeredLock
+    private boolean registered = false;
 
     private volatile ClassLoader applicationLoader = null;
 
-    // Writes guarded by writeLock
-    private volatile byte[] buffer;
-    private volatile int bufferPos;
-    private volatile int bufferLimit;
-    private final int asyncWriteBufferSize;
 
-
-    public UpgradeServletOutputStream(SocketWrapperBase<?> socketWrapper,
-            int asyncWriteBufferSize) {
+    public UpgradeServletOutputStream(SocketWrapperBase<?> socketWrapper) {
         this.socketWrapper = socketWrapper;
-        this.asyncWriteBufferSize = asyncWriteBufferSize;
-        buffer = new byte[asyncWriteBufferSize];
     }
 
 
@@ -76,13 +72,27 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
             throw new IllegalStateException(
                     sm.getString("upgrade.sos.canWrite.is"));
         }
+        if (closed) {
+            return false;
+        }
 
         // Make sure isReady() and onWritePossible() have a consistent view of
-        // buffer and fireListener when determining if the listener should fire
-        synchronized (fireListenerLock) {
-            boolean result = (bufferLimit == 0);
-            fireListener = !result;
-            return result;
+        // fireListener when determining if the listener should fire
+        synchronized (registeredLock) {
+            if (flushing) {
+                // Since flushing is true the socket must already be registered
+                // for write and multiple registrations will cause problems.
+                registered = true;
+                return false;
+            } else if (registered){
+                // The socket is already registered for write and multiple
+                // registrations will cause problems.
+                return false;
+            } else {
+                boolean result = socketWrapper.isReadyForWrite();
+                registered = !result;
+                return result;
+            }
         }
     }
 
@@ -97,19 +107,27 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
             throw new IllegalArgumentException(
                     sm.getString("upgrade.sos.writeListener.set"));
         }
-        // Container is responsible for first call to onWritePossible() but only
-        // need to do this if setting the listener for the first time.
-        synchronized (fireListenerLock) {
-            fireListener = true;
+        if (closed) {
+            throw new IllegalStateException(sm.getString("upgrade.sos.write.closed"));
         }
-        socketWrapper.addDispatch(DispatchType.NON_BLOCKING_WRITE);
+        // Container is responsible for first call to onWritePossible().
+        synchronized (registeredLock) {
+            registered = true;
+            // Container is responsible for first call to onDataAvailable().
+            if (ContainerThreadMarker.isContainerThread()) {
+                socketWrapper.addDispatch(DispatchType.NON_BLOCKING_WRITE);
+            } else {
+                socketWrapper.registerWriteInterest();
+            }
+        }
+
         this.listener = listener;
         this.applicationLoader = Thread.currentThread().getContextClassLoader();
     }
 
 
-    protected final boolean isCloseRequired() {
-        return closeRequired;
+    final boolean isClosed() {
+        return closed;
     }
 
 
@@ -132,15 +150,51 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
 
 
     @Override
+    public void flush() throws IOException {
+        preWriteChecks();
+        flushInternal(listener == null, true);
+    }
+
+
+    private void flushInternal(boolean block, boolean updateFlushing) throws IOException {
+        try {
+            synchronized (writeLock) {
+                if (updateFlushing) {
+                    flushing = socketWrapper.flush(block);
+                    if (flushing) {
+                        socketWrapper.registerWriteInterest();
+                    }
+                } else {
+                    socketWrapper.flush(block);
+                }
+            }
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            onError(t);
+            if (t instanceof IOException) {
+                throw (IOException) t;
+            } else {
+                throw new IOException(t);
+            }
+        }
+    }
+
+    @Override
     public void close() throws IOException {
-        closeRequired = true;
-        socketWrapper.close();
+        if (closed) {
+            return;
+        }
+        closed = true;
+        flushInternal((listener == null), false);
     }
 
 
     private void preWriteChecks() {
-        if (bufferLimit != 0) {
-            throw new IllegalStateException(sm.getString("upgrade.sis.write.ise"));
+        if (listener != null && !socketWrapper.canWrite()) {
+            throw new IllegalStateException(sm.getString("upgrade.sos.write.ise"));
+        }
+        if (closed) {
+            throw new IllegalStateException(sm.getString("upgrade.sos.write.closed"));
         }
     }
 
@@ -153,63 +207,39 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
             // Simple case - blocking IO
             socketWrapper.write(true, b, off, len);
         } else {
-            // Non-blocking IO
-            // If the non-blocking read does not complete, doWrite() will add
-            // the socket back into the poller. The poller may trigger a new
-            // write event before this method has finished updating buffer. The
-            // writeLock sync makes sure that buffer is updated before the next
-            // write executes.
-            int written = socketWrapper.write(false, b, off, len);
-            if (written < len) {
-                if (b == buffer) {
-                    // This is a partial write of the existing buffer. Just
-                    // increment the current position
-                    bufferPos += written;
-                } else {
-                    // This is a new partial write
-                    int bytesLeft = len - written;
-                    if (bytesLeft > buffer.length) {
-                        buffer = new byte[bytesLeft];
-                    } else if (bytesLeft < asyncWriteBufferSize &&
-                            buffer.length > asyncWriteBufferSize) {
-                        buffer = new byte[asyncWriteBufferSize];
-                    }
-                    bufferPos = 0;
-                    bufferLimit = bytesLeft;
-                    System.arraycopy(b, off + written, buffer, bufferPos, bufferLimit);
-                }
-            } else {
-                bufferLimit = 0;
-            }
+            socketWrapper.write(false, b, off, len);
         }
     }
 
 
-    protected final void onWritePossible() throws IOException {
+    final void onWritePossible() {
         try {
-            synchronized (writeLock) {
-                if (bufferLimit > 0) {
-                    writeInternal(buffer, bufferPos, bufferLimit - bufferPos);
+            if (flushing) {
+                flushInternal(false, true);
+                if (flushing) {
+                    return;
                 }
-            }
-        } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
-            onError(t);
-            if (t instanceof IOException) {
-                throw t;
             } else {
-                throw new IOException(t);
+                // This may fill the write buffer in which case the
+                // isReadyForWrite() call below will re-register the socket for
+                // write
+                flushInternal(false, false);
             }
+        } catch (IOException ioe) {
+            onError(ioe);
+            return;
         }
 
         // Make sure isReady() and onWritePossible() have a consistent view
         // of buffer and fireListener when determining if the listener
         // should fire
         boolean fire = false;
-        synchronized (fireListenerLock) {
-            if (bufferLimit == 0 && fireListener) {
-                fireListener = false;
+        synchronized (registeredLock) {
+            if (socketWrapper.isReadyForWrite()) {
+                registered = false;
                 fire = true;
+            } else {
+                registered = true;
             }
         }
 
@@ -219,6 +249,9 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
             try {
                 thread.setContextClassLoader(applicationLoader);
                 listener.onWritePossible();
+            } catch (Throwable t) {
+                ExceptionUtils.handleThrowable(t);
+                onError(t);
             } finally {
                 thread.setContextClassLoader(originalClassLoader);
             }
@@ -226,7 +259,7 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
     }
 
 
-    protected final void onError(Throwable t) {
+    private final void onError(Throwable t) {
         if (listener == null) {
             return;
         }
@@ -235,8 +268,18 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
         try {
             thread.setContextClassLoader(applicationLoader);
             listener.onError(t);
+        } catch (Throwable t2) {
+            ExceptionUtils.handleThrowable(t2);
+            log.warn(sm.getString("upgrade.sos.onErrorFail"), t2);
         } finally {
             thread.setContextClassLoader(originalClassLoader);
+        }
+        try {
+            close();
+        } catch (IOException ioe) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("upgrade.sos.errorCloseFail"), ioe);
+            }
         }
     }
 }

@@ -23,6 +23,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,6 +36,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import static org.apache.catalina.startup.SimpleHttpClient.CRLF;
@@ -145,7 +147,7 @@ public class TestDefaultServlet extends TomcatBaseTest {
     }
 
     /*
-     * Test https://issues.apache.org/bugzilla/show_bug.cgi?id=50026
+     * Test https://bz.apache.org/bugzilla/show_bug.cgi?id=50026
      * Verify serving of resources from context root with subpath mapping.
      */
     @Test
@@ -216,7 +218,7 @@ public class TestDefaultServlet extends TomcatBaseTest {
     }
 
     /*
-     * Test https://issues.apache.org/bugzilla/show_bug.cgi?id=50413 Serving a
+     * Test https://bz.apache.org/bugzilla/show_bug.cgi?id=50413 Serving a
      * custom error page
      */
     @Test
@@ -270,7 +272,7 @@ public class TestDefaultServlet extends TomcatBaseTest {
         String tomorrow = format.format(new Date(System.currentTimeMillis()
                 + 24 * 60 * 60 * 1000));
 
-        // https://issues.apache.org/bugzilla/show_bug.cgi?id=50413
+        // https://bz.apache.org/bugzilla/show_bug.cgi?id=50413
         //
         client.reset();
         client.setRequest(new String[] {
@@ -283,7 +285,7 @@ public class TestDefaultServlet extends TomcatBaseTest {
         assertTrue(client.isResponse404());
         assertEquals("It is 404.html", client.getResponseBody());
 
-        // https://issues.apache.org/bugzilla/show_bug.cgi?id=50413#c6
+        // https://bz.apache.org/bugzilla/show_bug.cgi?id=50413#c6
         //
         client.reset();
         client.setRequest(new String[] {
@@ -338,6 +340,33 @@ public class TestDefaultServlet extends TomcatBaseTest {
         client.connect();
         client.processRequest();
         assertTrue(client.isResponse404());
+    }
+
+    /*
+     * Verifies that the same Content-Length is returned for both GET and HEAD
+     * operations when a static resource served by the DefaultServlet is
+     * included.
+     */
+    @Test
+    public void testBug57601() throws Exception {
+        Tomcat tomcat = getTomcatInstanceTestWebapp(false, true);
+
+        Map<String,List<String>> resHeaders= new HashMap<>();
+        String path = "http://localhost:" + getPort() + "/test/bug5nnnn/bug57601.jsp";
+        ByteChunk out = new ByteChunk();
+
+        int rc = getUrl(path, out, resHeaders);
+        Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+        String length = resHeaders.get("Content-Length").get(0);
+        Assert.assertEquals(Long.parseLong(length), out.getLength());
+        out.recycle();
+
+        rc = headUrl(path, out, resHeaders);
+        Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+        Assert.assertEquals(0, out.getLength());
+        Assert.assertEquals(length, resHeaders.get("Content-Length").get(0));
+
+        tomcat.stop();
     }
 
     public static int getUrl(String path, ByteChunk out,

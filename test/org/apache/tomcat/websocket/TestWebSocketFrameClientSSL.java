@@ -41,7 +41,6 @@ import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEn
 
 public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
 
-
     @Test
     public void testConnectToServerEndpoint() throws Exception {
         Tomcat tomcat = getTomcatInstance();
@@ -148,5 +147,23 @@ public class TestWebSocketFrameClientSSL extends TomcatBaseTest {
         if (openConnectionCount != 0) {
             Assert.fail("There are [" + openConnectionCount + "] connections still open");
         }
+
+        // Close the client session.
+        wsSession.close();
+
+        // Make sure the background process has stopped (else in some test
+        // environments it will continue to run and break other tests that check
+        // it has stopped.
+        count = 0;
+        while (count < 50) {
+            if (BackgroundProcessManager.getInstance().getProcessCount() == 0) {
+                break;
+            }
+            Thread.sleep(100);
+            count++;
+        }
+
+        Assert.assertEquals(0, BackgroundProcessManager.getInstance().getProcessCount());
+
     }
 }

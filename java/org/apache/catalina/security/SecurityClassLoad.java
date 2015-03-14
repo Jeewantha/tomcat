@@ -163,7 +163,6 @@ public final class SecurityClassLoad {
     private static final void loadCoyotePackage(ClassLoader loader)
             throws Exception {
         final String basePackage = "org.apache.coyote.";
-        loader.loadClass(basePackage + "http11.AbstractOutputBuffer$1");
         loader.loadClass(basePackage + "http11.Constants");
         // Make sure system property is read at this point
         Class<?> clazz = loader.loadClass(basePackage + "Constants");
@@ -288,7 +287,6 @@ public final class SecurityClassLoad {
                 "util.net.NioBlockingSelector$BlockPoller$2");
         loader.loadClass(basePackage +
                 "util.net.NioBlockingSelector$BlockPoller$3");
-        loader.loadClass(basePackage + "util.net.SSLSupport$CipherData");
         // security
         loader.loadClass(basePackage + "util.security.PrivilegedGetTccl");
         loader.loadClass(basePackage + "util.security.PrivilegedSetTccl");

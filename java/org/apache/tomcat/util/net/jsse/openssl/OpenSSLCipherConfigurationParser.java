@@ -351,6 +351,18 @@ public class OpenSSLCipherConfigurationParser {
      */
     private static final String GOST89MAC = "GOST89MAC";
     /**
+     * Cipher suites using SRP authentication, specified in the RFC 5054.
+     */
+    private static final String aSRP = "aSRP";
+    /**
+     * Cipher suites using SRP key exchange, specified in the RFC 5054.
+     */
+    private static final String kSRP = "kSRP";
+    /**
+     * Same as kSRP
+     */
+    private static final String SRP = "SRP";
+    /**
      * Cipher suites using pre-shared keys (PSK).
      */
     private static final String PSK = "PSK";
@@ -463,6 +475,9 @@ public class OpenSSLCipherConfigurationParser {
         addListAlias(GOST89MAC, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.GOST89MAC)));
         addListAlias(PSK, filter(allCiphers, null, Collections.singleton(KeyExchange.PSK), Collections.singleton(Authentication.PSK), null, null, null));
         addListAlias(KRB5, filter(allCiphers, null, Collections.singleton(KeyExchange.KRB5), Collections.singleton(Authentication.KRB5), null, null, null));
+        addListAlias(aSRP, filterByAuthentication(allCiphers, Collections.singleton(Authentication.SRP)));
+        addListAlias(kSRP, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.SRP)));
+        addListAlias(SRP, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.SRP)));
         initialized = true;
         // Despite what the OpenSSL docs say, DEFAULT also excludes SSLv2
         addListAlias(DEFAULT, parse("ALL:!eNULL:!aNULL:!SSLv2"));
@@ -486,6 +501,15 @@ public class OpenSSLCipherConfigurationParser {
         movedCiphers.retainAll(ciphers);
         ciphers.removeAll(movedCiphers);
         ciphers.addAll(movedCiphers);
+    }
+
+    static void moveToStart(final LinkedHashSet<Cipher> ciphers, final Collection<Cipher> toBeMovedCiphers) {
+        List<Cipher> movedCiphers = new ArrayList<>(toBeMovedCiphers);
+        List<Cipher> originalCiphers = new ArrayList<>(ciphers);
+        movedCiphers.retainAll(ciphers);
+        ciphers.clear();
+        ciphers.addAll(movedCiphers);
+        ciphers.addAll(originalCiphers);
     }
 
     static void add(final LinkedHashSet<Cipher> ciphers, final String alias) {
@@ -523,6 +547,8 @@ public class OpenSSLCipherConfigurationParser {
         /* Everything else being equal, prefer ephemeral ECDH over other key exchange mechanisms */
         result.addAll(filterByKeyExchange(ciphers, Collections.singleton(KeyExchange.EECDH)));
         /* AES is our preferred symmetric cipher */
+        moveToStart(result, filterByEncryption(result, new HashSet<>(Arrays.asList(Encryption.AES128, Encryption.AES128GCM,
+                Encryption.AES256, Encryption.AES256GCM))));
         result.addAll(filterByEncryption(ciphers, new HashSet<>(Arrays.asList(Encryption.AES128, Encryption.AES128GCM,
                 Encryption.AES256, Encryption.AES256GCM))));
         /* Temporarily enable everything else for sorting */

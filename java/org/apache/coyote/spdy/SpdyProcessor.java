@@ -33,7 +33,6 @@ import org.apache.coyote.InputBuffer;
 import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Request;
 import org.apache.coyote.RequestInfo;
-import org.apache.coyote.Response;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.spdy.SpdyConnection;
@@ -58,7 +57,7 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
  *
  * Based on the AJP processor.
  */
-public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
+public class SpdyProcessor extends AbstractProcessor implements Runnable {
 
     private static final Log log = LogFactory.getLog(SpdyProcessor.class);
 
@@ -83,7 +82,7 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
 
     private boolean outCommit = false;
 
-    public SpdyProcessor(SpdyConnection spdy, AbstractEndpoint<S> endpoint) {
+    public SpdyProcessor(SpdyConnection spdy, AbstractEndpoint<?> endpoint) {
         super(endpoint);
 
         this.spdy = spdy;
@@ -124,8 +123,7 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
         long byteCount;
 
         @Override
-        public int doWrite(org.apache.tomcat.util.buf.ByteChunk chunk,
-                Response response) throws IOException {
+        public int doWrite(org.apache.tomcat.util.buf.ByteChunk chunk) throws IOException {
             if (!response.isCommitted()) {
 
                 // Send the connector a request for commit. The connector should
@@ -507,7 +505,7 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
     }
 
     @Override
-    public SocketState process(SocketWrapperBase<S> socket)
+    public SocketState process(SocketWrapperBase<?> socket)
             throws IOException {
         throw new IOException("Unimplemented");
     }
@@ -529,13 +527,8 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
     }
 
     @Override
-    public SocketState upgradeDispatch(SocketStatus status) throws IOException {
+    public SocketState upgradeDispatch(SocketStatus status) {
         return null;
-    }
-
-    @Override
-    protected void registerForEvent(boolean read, boolean write) {
-        // NO-OP
     }
 
     public void onSynStream(SpdyStream str) throws IOException {
@@ -618,7 +611,7 @@ public class SpdyProcessor<S> extends AbstractProcessor<S> implements Runnable {
     }
 
     @Override
-    public void recycle(boolean socketClosing) {
+    public void recycle() {
     }
 
     @Override

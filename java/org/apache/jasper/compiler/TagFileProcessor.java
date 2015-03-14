@@ -554,6 +554,10 @@ class TagFileProcessor {
                     // time the tag file was scanned for directives, and the tag
                     // file may have been modified since then.
                     wrapper.getJspEngineContext().setTagInfo(tagInfo);
+                    // The tagJar passed to to the JspCompilationContext will
+                    // have been closed (see the finally block at the end of
+                    // this method) so update the the tagJar to one opened above
+                    wrapper.getJspEngineContext().setTagFileJar(tagJar);
                 }
 
                 Class<?> tagClazz;
@@ -648,16 +652,14 @@ class TagFileProcessor {
                                                   Long.valueOf(jar.getLastModified(tagFilePath.substring(1))));
                         } else {
                             pageInfo.addDependant(tagFilePath,
-                                                  compiler.getCompilationContext().getLastModified(
-                                                                                                   tagFilePath));
+                                                  compiler.getCompilationContext().getLastModified(tagFilePath));
                         }
                     } catch (IOException ioe) {
                         throw new JasperException(ioe);
                     }
                 } else {
                     pageInfo.addDependant(tagFilePath,
-                            compiler.getCompilationContext().getLastModified(
-                                    tagFilePath));
+                            compiler.getCompilationContext().getLastModified(tagFilePath));
                 }
                 Class<?> c = loadTagFile(compiler, tagFilePath, n.getTagInfo(),
                         pageInfo);

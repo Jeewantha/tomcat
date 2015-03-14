@@ -40,6 +40,7 @@ public class EmptyResourceSet extends LifecycleBase implements WebResourceSet {
 
     private WebResourceRoot root;
     private boolean classLoaderOnly;
+    private boolean staticOnly;
 
     public EmptyResourceSet(WebResourceRoot root) {
         this.root = root;
@@ -110,6 +111,16 @@ public class EmptyResourceSet extends LifecycleBase implements WebResourceSet {
         this.classLoaderOnly = classLoaderOnly;
     }
 
+    @Override
+    public boolean getStaticOnly() {
+        return staticOnly;
+    }
+
+    @Override
+    public void setStaticOnly(boolean staticOnly) {
+        this.staticOnly = staticOnly;
+    }
+
     /**
      * {@inheritDoc}
      * <p>
@@ -139,6 +150,11 @@ public class EmptyResourceSet extends LifecycleBase implements WebResourceSet {
     @Override
     public boolean isReadOnly() {
         return true;
+    }
+
+    @Override
+    public void gc() {
+        // NO-OP
     }
 
     @Override

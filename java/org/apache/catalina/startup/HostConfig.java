@@ -588,7 +588,8 @@ public class HostConfig
 
             // default to appBase dir + name
             expandedDocBase = new File(host.getAppBaseFile(), cn.getBaseName());
-            if (context.getDocBase() != null) {
+            if (context.getDocBase() != null
+                    && !context.getDocBase().toLowerCase(Locale.ENGLISH).endsWith(".war")) {
                 // first assume docBase is absolute
                 expandedDocBase = new File(context.getDocBase());
                 if (!expandedDocBase.isAbsolute()) {
@@ -597,12 +598,21 @@ public class HostConfig
                 }
             }
 
+            boolean unpackWAR = unpackWARs;
+            if (unpackWAR && context instanceof StandardContext) {
+                unpackWAR = ((StandardContext) context).getUnpackWAR();
+            }
+
             // Add the eventual unpacked WAR and all the resources which will be
             // watched inside it
-            if (isExternalWar && unpackWARs) {
-                deployedApp.redeployResources.put(expandedDocBase.getAbsolutePath(),
-                        Long.valueOf(expandedDocBase.lastModified()));
-                addWatchedResources(deployedApp, expandedDocBase.getAbsolutePath(), context);
+            if (isExternalWar) {
+                if (unpackWAR) {
+                    deployedApp.redeployResources.put(expandedDocBase.getAbsolutePath(),
+                            Long.valueOf(expandedDocBase.lastModified()));
+                    addWatchedResources(deployedApp, expandedDocBase.getAbsolutePath(), context);
+                } else {
+                    addWatchedResources(deployedApp, null, context);
+                }
             } else {
                 // Find an existing matching war and expanded folder
                 if (!isExternal) {
@@ -617,22 +627,17 @@ public class HostConfig
                                 Long.valueOf(0));
                     }
                 }
-                if (expandedDocBase.exists()) {
+                if (unpackWAR) {
                     deployedApp.redeployResources.put(expandedDocBase.getAbsolutePath(),
                             Long.valueOf(expandedDocBase.lastModified()));
                     addWatchedResources(deployedApp,
                             expandedDocBase.getAbsolutePath(), context);
                 } else {
-                    if (!isExternal && !unpackWARs) {
-                        // Trigger a reload if a DIR is added
-                        deployedApp.reloadResources.put(
-                                expandedDocBase.getAbsolutePath(),
-                                Long.valueOf(0));
-                    }
                     addWatchedResources(deployedApp, null, context);
                 }
-                // Add the context XML to the list of files which should trigger a redeployment
                 if (!isExternal) {
+                    // For external docBases, the context.xml will have been
+                    // added above.
                     deployedApp.redeployResources.put(
                             contextXml.getAbsolutePath(),
                             Long.valueOf(contextXml.lastModified()));
@@ -682,7 +687,11 @@ public class HostConfig
                 }
                 if (deploymentExists(cn.getName())) {
                     DeployedApplication app = deployed.get(cn.getName());
-                    if (!unpackWARs && app != null) {
+                    boolean unpackWAR = unpackWARs;
+                    if (unpackWAR && host.findChild(cn.getName()) instanceof StandardContext) {
+                        unpackWAR = ((StandardContext) host.findChild(cn.getName())).getUnpackWAR();
+                    }
+                    if (!unpackWAR && app != null) {
                         // Need to check for a directory that should not be
                         // there
                         File dir = new File(appBase, cn.getBaseName());
@@ -767,7 +776,10 @@ public class HostConfig
     protected void deployWAR(ContextName cn, File war) {
 
         File xml = new File(host.getAppBaseFile(),
-                cn.getBaseName() + "/META-INF/context.xml");
+                cn.getBaseName() + "/" + Constants.ApplicationContextXml);
+
+        File warTracker = new File(host.getAppBaseFile(),
+                cn.getBaseName() + "/" + Constants.WarTracker);
 
         boolean xmlInWar = false;
         JarEntry entry = null;
@@ -782,9 +794,20 @@ public class HostConfig
             entry = null;
         }
 
+        // If there is an expanded directory then any xml in that directory
+        // should only be used if the directory is not out of date and
+        // unpackWARs is true. Note the code below may apply further limits
+        boolean useXml = false;
+        // If the xml file exists then expandedDir must exists so no need to
+        // test that here
+        if (xml.exists() && unpackWARs &&
+                (!warTracker.exists() || warTracker.lastModified() == war.lastModified())) {
+            useXml = true;
+        }
+
         Context context = null;
         try {
-            if (deployXML && xml.exists() && !copyXML) {
+            if (deployXML && useXml && !copyXML) {
                 synchronized (digesterLock) {
                     try {
                         context = (Context) digester.parse(xml);
@@ -922,7 +945,11 @@ public class HostConfig
         } finally {
             // If we're unpacking WARs, the docBase will be mutated after
             // starting the context
-            if (unpackWARs && context != null && context.getDocBase() != null) {
+            boolean unpackWAR = unpackWARs;
+            if (unpackWAR && context instanceof StandardContext) {
+                unpackWAR = ((StandardContext) context).getUnpackWAR();
+            }
+            if (unpackWAR && context != null && context.getDocBase() != null) {
                 File docBase = new File(host.getAppBaseFile(), cn.getBaseName());
                 deployedApp.redeployResources.put(docBase.getAbsolutePath(),
                         Long.valueOf(docBase.lastModified()));
@@ -1238,7 +1265,11 @@ public class HostConfig
                         app.redeployResources.put(resources[i],
                                 Long.valueOf(resource.lastModified()));
                         app.timestamp = System.currentTimeMillis();
-                        if (unpackWARs) {
+                        boolean unpackWAR = unpackWARs;
+                        if (unpackWAR && context instanceof StandardContext) {
+                            unpackWAR = ((StandardContext) context).getUnpackWAR();
+                        }
+                        if (unpackWAR) {
                             addWatchedResources(app, context.getDocBase(), context);
                         } else {
                             addWatchedResources(app, null, context);
@@ -1274,23 +1305,25 @@ public class HostConfig
             }
         }
         resources = app.reloadResources.keySet().toArray(new String[0]);
+        boolean update = false;
         for (int i = 0; i < resources.length; i++) {
             File resource = new File(resources[i]);
-            if (log.isDebugEnabled())
-                log.debug("Checking context[" + app.name +
-                        "] reload resource " + resource);
-            long lastModified =
-                app.reloadResources.get(resources[i]).longValue();
-            if ((!resource.exists() && lastModified != 0L)
-                || (resource.lastModified() != lastModified)) {
-                // Reload application
-                reload(app);
-                // Update times
+            if (log.isDebugEnabled()) {
+                log.debug("Checking context[" + app.name + "] reload resource " + resource);
+            }
+            long lastModified = app.reloadResources.get(resources[i]).longValue();
+            if (resource.lastModified() != lastModified || update) {
+                if (!update) {
+                    // Reload application
+                    reload(app);
+                    update = true;
+                }
+                // Update times. More than one file may have been updated. We
+                // don't want to trigger a series of reloads.
                 app.reloadResources.put(resources[i],
                         Long.valueOf(resource.lastModified()));
-                app.timestamp = System.currentTimeMillis();
-                return;
             }
+            app.timestamp = System.currentTimeMillis();
         }
     }
 
@@ -1585,7 +1618,11 @@ public class HostConfig
         host.addChild(context);
         // Add the eventual unpacked WAR and all the resources which will be
         // watched inside it
-        if (isWar && unpackWARs) {
+        boolean unpackWAR = unpackWARs;
+        if (unpackWAR && context instanceof StandardContext) {
+            unpackWAR = ((StandardContext) context).getUnpackWAR();
+        }
+        if (isWar && unpackWAR) {
             File docBase = new File(host.getAppBaseFile(), context.getBaseName());
             deployedApp.redeployResources.put(docBase.getAbsolutePath(),
                         Long.valueOf(docBase.lastModified()));

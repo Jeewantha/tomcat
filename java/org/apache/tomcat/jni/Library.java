@@ -32,44 +32,42 @@ public final class Library {
      */
     private static Library _instance = null;
 
-    private Library()
-        throws Exception
-    {
+    private Library() throws Exception {
         boolean loaded = false;
+        String path = System.getProperty("java.library.path");
+        String [] paths = path.split(File.pathSeparator);
         StringBuilder err = new StringBuilder();
         for (int i = 0; i < NAMES.length; i++) {
             try {
                 System.loadLibrary(NAMES[i]);
                 loaded = true;
-            }
-            catch (Throwable t) {
-                if (t instanceof ThreadDeath) {
-                    throw (ThreadDeath) t;
-                }
-                if (t instanceof VirtualMachineError) {
-                    throw (VirtualMachineError) t;
-                }
+            } catch (ThreadDeath | VirtualMachineError t) {
+                throw t;
+            } catch (Throwable t) {
                 String name = System.mapLibraryName(NAMES[i]);
-                String path = System.getProperty("java.library.path");
-                String [] paths = path.split(File.pathSeparator);
-                for (int j=0; j<paths.length; j++) {
+                for (int j = 0; j < paths.length; j++) {
                     java.io.File fd = new java.io.File(paths[j] , name);
                     if (fd.exists()) {
-                        t.printStackTrace();
+                        // File exists but failed to load
+                        throw t;
                     }
                 }
-                if ( i > 0)
+                if (i > 0) {
                     err.append(", ");
+                }
                 err.append(t.getMessage());
             }
-            if (loaded)
+            if (loaded) {
                 break;
+            }
         }
         if (!loaded) {
-            err.append('(');
-            err.append(System.getProperty("java.library.path"));
-            err.append(')');
-            throw new UnsatisfiedLinkError(err.toString());
+            StringBuilder names = new StringBuilder();
+            for (String name : NAMES) {
+                names.append(name);
+                names.append(", ");
+            }
+            throw new LibraryNotFoundError(names.substring(0, names.length() -2), err.toString());
         }
     }
 

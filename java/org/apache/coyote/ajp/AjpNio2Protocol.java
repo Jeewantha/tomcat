@@ -16,15 +16,12 @@
  */
 package org.apache.coyote.ajp;
 
-import javax.net.ssl.SSLEngine;
-
 import org.apache.coyote.Processor;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.Nio2Channel;
 import org.apache.tomcat.util.net.Nio2Endpoint;
 import org.apache.tomcat.util.net.Nio2Endpoint.Handler;
-import org.apache.tomcat.util.net.SSLImplementation;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
 
@@ -72,45 +69,28 @@ public class AjpNio2Protocol extends AbstractAjpProtocol<Nio2Channel> {
             return log;
         }
 
-        @Override
-        public SSLImplementation getSslImplementation() {
-            // AJP does not support SSL
-            return null;
-        }
-
         /**
          * Expected to be used by the Poller to release resources on socket
          * close, errors etc.
          */
         @Override
         public void release(SocketWrapperBase<Nio2Channel> socket) {
-            Processor<Nio2Channel> processor =
-                    connections.remove(socket.getSocket());
+            Processor processor = connections.remove(socket.getSocket());
             if (processor != null) {
-                processor.recycle(true);
+                processor.recycle();
                 recycledProcessors.push(processor);
             }
         }
 
-        /**
-         * Expected to be used by the handler once the processor is no longer
-         * required.
-         */
         @Override
         public void release(SocketWrapperBase<Nio2Channel> socket,
-                Processor<Nio2Channel> processor, boolean isSocketClosing,
-                boolean addToPoller) {
+                Processor processor, boolean addToPoller) {
             if (getLog().isDebugEnabled()) {
                 log.debug("Socket: [" + socket + "], Processor: [" + processor +
-                        "], isSocketClosing: [" + isSocketClosing +
                         "], addToPoller: [" + addToPoller + "]");
             }
-            processor.recycle(isSocketClosing);
+            processor.recycle();
             recycledProcessors.push(processor);
-        }
-
-        @Override
-        public void onCreateSSLEngine(SSLEngine engine) {
         }
 
         @Override

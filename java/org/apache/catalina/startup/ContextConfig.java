@@ -243,29 +243,31 @@ public class ContextConfig implements LifecycleListener {
 
     private WebXmlParser webXmlParser;
 
+
     // ------------------------------------------------------------- Properties
+
     /**
-     * Return the location of the default deployment descriptor
+     * Obtain the location of the default deployment descriptor.
+     *
+     * @return The path to the default web.xml. If not absolute, it is relative
+     *         to CATALINA_BASE.
      */
     public String getDefaultWebXml() {
-        if( defaultWebXml == null ) {
-            defaultWebXml=Constants.DefaultWebXml;
+        if (defaultWebXml == null) {
+            defaultWebXml = Constants.DefaultWebXml;
         }
-
-        return (this.defaultWebXml);
-
+        return defaultWebXml;
     }
 
 
     /**
-     * Set the location of the default deployment descriptor
+     * Set the location of the default deployment descriptor.
      *
-     * @param path Absolute/relative path to the default web.xml
+     * @param path The path to the default web.xml. If not absolute, it is
+     *             relative to CATALINA_BASE.
      */
     public void setDefaultWebXml(String path) {
-
         this.defaultWebXml = path;
-
     }
 
 
@@ -613,8 +615,8 @@ public class ContextConfig implements LifecycleListener {
         }
 
         if (docBase.toLowerCase(Locale.ENGLISH).endsWith(".war") && !file.isDirectory()) {
+            URL war = new URL("jar:" + (new File(docBase)).toURI().toURL() + "!/");
             if (unpackWARs) {
-                URL war = new URL("jar:" + (new File(docBase)).toURI().toURL() + "!/");
                 docBase = ExpandWar.expand(host, war, pathName);
                 file = new File(docBase);
                 docBase = file.getCanonicalPath();
@@ -622,8 +624,6 @@ public class ContextConfig implements LifecycleListener {
                     ((StandardContext) context).setOriginalDocBase(origDocBase);
                 }
             } else {
-                URL war =
-                        new URL("jar:" + (new File (docBase)).toURI().toURL() + "!/");
                 ExpandWar.validate(host, war, pathName);
             }
         } else {
@@ -631,8 +631,7 @@ public class ContextConfig implements LifecycleListener {
             if (!docDir.exists()) {
                 File warFile = new File(docBase + ".war");
                 if (warFile.exists()) {
-                    URL war =
-                        new URL("jar:" + warFile.toURI().toURL() + "!/");
+                    URL war = new URL("jar:" + warFile.toURI().toURL() + "!/");
                     if (unpackWARs) {
                         docBase = ExpandWar.expand(host, war, pathName);
                         file = new File(docBase);
@@ -1493,7 +1492,7 @@ public class ContextConfig implements LifecycleListener {
                         uc.getInputStream().close();
                     } catch (IOException e) {
                         ExceptionUtils.handleThrowable(e);
-                        globalTimeStamp = -1;
+                        hostTimeStamp = -1;
                     }
                 }
             }

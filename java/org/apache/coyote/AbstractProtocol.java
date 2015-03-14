@@ -567,7 +567,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
     // ------------------------------------------- Connection handler base class
 
-    protected abstract static class AbstractConnectionHandler<S,P extends Processor<S>>
+    protected abstract static class AbstractConnectionHandler<S,P extends Processor>
             implements AbstractEndpoint.Handler<S> {
 
         protected abstract Log getLog();
@@ -575,7 +575,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
         protected final RequestGroupInfo global = new RequestGroupInfo();
         protected final AtomicLong registerCount = new AtomicLong(0);
 
-        protected final ConcurrentHashMap<S,Processor<S>> connections =
+        protected final ConcurrentHashMap<S,Processor> connections =
                 new ConcurrentHashMap<>();
 
         protected final RecycledProcessors<P,S> recycledProcessors =
@@ -610,7 +610,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                 return SocketState.CLOSED;
             }
 
-            Processor<S> processor = connections.get(socket);
+            Processor processor = connections.get(socket);
             if (status == SocketStatus.DISCONNECT && processor == null) {
                 // Nothing to do. Endpoint requested a close and there is no
                 // longer a processor associated with this socket.
@@ -628,7 +628,8 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                     processor = createProcessor();
                 }
 
-                initSsl(wrapper, processor);
+                processor.setSslSupport(
+                        wrapper.getSslSupport(getProtocol().getClientCertProvider()));
 
                 SocketState state = SocketState.CLOSED;
                 Iterator<DispatchType> dispatches = null;
@@ -673,7 +674,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                         // Retrieve leftover input
                         ByteBuffer leftoverInput = processor.getLeftoverInput();
                         // Release the Http11 processor to be re-used
-                        release(wrapper, processor, false, false);
+                        release(wrapper, processor, false);
                         // Create the upgrade processor
                         processor = createUpgradeProcessor(
                                 wrapper, leftoverInput, httpUpgradeHandler);
@@ -713,13 +714,13 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                     // In keep-alive but between requests. OK to recycle
                     // processor. Continue to poll for the next request.
                     connections.remove(socket);
-                    release(wrapper, processor, false, true);
+                    release(wrapper, processor, true);
                 } else if (state == SocketState.SENDFILE) {
                     // Sendfile in progress. If it fails, the socket will be
                     // closed. If it works, the socket will be re-added to the
                     // poller
                     connections.remove(socket);
-                    release(wrapper, processor, false, false);
+                    release(wrapper, processor, false);
                 } else if (state == SocketState.UPGRADED) {
                     // Don't add sockets back to the poller if this was a
                     // non-blocking write otherwise the poller may trigger
@@ -736,7 +737,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
                     if (processor.isUpgrade()) {
                         processor.getHttpUpgradeHandler().destroy();
                     } else {
-                        release(wrapper, processor, true, false);
+                        release(wrapper, processor, false);
                     }
                 }
                 return state;
@@ -768,24 +769,33 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
             connections.remove(socket);
             // Don't try to add upgrade processors back into the pool
             if (processor !=null && !processor.isUpgrade()) {
-                release(wrapper, processor, true, false);
+                release(wrapper, processor, false);
             }
             return SocketState.CLOSED;
         }
 
         protected abstract P createProcessor();
-        protected abstract void initSsl(SocketWrapperBase<S> socket,
-                Processor<S> processor);
         protected abstract void longPoll(SocketWrapperBase<S> socket,
-                Processor<S> processor);
-        protected abstract void release(SocketWrapperBase<S> socket,
-                Processor<S> processor, boolean socketClosing,
-                boolean addToPoller);
-        protected abstract Processor<S> createUpgradeProcessor(
-                SocketWrapperBase<S> socket, ByteBuffer leftoverInput,
-                HttpUpgradeHandler httpUpgradeProcessor) throws IOException;
+                Processor processor);
 
-        protected void register(AbstractProcessor<S> processor) {
+        /**
+         * Expected to be used by the handler once the processor is no longer
+         * required.
+         *
+         * @param socket    Socket being released (that was associated with the
+         *                  processor)
+         * @param processor Processor being released (that was associated with
+         *                  the socket)
+         * @param addToPoller Should the socket be added to the poller for
+         *                    reading
+         */
+        protected abstract void release(SocketWrapperBase<S> socket,
+                Processor processor, boolean addToPoller);
+        protected abstract Processor createUpgradeProcessor(
+                SocketWrapperBase<?> socket, ByteBuffer leftoverInput,
+                HttpUpgradeHandler httpUpgradeHandler) throws IOException;
+
+        protected void register(AbstractProcessor processor) {
             if (getProtocol().getDomain() != null) {
                 synchronized (this) {
                     try {
@@ -812,7 +822,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
             }
         }
 
-        protected void unregister(Processor<S> processor) {
+        protected void unregister(Processor processor) {
             if (getProtocol().getDomain() != null) {
                 synchronized (this) {
                     try {
@@ -838,8 +848,8 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
         }
     }
 
-    protected static class RecycledProcessors<P extends Processor<S>, S>
-            extends SynchronizedStack<Processor<S>> {
+    protected static class RecycledProcessors<P extends Processor, S>
+            extends SynchronizedStack<Processor> {
 
         private final transient AbstractConnectionHandler<S,P> handler;
         protected final AtomicInteger size = new AtomicInteger(0);
@@ -850,7 +860,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
         @SuppressWarnings("sync-override") // Size may exceed cache size a bit
         @Override
-        public boolean push(Processor<S> processor) {
+        public boolean push(Processor processor) {
             int cacheSize = handler.getProtocol().getProcessorCache();
             boolean offer = cacheSize == -1 ? true : size.get() < cacheSize;
             //avoid over growing our cache or add after we have stopped
@@ -867,8 +877,8 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
         @SuppressWarnings("sync-override") // OK if size is too big briefly
         @Override
-        public Processor<S> pop() {
-            Processor<S> result = super.pop();
+        public Processor pop() {
+            Processor result = super.pop();
             if (result != null) {
                 size.decrementAndGet();
             }
@@ -877,7 +887,7 @@ public abstract class AbstractProtocol<S> implements ProtocolHandler,
 
         @Override
         public synchronized void clear() {
-            Processor<S> next = pop();
+            Processor next = pop();
             while (next != null) {
                 handler.unregister(next);
                 next = pop();

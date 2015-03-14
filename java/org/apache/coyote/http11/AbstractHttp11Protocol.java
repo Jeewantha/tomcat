@@ -16,8 +16,25 @@
  */
 package org.apache.coyote.http11;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.servlet.http.HttpUpgradeHandler;
+
 import org.apache.coyote.AbstractProtocol;
+import org.apache.coyote.Processor;
+import org.apache.coyote.http11.upgrade.InternalHttpUpgradeHandler;
+import org.apache.coyote.http11.upgrade.UpgradeProcessorExternal;
+import org.apache.coyote.http11.upgrade.UpgradeProcessorInternal;
 import org.apache.tomcat.util.net.AbstractEndpoint;
+import org.apache.tomcat.util.net.SocketWrapperBase;
 
 public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
@@ -33,15 +50,19 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     }
 
 
-    // ------------------------------------------------ HTTP specific properties
-    // ------------------------------------------ managed in the ProtocolHandler
-
-    private int socketBuffer = 9000;
-    public int getSocketBuffer() { return socketBuffer; }
-    public void setSocketBuffer(int socketBuffer) {
-        this.socketBuffer = socketBuffer;
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Over-ridden here to make the method visible to nested classes.
+     */
+    @Override
+    protected AbstractEndpoint<S> getEndpoint() {
+        return super.getEndpoint();
     }
 
+
+    // ------------------------------------------------ HTTP specific properties
+    // ------------------------------------------ managed in the ProtocolHandler
 
     /**
      * Maximum size of the post which will be saved when processing certain
@@ -183,13 +204,55 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
 
     /**
-     * The size of the buffer used by the ServletOutputStream when performing
-     * delayed asynchronous writes using HTTP upgraded connections.
+     * The names of headers that are allowed to be sent via a trailer when using
+     * chunked encoding. They are stored in lower case.
      */
-    private int upgradeAsyncWriteBufferSize = 8192;
-    public int getUpgradeAsyncWriteBufferSize() { return upgradeAsyncWriteBufferSize; }
-    public void setUpgradeAsyncWriteBufferSize(int upgradeAsyncWriteBufferSize) {
-        this.upgradeAsyncWriteBufferSize = upgradeAsyncWriteBufferSize;
+    private Set<String> allowedTrailerHeaders =
+            Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    public void setAllowedTrailerHeaders(String commaSeparatedHeaders) {
+        // Jump through some hoops so we don't end up with an empty set while
+        // doing updates.
+        Set<String> toRemove = new HashSet<>();
+        toRemove.addAll(allowedTrailerHeaders);
+        if (commaSeparatedHeaders != null) {
+            String[] headers = commaSeparatedHeaders.split(",");
+            for (String header : headers) {
+                String trimmedHeader = header.trim().toLowerCase(Locale.ENGLISH);
+                if (toRemove.contains(trimmedHeader)) {
+                    toRemove.remove(trimmedHeader);
+                } else {
+                    allowedTrailerHeaders.add(trimmedHeader);
+                }
+            }
+            allowedTrailerHeaders.removeAll(toRemove);
+        }
+    }
+    public String getAllowedTrailerHeaders() {
+        // Chances of a size change between these lines are small enough that a
+        // sync is unnecessary.
+        List<String> copy = new ArrayList<>(allowedTrailerHeaders.size());
+        copy.addAll(allowedTrailerHeaders);
+        StringBuilder result = new StringBuilder();
+        boolean first = true;
+        for (String header : copy) {
+            if (first) {
+                first = false;
+            } else {
+                result.append(',');
+            }
+            result.append(header);
+        }
+        return result.toString();
+    }
+    public void addAllowedTrailerHeader(String header) {
+        if (header != null) {
+            allowedTrailerHeaders.add(header.trim().toLowerCase(Locale.ENGLISH));
+        }
+    }
+    public void removeAllowedTrailerHeader(String header) {
+        if (header != null) {
+            allowedTrailerHeaders.remove(header.trim().toLowerCase(Locale.ENGLISH));
+        }
     }
 
 
@@ -200,6 +263,10 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public void setSSLEnabled(boolean SSLEnabled) {
         getEndpoint().setSSLEnabled(SSLEnabled);
     }
+
+
+    public boolean getUseSendfile() { return getEndpoint().getUseSendfile(); }
+    public void setUseSendfile(boolean useSendfile) { getEndpoint().setUseSendfile(useSendfile); }
 
 
     /**
@@ -228,10 +295,9 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     // ------------------------------------------------------------- Common code
 
     // Common configuration required for all new HTTP11 processors
-    protected void configureProcessor(AbstractHttp11Processor<S> processor) {
+    protected void configureProcessor(Http11Processor processor) {
         processor.setAdapter(getAdapter());
         processor.setMaxKeepAliveRequests(getMaxKeepAliveRequests());
-        processor.setKeepAliveTimeout(getKeepAliveTimeout());
         processor.setConnectionUploadTimeout(getConnectionUploadTimeout());
         processor.setDisableUploadTimeout(getDisableUploadTimeout());
         processor.setCompressionMinSize(getCompressionMinSize());
@@ -239,8 +305,52 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
         processor.setNoCompressionUserAgents(getNoCompressionUserAgents());
         processor.setCompressableMimeTypes(getCompressableMimeTypes());
         processor.setRestrictedUserAgents(getRestrictedUserAgents());
-        processor.setSocketBuffer(getSocketBuffer());
         processor.setMaxSavePostSize(getMaxSavePostSize());
         processor.setServer(getServer());
+        processor.setClientCertProvider(getClientCertProvider());
+    }
+
+
+    protected abstract static class AbstractHttp11ConnectionHandler<S>
+            extends AbstractConnectionHandler<S,Http11Processor> {
+
+        private final AbstractHttp11Protocol<S> proto;
+
+
+        protected AbstractHttp11ConnectionHandler(AbstractHttp11Protocol<S> proto) {
+            this.proto = proto;
+        }
+
+
+        @Override
+        protected AbstractHttp11Protocol<S> getProtocol() {
+            return proto;
+        }
+
+
+        @Override
+        public Http11Processor createProcessor() {
+            Http11Processor processor = new Http11Processor(
+                    proto.getMaxHttpHeaderSize(), proto.getEndpoint(), proto.getMaxTrailerSize(),
+                    proto.allowedTrailerHeaders, proto.getMaxExtensionSize(),
+                    proto.getMaxSwallowSize());
+            proto.configureProcessor(processor);
+            register(processor);
+            return processor;
+        }
+
+
+        @Override
+        protected Processor createUpgradeProcessor(
+                SocketWrapperBase<?> socket, ByteBuffer leftoverInput,
+                HttpUpgradeHandler httpUpgradeHandler)
+                throws IOException {
+            if (httpUpgradeHandler instanceof InternalHttpUpgradeHandler) {
+                return new UpgradeProcessorInternal(socket, leftoverInput,
+                        (InternalHttpUpgradeHandler) httpUpgradeHandler);
+            } else {
+                return new UpgradeProcessorExternal(socket, leftoverInput, httpUpgradeHandler);
+            }
+        }
     }
 }

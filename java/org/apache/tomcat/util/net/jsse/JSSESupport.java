@@ -19,24 +19,18 @@ package org.apache.tomcat.util.net.jsse;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.SocketException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.WeakHashMap;
 
-import javax.net.ssl.HandshakeCompletedEvent;
-import javax.net.ssl.HandshakeCompletedListener;
-import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSocket;
-import javax.security.cert.X509Certificate;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.SSLSessionManager;
 import org.apache.tomcat.util.net.SSLSupport;
+import org.apache.tomcat.util.net.jsse.openssl.Cipher;
 import org.apache.tomcat.util.res.StringManager;
 
 /** JSSESupport
@@ -52,27 +46,34 @@ import org.apache.tomcat.util.res.StringManager;
    Parts cribbed from JSSECertCompat
    Parts cribbed from CertificatesValve
 */
-
-class JSSESupport implements SSLSupport, SSLSessionManager {
+public class JSSESupport implements SSLSupport, SSLSessionManager {
 
     private static final Log log = LogFactory.getLog(JSSESupport.class);
 
     private static final StringManager sm =
         StringManager.getManager("org.apache.tomcat.util.net.jsse.res");
 
-    private static final Map<SSLSession,Integer> keySizeCache =
-            new WeakHashMap<>();
+    private static final Map<String,Integer> keySizeCache = new HashMap<>();
 
-    protected SSLSocket ssl;
-    protected SSLSession session;
-
-    Listener listener = new Listener();
-
-    JSSESupport(SSLSocket sock){
-        ssl=sock;
-        session = sock.getSession();
-        sock.addHandshakeCompletedListener(listener);
+    static {
+        for (Cipher cipher : Cipher.values()) {
+            for (String jsseName : cipher.getJsseNames()) {
+                keySizeCache.put(jsseName, Integer.valueOf(cipher.getStrength_bits()));
+            }
+        }
     }
+
+    /*
+     * NO-OP method provided to make it easy for other classes in this package
+     * to trigger the loading of this class and the population of the
+     * keySizeCache.
+     */
+    static void init() {
+        // NO-OP
+    }
+
+    private SSLSession session;
+
 
     JSSESupport(SSLSession session) {
         this.session = session;
@@ -86,8 +87,12 @@ class JSSESupport implements SSLSupport, SSLSessionManager {
         return session.getCipherSuite();
     }
 
-    protected java.security.cert.X509Certificate [] getX509Certificates(
-            SSLSession session) {
+    @Override
+    public java.security.cert.X509Certificate[] getPeerCertificateChain() throws IOException {
+        // Look up the current SSLSession
+        if (session == null)
+            return null;
+
         Certificate [] certs=null;
         try {
             certs = session.getPeerCertificates();
@@ -126,113 +131,20 @@ class JSSESupport implements SSLSupport, SSLSessionManager {
         return x509Certs;
     }
 
-    @Override
-    public java.security.cert.X509Certificate[] getPeerCertificateChain(boolean force)
-        throws IOException {
-        // Look up the current SSLSession
-        if (session == null)
-            return null;
-
-        // Convert JSSE's certificate format to the ones we need
-        X509Certificate [] jsseCerts = null;
-        try {
-            jsseCerts = session.getPeerCertificateChain();
-        } catch(Exception bex) {
-            // ignore.
-        }
-        if (jsseCerts == null)
-            jsseCerts = new X509Certificate[0];
-        if(jsseCerts.length <= 0 && force && ssl != null) {
-            session.invalidate();
-            handShake();
-            session = ssl.getSession();
-        }
-        return getX509Certificates(session);
-    }
-
-    protected void handShake() throws IOException {
-        if( ssl.getWantClientAuth() ) {
-            log.debug(sm.getString("jsseSupport.noCertWant"));
-        } else {
-            ssl.setNeedClientAuth(true);
-        }
-
-        if (ssl.getEnabledCipherSuites().length == 0) {
-            // Handshake is never going to be successful.
-            // Assume this is because handshakes are disabled
-            log.warn(sm.getString("jsseSupport.serverRenegDisabled"));
-            session.invalidate();
-            ssl.close();
-            return;
-        }
-
-        InputStream in = ssl.getInputStream();
-        int oldTimeout = ssl.getSoTimeout();
-        ssl.setSoTimeout(1000);
-        byte[] b = new byte[1];
-        listener.reset();
-        ssl.startHandshake();
-        int maxTries = 60; // 60 * 1000 = example 1 minute time out
-        for (int i = 0; i < maxTries; i++) {
-            if (log.isTraceEnabled())
-                log.trace("Reading for try #" + i);
-            try {
-                int read = in.read(b);
-                if (read > 0) {
-                    // Shouldn't happen as all input should have been swallowed
-                    // before trying to do the handshake. If it does, something
-                    // went wrong so lets bomb out now.
-                    throw new SSLException(
-                            sm.getString("jsseSupport.unexpectedData"));
-                }
-            } catch(SSLException sslex) {
-                log.info(sm.getString("jsseSupport.clientCertError"), sslex);
-                throw sslex;
-            } catch (IOException e) {
-                // ignore - presumably the timeout
-            }
-            if (listener.completed) {
-                break;
-            }
-        }
-        ssl.setSoTimeout(oldTimeout);
-        if (listener.completed == false) {
-            throw new SocketException("SSL Cert handshake timeout");
-        }
-
-    }
 
     /**
-     * Copied from <code>org.apache.catalina.valves.CertificateValve</code>
+     * {@inheritDoc}
+     * <p>
+     * This returns the effective bits for the current cipher suite.
      */
     @Override
-    public Integer getKeySize()
-        throws IOException {
+    public Integer getKeySize() throws IOException {
         // Look up the current SSLSession
-        SSLSupport.CipherData c_aux[]=ciphers;
-        if (session == null)
+        if (session == null) {
             return null;
-
-        Integer keySize = null;
-        synchronized(keySizeCache) {
-            keySize = keySizeCache.get(session);
         }
 
-        if (keySize == null) {
-            int size = 0;
-            String cipherSuite = session.getCipherSuite();
-            for (int i = 0; i < c_aux.length; i++) {
-                if (cipherSuite.indexOf(c_aux[i].phrase) >= 0) {
-                    size = c_aux[i].keySize;
-                    break;
-                }
-            }
-            keySize = Integer.valueOf(size);
-            synchronized(keySizeCache) {
-                keySizeCache.put(session, keySize);
-            }
-        }
-        return keySize;
+        return keySizeCache.get(session.getCipherSuite());
     }
 
     @Override
@@ -256,16 +168,10 @@ class JSSESupport implements SSLSupport, SSLSessionManager {
     }
 
 
-    private static class Listener implements HandshakeCompletedListener {
-        volatile boolean completed = false;
-        @Override
-        public void handshakeCompleted(HandshakeCompletedEvent event) {
-            completed = true;
-        }
-        void reset() {
-            completed = false;
-        }
+    public void setSession(SSLSession session) {
+        this.session = session;
     }
+
 
     /**
      * Invalidate the session this support object is associated with.
@@ -274,5 +180,13 @@ class JSSESupport implements SSLSupport, SSLSessionManager {
     public void invalidateSession() {
         session.invalidate();
     }
+
+    @Override
+    public String getProtocol() throws IOException {
+        if (session == null) {
+           return null;
+        }
+       return session.getProtocol();
+   }
 }
 

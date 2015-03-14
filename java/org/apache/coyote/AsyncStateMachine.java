@@ -157,10 +157,10 @@ public class AsyncStateMachine {
     private volatile AsyncState state = AsyncState.DISPATCHED;
     // Need this to fire listener on complete
     private AsyncContextCallback asyncCtxt = null;
-    private final Processor<?> processor;
+    private final Processor processor;
 
 
-    public AsyncStateMachine(Processor<?> processor) {
+    public AsyncStateMachine(Processor processor) {
         this.processor = processor;
     }
 
@@ -298,11 +298,23 @@ public class AsyncStateMachine {
         boolean doDispatch = false;
         if (state == AsyncState.STARTING) {
             state = AsyncState.MUST_DISPATCH;
-        } else if (state == AsyncState.STARTED ||
-                state == AsyncState.READ_WRITE_OP ||
+        } else if (state == AsyncState.STARTED) {
+            state = AsyncState.DISPATCHING;
+            // A dispatch is always required.
+            // If on a non-container thread, need to get back onto a container
+            // thread to complete the processing.
+            // If on a container thread the current request/response are not the
+            // request/response associated with the AsyncContext so need a new
+            // container thread to process the different request/response.
+            doDispatch = true;
+        } else if (state == AsyncState.READ_WRITE_OP ||
                 state == AsyncState.TIMING_OUT ||
                 state == AsyncState.ERROR) {
             state = AsyncState.DISPATCHING;
+            // If on a container thread then the socket will be added to the
+            // poller poller when the thread exits the
+            // AbstractConnectionHandler.process() method so don't do a dispatch
+            // here which would add it to the poller a second time.
             if (!ContainerThreadMarker.isContainerThread()) {
                 doDispatch = true;
             }

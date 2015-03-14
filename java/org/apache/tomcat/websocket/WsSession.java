@@ -179,6 +179,10 @@ public class WsSession implements Session {
 
         this.userProperties.putAll(endpointConfig.getUserProperties());
         this.id = Long.toHexString(ids.getAndIncrement());
+
+        if (log.isDebugEnabled()) {
+            log.debug(sm.getString("wsSession.created", id));
+        }
     }
 
 
@@ -459,6 +463,9 @@ public class WsSession implements Session {
                 return;
             }
 
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("wsSession.doClose", id));
+            }
             try {
                 wsRemoteEndpoint.setBatchingAllowed(false);
             } catch (IOException e) {
@@ -466,12 +473,10 @@ public class WsSession implements Session {
                 fireEndpointOnError(e);
             }
 
-            state = State.CLOSING;
+            state = State.OUTPUT_CLOSED;
 
             sendCloseMessage(closeReasonMessage);
             fireEndpointOnClose(closeReasonLocal);
-
-            state = State.CLOSED;
         }
 
         IOException ioe = new IOException(sm.getString("wsSession.messageFailed"));
@@ -493,20 +498,22 @@ public class WsSession implements Session {
     public void onClose(CloseReason closeReason) {
 
         synchronized (stateLock) {
-            if (state == State.OPEN) {
+            if (state != State.CLOSED) {
                 try {
                     wsRemoteEndpoint.setBatchingAllowed(false);
                 } catch (IOException e) {
                     log.warn(sm.getString("wsSession.flushFailOnClose"), e);
                     fireEndpointOnError(e);
                 }
-                sendCloseMessage(closeReason);
+                if (state == State.OPEN) {
+                    sendCloseMessage(closeReason);
+                }
                 fireEndpointOnClose(closeReason);
                 state = State.CLOSED;
-            }
 
-            // Close the socket
-            wsRemoteEndpoint.close();
+                // Close the socket
+                wsRemoteEndpoint.close();
+            }
         }
     }
 
@@ -560,13 +567,13 @@ public class WsSession implements Session {
         }
         msg.flip();
         try {
-            wsRemoteEndpoint.startMessageBlock(
+            wsRemoteEndpoint.sendMessageBlock(
                     Constants.OPCODE_CLOSE, msg, true);
         } catch (IOException ioe) {
             // Failed to send close message. Close the socket and let the caller
             // deal with the Exception
             if (log.isDebugEnabled()) {
-                log.debug(sm.getString("wsSession.sendCloseFail"), ioe);
+                log.debug(sm.getString("wsSession.sendCloseFail", id), ioe);
             }
             wsRemoteEndpoint.close();
             // Failure to send a close message is not unexpected in the case of
@@ -726,13 +733,17 @@ public class WsSession implements Session {
 
     private void checkState() {
         if (state == State.CLOSED) {
+            /*
+             * As per RFC 6455, a WebSocket connection is considered to be
+             * closed once a peer has sent and received a WebSocket close frame.
+             */
             throw new IllegalStateException(sm.getString("wsSession.closed", id));
         }
     }
 
     private static enum State {
         OPEN,
-        CLOSING,
+        OUTPUT_CLOSED,
         CLOSED
     }
 }

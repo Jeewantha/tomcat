@@ -82,7 +82,7 @@ public class SpdyAprNpnHandler implements NpnHandler<Long> {
             @Override
             public void onStream(SpdyConnection con, SpdyStream ch)
                     throws IOException {
-                SpdyProcessor<Long> sp = new SpdyProcessor<>(con, ep);
+                SpdyProcessor sp = new SpdyProcessor(con, ep);
                 sp.setAdapter(adapter);
                 sp.onSynStream(ch);
             }
@@ -103,10 +103,5 @@ public class SpdyAprNpnHandler implements NpnHandler<Long> {
 
         // No need to keep tomcat thread busy - but socket will be handled by apr socket context.
         return SocketState.LONG;
-    }
-
-
-    @Override
-    public void onCreateEngine(Object socket) {
     }
 }

@@ -26,8 +26,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.apache.tomcat.util.net.SecureNio2Channel.ApplicationBufferHandler;
-
 /**
  * Base class for a SocketChannel wrapper used by the endpoint.
  * This way, logic for a SSL socket channel remains the same as for
@@ -39,9 +37,9 @@ public class Nio2Channel implements AsynchronousByteChannel {
 
     protected AsynchronousSocketChannel sc = null;
     protected SocketWrapperBase<Nio2Channel> socket = null;
-    protected ApplicationBufferHandler bufHandler;
+    protected final SocketBufferHandler bufHandler;
 
-    public Nio2Channel(ApplicationBufferHandler bufHandler) {
+    public Nio2Channel(SocketBufferHandler bufHandler) {
         this.bufHandler = bufHandler;
     }
 
@@ -54,21 +52,13 @@ public class Nio2Channel implements AsynchronousByteChannel {
             throws IOException {
         this.sc = channel;
         this.socket = socket;
-        bufHandler.getReadBuffer().clear();
-        bufHandler.getWriteBuffer().clear();
+        bufHandler.reset();
     }
 
     public SocketWrapperBase<Nio2Channel> getSocket() {
         return socket;
     }
 
-    public int getBufferSize() {
-        if ( bufHandler == null ) return 0;
-        int size = 0;
-        size += bufHandler.getReadBuffer()!=null?bufHandler.getReadBuffer().capacity():0;
-        size += bufHandler.getWriteBuffer()!=null?bufHandler.getWriteBuffer().capacity():0;
-        return size;
-    }
 
     /**
      * Closes this channel.
@@ -96,7 +86,7 @@ public class Nio2Channel implements AsynchronousByteChannel {
         return sc.isOpen();
     }
 
-    public ApplicationBufferHandler getBufHandler() {
+    public SocketBufferHandler getBufHandler() {
         return bufHandler;
     }
 

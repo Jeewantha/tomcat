@@ -239,6 +239,15 @@
       Request.setCharacterEncoding method was also used for the parameters from
       the URL. The default value is <code>false</code>.
       </p>
+      <p><strong>Notes:</strong> 1) This setting is applied only to the
+      query string of a request. Unlike <code>URIEncoding</code> it does not
+      affect the path portion of a request URI. 2) If request character
+      encoding is not known (is not provided by a browser and is not set by
+      <code>SetCharacterEncodingFilter</code> or a similar filter using
+      Request.setCharacterEncoding method), the default encoding is always
+      "ISO-8859-1". The <code>URIEncoding</code> setting has no effect on
+      this default.
+      </p>
     </attribute>
 
     <attribute name="useIPVHosts" required="false">
@@ -293,6 +302,12 @@
       specifies which address will be used for listening on the specified
       port.  By default, this port will be used on all IP addresses
       associated with the server.</p>
+    </attribute>
+
+    <attribute name="allowedTrailerHeaders" required="false">
+      <p>By default Tomcat will ignore all trailer headers when processing
+      chunked input. For a header to be processed, it must be added to this
+      comma-separated list of header names.</p>
     </attribute>
 
     <attribute name="bindOnInit" required="false">
@@ -498,12 +513,6 @@
       </p>
     </attribute>
 
-    <attribute name="socketBuffer" required="false">
-      <p>The size (in bytes) of the buffer to be provided for socket
-      output buffering. -1 can be specified to disable the use of a buffer.
-      By default, a buffers of 9000 bytes will be used.</p>
-    </attribute>
-
     <attribute name="SSLEnabled" required="false">
       <p>Use this attribute to enable SSL traffic on a connector.
       To turn on SSL handshake/encryption/decryption on a connector
@@ -530,15 +539,6 @@
       for the <code>java.lang.Thread</code> class for more details on what
       this priority means.
       </p>
-    </attribute>
-
-    <attribute name="upgradeAsyncWriteBufferSize" required="false">
-      <p>The default size of the buffer to allocate to for asynchronous writes
-      that can not be completed in a single operation. Data that can't be
-      written immediately will be stored in this buffer until it can be written.
-      If more data needs to be stored than space is available in the buffer than
-      the size of the buffer will be increased for the duration of the write. If
-      not specified the default value of 8192 will be used.</p>
     </attribute>
   </attributes>
 
@@ -1038,6 +1038,15 @@
       </p>
     </attribute>
 
+    <attribute name="useServerCipherSuitesOrder" required="false">
+      <p>
+        Set to <code>true</code> to enforce the server's cipher order
+        (from the <code>ciphers</code> setting). Set to <code>false</code>
+        to choose the first acceptable cipher suite presented by the client.
+        Default is <code>false</code>.
+      </p>
+    </attribute>
+
     <attribute name="ciphers" required="false">
       <p>If specified and using ',' as a separator, only the ciphers that are
       listed and supported by the SSL implementation will be used.
@@ -1047,11 +1056,13 @@
       testing purposes only.</p>
       <p>The list can also use ':' as a separator, in that case
       it will use the OpenSSL syntax (see OpenSSL documentation for the list
-      of ciphers supported and the syntax).</p>
+      of ciphers supported and the syntax). The behaviour of this filtering is
+      kept aligned with the behaviour of the OpenSSL 1.1.0 development
+      branch.</p>
       <p>If not specified, a default (using the OpenSSL notation) of
       <code>HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5</code> will be used.</p>
-      <p>Note that Java does treat the order in which ciphers are defined as an
-      order of preference.</p>
+      <p>Note that Java does not treat the order in which ciphers are defined as
+      an order of preference. See <code>useServerCipherSuitesOrder</code>.</p>
     </attribute>
 
     <attribute name="clientAuth" required="false">

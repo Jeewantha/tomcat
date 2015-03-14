@@ -84,20 +84,14 @@ public class AjpAprProtocol extends AbstractAjpProtocol<Long> {
             return log;
         }
 
-        /**
-         * Expected to be used by the handler once the processor is no longer
-         * required.
-         */
         @Override
         public void release(SocketWrapperBase<Long> socket,
-                Processor<Long> processor, boolean isSocketClosing,
-                boolean addToPoller) {
-            processor.recycle(isSocketClosing);
+                Processor processor, boolean addToPoller) {
+            processor.recycle();
             recycledProcessors.push(processor);
             if (addToPoller) {
-                ((AprEndpoint)getProtocol().getEndpoint()).getPoller().add(
-                        socket.getSocket().longValue(),
-                        getProtocol().getEndpoint().getKeepAliveTimeout(), true, false);
+                socket.setReadTimeout(getProtocol().getEndpoint().getKeepAliveTimeout());
+                socket.registerReadInterest();
             }
         }
     }

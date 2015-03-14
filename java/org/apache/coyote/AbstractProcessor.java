@@ -32,16 +32,17 @@ import org.apache.tomcat.util.res.StringManager;
  * Provides functionality and attributes common to all supported protocols
  * (currently HTTP and AJP).
  */
-public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
+public abstract class AbstractProcessor implements ActionHook, Processor {
 
     protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
     protected Adapter adapter;
     protected final AsyncStateMachine asyncStateMachine;
-    protected final AbstractEndpoint<S> endpoint;
+    protected final AbstractEndpoint<?> endpoint;
     protected final Request request;
     protected final Response response;
-    protected SocketWrapperBase<S> socketWrapper = null;
+    protected SocketWrapperBase<?> socketWrapper = null;
+    private String clientCertProvider = null;
 
     /**
      * Error state for the request/response currently being processed.
@@ -60,7 +61,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
         response = null;
     }
 
-    public AbstractProcessor(AbstractEndpoint<S> endpoint) {
+    public AbstractProcessor(AbstractEndpoint<?> endpoint) {
         this.endpoint = endpoint;
         asyncStateMachine = new AsyncStateMachine(this);
         request = new Request();
@@ -86,7 +87,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
                 response.setStatus(500);
             }
             getLog().info(sm.getString("abstractProcessor.nonContainerThreadError"), t);
-            getEndpoint().processSocket(socketWrapper, SocketStatus.CLOSE_NOW, true);
+            socketWrapper.processSocket(SocketStatus.CLOSE_NOW, true);
         }
     }
 
@@ -103,7 +104,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
     /**
      * The endpoint receiving connections that are handled by this processor.
      */
-    protected AbstractEndpoint<S> getEndpoint() {
+    protected AbstractEndpoint<?> getEndpoint() {
         return endpoint;
     }
 
@@ -137,10 +138,21 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
     }
 
 
+    @Override
+    public String getClientCertProvider() {
+        return clientCertProvider;
+    }
+
+
+    public void setClientCertProvider(String s) {
+        this.clientCertProvider = s;
+    }
+
+
     /**
      * Set the socket wrapper being used.
      */
-    protected final void setSocketWrapper(SocketWrapperBase<S> socketWrapper) {
+    protected final void setSocketWrapper(SocketWrapperBase<?> socketWrapper) {
         this.socketWrapper = socketWrapper;
     }
 
@@ -148,7 +160,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
     /**
      * Get the socket wrapper being used.
      */
-    protected final SocketWrapperBase<S> getSocketWrapper() {
+    protected final SocketWrapperBase<?> getSocketWrapper() {
         return socketWrapper;
     }
 
@@ -186,7 +198,7 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
      * with although they may change type during processing.
      */
     @Override
-    public abstract SocketState process(SocketWrapperBase<S> socket) throws IOException;
+    public abstract SocketState process(SocketWrapperBase<?> socket) throws IOException;
 
     /**
      * Process in-progress Servlet 3.0 Async requests. These will start as HTTP
@@ -200,19 +212,10 @@ public abstract class AbstractProcessor<S> implements ActionHook, Processor<S> {
      * upgrade.
      */
     @Override
-    public abstract SocketState upgradeDispatch(SocketStatus status) throws IOException;
+    public abstract SocketState upgradeDispatch(SocketStatus status);
 
     @Override
     public abstract HttpUpgradeHandler getHttpUpgradeHandler();
-
-
-    /**
-     * Register the socket for the specified events.
-     *
-     * @param read  Register the socket for read events
-     * @param write Register the socket for write events
-     */
-    protected abstract void registerForEvent(boolean read, boolean write);
 
     protected abstract Log getLog();
 }

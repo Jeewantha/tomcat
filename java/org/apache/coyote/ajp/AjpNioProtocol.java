@@ -19,15 +19,12 @@ package org.apache.coyote.ajp;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 
-import javax.net.ssl.SSLEngine;
-
 import org.apache.coyote.Processor;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.NioChannel;
 import org.apache.tomcat.util.net.NioEndpoint;
 import org.apache.tomcat.util.net.NioEndpoint.Handler;
-import org.apache.tomcat.util.net.SSLImplementation;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
 /**
@@ -74,12 +71,6 @@ public class AjpNioProtocol extends AbstractAjpProtocol<NioChannel> {
             return log;
         }
 
-        @Override
-        public SSLImplementation getSslImplementation() {
-            // AJP does not support SSL
-            return null;
-        }
-
         /**
          * Expected to be used by the Poller to release resources on socket
          * close, errors etc.
@@ -89,13 +80,13 @@ public class AjpNioProtocol extends AbstractAjpProtocol<NioChannel> {
             if (log.isDebugEnabled())
                 log.debug(sm.getString("ajpnioprotocol.releaseStart", socket));
             boolean released = false;
-            Iterator<java.util.Map.Entry<NioChannel, Processor<NioChannel>>> it = connections.entrySet().iterator();
+            Iterator<java.util.Map.Entry<NioChannel, Processor>> it = connections.entrySet().iterator();
             while (it.hasNext()) {
-                java.util.Map.Entry<NioChannel, Processor<NioChannel>> entry = it.next();
+                java.util.Map.Entry<NioChannel, Processor> entry = it.next();
                 if (entry.getKey().getIOChannel()==socket) {
                     it.remove();
-                    Processor<NioChannel> result = entry.getValue();
-                    result.recycle(true);
+                    Processor result = entry.getValue();
+                    result.recycle();
                     unregister(result);
                     released = true;
                     break;
@@ -106,38 +97,29 @@ public class AjpNioProtocol extends AbstractAjpProtocol<NioChannel> {
                         socket, Boolean.valueOf(released)));
         }
 
+
         /**
          * Expected to be used by the Poller to release resources on socket
          * close, errors etc.
          */
         @Override
         public void release(SocketWrapperBase<NioChannel> socket) {
-            Processor<NioChannel> processor =
-                    connections.remove(socket.getSocket());
+            Processor processor = connections.remove(socket.getSocket());
             if (processor != null) {
-                processor.recycle(true);
+                processor.recycle();
                 recycledProcessors.push(processor);
             }
         }
 
-        /**
-         * Expected to be used by the handler once the processor is no longer
-         * required.
-         */
+
         @Override
         public void release(SocketWrapperBase<NioChannel> socket,
-                Processor<NioChannel> processor, boolean isSocketClosing,
-                boolean addToPoller) {
-            processor.recycle(isSocketClosing);
+               Processor processor,  boolean addToPoller) {
+            processor.recycle();
             recycledProcessors.push(processor);
             if (addToPoller) {
-                socket.getSocket().getPoller().add(socket.getSocket());
+                socket.registerReadInterest();
             }
-        }
-
-
-        @Override
-        public void onCreateSSLEngine(SSLEngine engine) {
         }
     }
 }

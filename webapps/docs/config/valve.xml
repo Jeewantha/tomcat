@@ -339,6 +339,16 @@
     appends the values of the <code>Referer</code> and <code>User-Agent</code>
     headers, each in double quotes, to the <code>common</code> pattern.</p>
 
+    <p>When Tomcat is operating behind a reverse proxy, the client information
+    logged by the Access Log Valve may represent the reverse proxy, the browser
+    or some combination of the two depending on the configuration of Tomcat and
+    the reverse proxy. For Tomcat configuration options see
+    <a href="#Proxies_Support">Proxies Support</a> and the
+    <a href="../proxy-howto.html">Proxy How-To</a>. For reverse proxies that
+    use mod_jk, see the <a
+    href="http://tomcat.apache.org/connectors-doc/generic_howto/proxy.html">generic
+    proxy</a> documentation. For other reverse proxies, consult their
+    documentation.</p>
   </subsection>
 
 </subsection>
@@ -474,7 +484,7 @@
     expressions supported.</p>
 
     <p>Optionally one can append the server connector port separated with a
-    comma (";") to allow different expressions for each connector.</p>
+    semicolon (";") to allow different expressions for each connector.</p>
 
     <p>The behavior when a request is refused can be changed
     to not deny but instead set an invalid <code>authentication</code>
@@ -603,7 +613,7 @@
     expressions supported.</p>
 
     <p>Optionally one can append the server connector port separated with a
-    comma (";") to allow different expressions for each connector.</p>
+    semicolon (";") to allow different expressions for each connector.</p>
 
     <p>The behavior when a request is refused can be changed
     to not deny but instead set an invalid <code>authentication</code>
@@ -656,7 +666,7 @@
 
       <attribute name="addConnectorPort" required="false">
         <p>Append the server connector port to the client hostname separated
-        with a comma (";"). If this is set to <code>true</code>, the
+        with a semicolon (";"). If this is set to <code>true</code>, the
         expressions configured with <code>allow</code> and
         <code>deny</code> is compared against <code>HOSTNAME;PORT</code>
         where <code>HOSTNAME</code> is the client hostname and

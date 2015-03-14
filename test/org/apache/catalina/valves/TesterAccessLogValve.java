@@ -31,8 +31,10 @@ import org.apache.catalina.connector.Response;
 
 public class TesterAccessLogValve extends ValveBase implements AccessLog {
 
-    // Timing tests need a small error margin to prevent failures
-    private static final long ERROR_MARGIN = 100;
+    private static final boolean RELAX_TIMING = Boolean.getBoolean("tomcat.test.relaxTiming");
+
+    // Timing tests need an error margin to prevent failures.
+    private static final long ERROR_MARGIN = RELAX_TIMING ? 1000 : 100;
 
     private final List<Entry> entries = new ArrayList<>();
 
@@ -78,7 +80,12 @@ public class TesterAccessLogValve extends ValveBase implements AccessLog {
             Thread.sleep(100);
         }
 
-        assertEquals(count, entries.size());
+        StringBuilder entriesLog = new StringBuilder();
+        for (Entry entry : entries) {
+            entriesLog.append(entry.toString());
+            entriesLog.append(System.lineSeparator());
+        }
+        assertEquals(entriesLog.toString(), count, entries.size());
         for (int j = 0; j < count; j++) {
             Entry entry = entries.get(j);
             assertEquals(status, entry.getStatus());

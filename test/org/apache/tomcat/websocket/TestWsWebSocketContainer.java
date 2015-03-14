@@ -92,7 +92,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
         // Set this artificially small to trigger
-        // https://issues.apache.org/bugzilla/show_bug.cgi?id=57054
+        // https://bz.apache.org/bugzilla/show_bug.cgi?id=57054
         wsContainer.setDefaultMaxBinaryMessageBufferSize(64);
         Session wsSession = wsContainer.connectToServer(
                 TesterProgrammaticEndpoint.class,
@@ -343,9 +343,9 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
         Exception exception = null;
         try {
             while (true) {
+                lastSend = System.currentTimeMillis();
                 Future<Void> f = wsSession.getAsyncRemote().sendBinary(
                         ByteBuffer.wrap(MESSAGE_BINARY_4K));
-                lastSend = System.currentTimeMillis();
                 f.get();
             }
         } catch (Exception e) {
@@ -354,8 +354,8 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
 
         long timeout = System.currentTimeMillis() - lastSend;
 
-        // Clear the server side block and prevent and further blocks to allow
-        // the server to shutdown cleanly
+        // Clear the server side block and prevent further blocks to allow the
+        // server to shutdown cleanly
         BlockingPojo.clearBlock();
 
         String msg = "Time out was [" + timeout + "] ms";
@@ -900,7 +900,7 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
 
         s.getBasicRemote().sendText(msg.toString());
 
-        // Wait for up to 5 seconds for session to close
+        // Wait for up to 5 seconds for the client session to close
         boolean open = s.isOpen();
         int count = 0;
         while (open != expectOpen && count < 50) {
@@ -911,6 +911,24 @@ public class TestWsWebSocketContainer extends TomcatBaseTest {
 
         Assert.assertEquals(Boolean.valueOf(expectOpen),
                 Boolean.valueOf(s.isOpen()));
+
+        // Close the session if it is expected to be open
+        if (expectOpen) {
+            s.close();
+        }
+
+        // Wait for up to 5 seconds for the server session to close and the
+        // background process to stop
+        count = 0;
+        while (count < 50) {
+            if (BackgroundProcessManager.getInstance().getProcessCount() == 0) {
+                break;
+            }
+            Thread.sleep(100);
+            count++;
+        }
+
+        Assert.assertEquals(0, BackgroundProcessManager.getInstance().getProcessCount());
     }
 
 

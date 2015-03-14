@@ -63,13 +63,12 @@ public enum ActionCode {
     DISABLE_SWALLOW_INPUT,
 
     /**
-     * Callback for lazy evaluation - extract the remote host address.
+     * Callback for lazy evaluation - extract the remote host name and address.
      */
     REQ_HOST_ATTRIBUTE,
 
     /**
-     * Callback for lazy evaluation - extract the remote host infos (address,
-     * name, port) and local address.
+     * Callback for lazy evaluation - extract the remote host address.
      */
     REQ_HOST_ADDR_ATTRIBUTE,
 
@@ -229,5 +228,11 @@ public enum ActionCode {
      * when the non-blocking listeners are configured on a thread where the
      * processing wasn't triggered by a read or write event on the socket.
      */
-    DISPATCH_EXECUTE
+    DISPATCH_EXECUTE,
+
+    /**
+     * Trigger end of request processing (remaining input swallowed, write any
+     * remaining parts of the response etc.).
+     */
+    END_REQUEST
 }

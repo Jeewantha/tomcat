@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.channels.FileChannel;
 import java.util.Enumeration;
 import java.util.jar.JarEntry;
@@ -55,8 +56,7 @@ public class ExpandWar {
 
     /**
      * Expand the WAR file found at the specified URL into an unpacked
-     * directory structure, and return the absolute pathname to the expanded
-     * directory.
+     * directory structure.
      *
      * @param host Host war is being installed for
      * @param war URL of the web application archive to be expanded
@@ -67,31 +67,69 @@ public class ExpandWar {
      *            WAR file is invalid
      * @exception IOException if an input/output error was encountered
      *  during expansion
+     *
+     * @return The absolute path to the expanded directory foe the given WAR
      */
     public static String expand(Host host, URL war, String pathname)
         throws IOException {
 
-        // Make sure that there is no such directory already existing
+        /* Obtaining the last modified time opens an InputStream and there is no
+         * explicit close method. We have to obtain and then close the
+         * InputStream to avoid a file leak and the associated locked file.
+         */
+        JarURLConnection juc = (JarURLConnection) war.openConnection();
+        juc.setUseCaches(false);
+        URL jarFileUrl = juc.getJarFileURL();
+        URLConnection jfuc = jarFileUrl.openConnection();
+
+        boolean success = false;
         File docBase = new File(host.getAppBaseFile(), pathname);
+        File warTracker = new File(host.getAppBaseFile(), pathname + Constants.WarTracker);
+        long warLastModified = -1;
+
+        try (InputStream is = jfuc.getInputStream()) {
+            // Get the last modified time for the WAR
+            warLastModified = jfuc.getLastModified();
+        }
+
+        // Check to see of the WAR has been expanded previously
         if (docBase.exists()) {
-            // War file is already installed
-            return (docBase.getAbsolutePath());
+            // A WAR was expanded. Tomcat will have set the last modified
+            // time of the expanded directory to the last modified time of
+            // the WAR so changes to the WAR while Tomcat is stopped can be
+            // detected
+            if (!warTracker.exists() || warTracker.lastModified() == warLastModified) {
+                // No (detectable) changes to the WAR
+                success = true;
+                return (docBase.getAbsolutePath());
+            }
+
+            // WAR must have been modified. Remove expanded directory.
+            log.info(sm.getString("expandWar.deleteOld", docBase));
+            if (!delete(docBase)) {
+                throw new IOException(sm.getString("expandWar.deleteFailed", docBase));
+            }
         }
 
         // Create the new document base directory
-        if(!docBase.mkdir() && !docBase.isDirectory())
+        if(!docBase.mkdir() && !docBase.isDirectory()) {
             throw new IOException(sm.getString("expandWar.createFailed", docBase));
+        }
 
         // Expand the WAR into the new document base directory
         String canonicalDocBasePrefix = docBase.getCanonicalPath();
         if (!canonicalDocBasePrefix.endsWith(File.separator)) {
             canonicalDocBasePrefix += File.separator;
         }
-        JarURLConnection juc = (JarURLConnection) war.openConnection();
-        juc.setUseCaches(false);
 
-        boolean success = false;
+        // Creating war tracker parent (normally META-INF)
+        File warTrackerParent = warTracker.getParentFile();
+        if (!warTrackerParent.isDirectory() && !warTrackerParent.mkdirs()) {
+            throw new IOException(sm.getString("expandWar.createFailed", warTrackerParent.getAbsolutePath()));
+        }
+
         try (JarFile jarFile = juc.getJarFile()) {
+
             Enumeration<JarEntry> jarEntries = jarFile.entries();
             while (jarEntries.hasMoreElements()) {
                 JarEntry jarEntry = jarEntries.nextElement();
@@ -119,7 +157,6 @@ public class ExpandWar {
                     continue;
                 }
 
-
                 try (InputStream input = jarFile.getInputStream(jarEntry)) {
                     if (null == input)
                         throw new ZipException(sm.getString("expandWar.missingJarEntry",
@@ -132,6 +169,11 @@ public class ExpandWar {
                         expandedFile.setLastModified(lastModified);
                     }
                 }
+
+                // Create the warTracker file and align the last modified time
+                // with the last modified time of the WAR
+                warTracker.createNewFile();
+                warTracker.setLastModified(warLastModified);
             }
             success = true;
         } catch (IOException e) {

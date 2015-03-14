@@ -15,7 +15,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project name="Tomcat 8.0" default="deploy" basedir=".">
+<project name="Tomcat 9.0" default="deploy" basedir=".">
 
   <!-- ===================== Initialize Property Values ==================== -->
 
@@ -168,6 +168,7 @@
   <!-- Tests To Run -->
   <property name="test.name" value="**/Test*.java"/>
   <property name="test.formatter" value="-Dorg.apache.juli.formatter=java.util.logging.SimpleFormatter"/>
+  <property name="test.relaxTiming" value="false"/>
 
   <!-- Cobertura code coverage settings -->
   <property name="cobertura.out" value="${tomcat.output}/coverage"/>
@@ -179,8 +180,12 @@
   <available file="/dev/urandom" property="test.jvmarg.egd" value="-Djava.security.egd=file:/dev/./urandom"/>
   <property name="test.jvmarg.egd" value="" />
 
-  <!-- Location of OpenSSL binary -->
+  <!-- Location of OpenSSL binary (file name, not directory) -->
   <property name="test.openssl.path" value="" />
+
+  <!-- Accepted version of OpenSSL. The output of "openssl version"
+       must start with "OpenSSL " plus value of this property. -->
+  <property name="test.openssl.version" value="1.1.0" />
 
   <!-- Include .gitignore in src distributions. -->
   <!-- .git and .gitignore are in defaultexcludes since Ant 1.8.2 -->
@@ -268,6 +273,7 @@
     <include name="**/*.MF"/>
     <include name="**/*.notice"/>
     <include name="**/*.nsi"/>
+    <include name="**/*.pem"/>
     <include name="**/*.pl"/>
     <include name="**/*.policy"/>
     <include name="**/*.pom"/>
@@ -1340,7 +1346,36 @@
 
   <target name="test" description="Runs the JUnit test cases"
           depends="test-nio,test-nio2,test-apr,cobertura-report" >
-    <fail if="test.result.error" message='Some tests completed with an Error. See ${tomcat.build}/logs for details, search for "FAILED".' />
+    <fileset id="test.result.skippedtests" dir="${test.reports}" includes="*.txt">
+      <not>
+        <contains text="Skipped: 0" />
+      </not>
+    </fileset>
+    <fileset id="test.result.failedtests" dir="${test.reports}" includes="*.txt">
+      <not>
+        <contains text="Failures: 0, Errors: 0" />
+      </not>
+    </fileset>
+    <concat>
+      <header>Testsuites with skipped tests:${line.separator}</header>
+      <string>${toString:test.result.skippedtests}</string>
+      <filterchain>
+        <tokenfilter delimOutput="${line.separator}">
+          <stringtokenizer delims=";"/>
+        </tokenfilter>
+      </filterchain>
+    </concat>
+    <concat>
+      <header>Testsuites with failed tests:${line.separator}</header>
+      <string>${toString:test.result.failedtests}</string>
+      <filterchain>
+        <tokenfilter delimOutput="${line.separator}">
+          <stringtokenizer delims=";"/>
+        </tokenfilter>
+      </filterchain>
+    </concat>
+
+    <fail if="test.result.error" message='Some tests completed with an Error. See ${tomcat.build}/logs for details, search for "ERROR".' />
     <fail if="test.result.failure" message='Some tests completed with a Failure. See ${tomcat.build}/logs for details, search for "FAILED".' />
   </target>
 
@@ -1413,6 +1448,8 @@
         <sysproperty key="tomcat.test.accesslog" value="${test.accesslog}" />
         <sysproperty key="tomcat.test.reports" value="${test.reports}" />
         <sysproperty key="tomcat.test.openssl.path" value="${test.openssl.path}" />
+        <sysproperty key="tomcat.test.openssl.version" value="${test.openssl.version}" />
+        <sysproperty key="tomcat.test.relaxTiming" value="${test.relaxTiming}" />
         <!-- File for Cobertura to write coverage results to -->
         <sysproperty key="net.sourceforge.cobertura.datafile" file="${cobertura.datafile}" />
 
@@ -1436,7 +1473,9 @@
             <!-- Exclude the tests known to fail -->
             <exclude name="org/apache/catalina/tribes/test/**" />
             <!-- Exclude the OpenSSL tests unless OpenSSL is available -->
-            <exclude name="org/apache/tomcat/util/net/jsse/openssl/**" unless="${test.openssl.exists}"/>
+            <exclude name="org/apache/tomcat/util/net/jsse/openssl/**" unless="${test.openssl.exists}" />
+            <!-- Exclude performance tests. E.g. on systems with slow/inconsistent timing -->
+            <exclude name="**/*Performance.java" if="${test.excludePerformance}" />
           </fileset>
         </batchtest>
       </junit>

@@ -17,11 +17,15 @@
 
 package org.apache.catalina.realm;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -49,6 +53,14 @@ import javax.naming.directory.DirContext;
 import javax.naming.directory.InitialDirContext;
 import javax.naming.directory.SearchControls;
 import javax.naming.directory.SearchResult;
+import javax.naming.ldap.InitialLdapContext;
+import javax.naming.ldap.LdapContext;
+import javax.naming.ldap.StartTlsRequest;
+import javax.naming.ldap.StartTlsResponse;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
 
 import org.apache.catalina.LifecycleException;
 import org.ietf.jgss.GSSCredential;
@@ -162,7 +174,7 @@ import org.ietf.jgss.GSSCredential;
  * <p><strong>WARNING</strong> - There is a reported bug against the Netscape
  * provider code (com.netscape.jndi.ldap.LdapContextFactory) with respect to
  * successfully authenticated a non-existing user. The
- * report is here: http://issues.apache.org/bugzilla/show_bug.cgi?id=11210 .
+ * report is here: http://bz.apache.org/bugzilla/show_bug.cgi?id=11210 .
  * With luck, Netscape has updated their provider code and this is not an
  * issue. </p>
  *
@@ -438,6 +450,53 @@ public class JNDIRealm extends RealmBase {
      * connection.
      */
     protected String spnegoDelegationQop = "auth-conf";
+
+    /**
+     * Whether to use TLS for connections
+     */
+    private boolean useStartTls = false;
+
+    private StartTlsResponse tls = null;
+
+    /**
+     * The list of enabled cipher suites used for establishing tls connections.
+     * <code>null</code> means to use the default cipher suites.
+     */
+    private String[] cipherSuitesArray = null;
+
+    /**
+     * Verifier for hostnames in a StartTLS secured connection. <code>null</code>
+     * means to use the default verifier.
+     */
+    private HostnameVerifier hostnameVerifier = null;
+
+    /**
+     * {@link SSLSocketFactory} to use when connection with StartTLS enabled.
+     */
+    private SSLSocketFactory sslSocketFactory = null;
+
+    /**
+     * Name of the class of the {@link SSLSocketFactory}. <code>null</code>
+     * means to use the default factory.
+     */
+    private String sslSocketFactoryClassName;
+
+    /**
+     * Comma separated list of cipher suites to use for StartTLS. If empty, the
+     * default suites are used.
+     */
+    private String cipherSuites;
+
+    /**
+     * Name of the class of the {@link HostnameVerifier}. <code>null</code>
+     * means to use the default verifier.
+     */
+    private String hostNameVerifierClassName;
+
+    /**
+     * The ssl Protocol which will be used by StartTLS.
+     */
+    private String sslProtocol;
 
     // ------------------------------------------------------------- Properties
 
@@ -1021,6 +1080,155 @@ public class JNDIRealm extends RealmBase {
         this.spnegoDelegationQop = spnegoDelegationQop;
     }
 
+
+    /**
+     * @return flag whether to use StartTLS for connections to the ldap server
+     */
+    public boolean getUseStartTls() {
+        return useStartTls;
+    }
+
+    /**
+     * Flag whether StartTLS should be used when connecting to the ldap server
+     *
+     * @param useStartTls
+     *            {@code true} when StartTLS should be used. Default is
+     *            {@code false}.
+     */
+    public void setUseStartTls(boolean useStartTls) {
+        this.useStartTls = useStartTls;
+    }
+
+    /**
+     * @return list of the allowed cipher suites when connections are made using
+     *         StartTLS
+     */
+    private String[] getCipherSuitesArray() {
+        if (cipherSuites == null || cipherSuitesArray != null) {
+            return cipherSuitesArray;
+        }
+        if (this.cipherSuites.trim().isEmpty()) {
+            containerLog.warn(sm.getString("jndiRealm.emptyCipherSuites"));
+            this.cipherSuitesArray = null;
+        } else {
+            this.cipherSuitesArray = cipherSuites.trim().split("\\s*,\\s*");
+            containerLog.debug(sm.getString("jndiRealm.cipherSuites",
+                    Arrays.asList(this.cipherSuitesArray)));
+        }
+        return this.cipherSuitesArray;
+    }
+
+    /**
+     * Set the allowed cipher suites when opening a connection using StartTLS.
+     * The cipher suites are expected as a comma separated list.
+     *
+     * @param suites
+     *            comma separated list of allowed cipher suites
+     */
+    public void setCipherSuites(String suites) {
+        this.cipherSuites = suites;
+    }
+
+    /**
+     * @return name of the {@link HostnameVerifier} class used for connections
+     *         using StartTLS, or the empty string, if the default verifier
+     *         should be used.
+     */
+    public String getHostnameVerifierClassName() {
+        if (this.hostnameVerifier == null) {
+            return "";
+        }
+        return this.hostnameVerifier.getClass().getCanonicalName();
+    }
+
+    /**
+     * Set the {@link HostnameVerifier} to be used when opening connections
+     * using StartTLS. An instance of the given class name will be constructed
+     * using the default constructor.
+     *
+     * @param verifierClassName
+     *            class name of the {@link HostnameVerifier} to be constructed
+     */
+    public void setHostnameVerifierClassName(String verifierClassName) {
+        if (verifierClassName != null) {
+            this.hostNameVerifierClassName = verifierClassName.trim();
+        } else {
+            this.hostNameVerifierClassName = null;
+        }
+    }
+
+    /**
+     * @return the {@link HostnameVerifier} to use for peer certificate
+     *         verification when opening connections using StartTLS.
+     */
+    public HostnameVerifier getHostnameVerifier() {
+        if (this.hostnameVerifier != null) {
+            return this.hostnameVerifier;
+        }
+        if (this.hostNameVerifierClassName == null
+                || hostNameVerifierClassName.equals("")) {
+            return null;
+        }
+        try {
+            Object o = constructInstance(hostNameVerifierClassName);
+            if (o instanceof HostnameVerifier) {
+                this.hostnameVerifier = (HostnameVerifier) o;
+                return this.hostnameVerifier;
+            } else {
+                throw new IllegalArgumentException(sm.getString(
+                        "jndiRealm.invalidHostnameVerifier",
+                        hostNameVerifierClassName));
+            }
+        } catch (ClassNotFoundException | SecurityException
+                | InstantiationException | IllegalAccessException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidHostnameVerifier",
+                    hostNameVerifierClassName), e);
+        }
+    }
+
+    /**
+     * Set the {@link SSLSocketFactory} to be used when opening connections
+     * using StartTLS. An instance of the factory with the given name will be
+     * created using the default constructor. The SSLSocketFactory can also be
+     * set using {@link JNDIRealm#setSslProtocol(String) setSslProtocol(String)}.
+     *
+     * @param factoryClassName
+     *            class name of the factory to be constructed
+     */
+    public void setSslSocketFactoryClassName(String factoryClassName) {
+        this.sslSocketFactoryClassName = factoryClassName;
+    }
+
+    /**
+     * Set the ssl protocol to be used for connections using StartTLS.
+     *
+     * @param protocol
+     *            one of the allowed ssl protocol names
+     */
+    public void setSslProtocol(String protocol) {
+        this.sslProtocol = protocol;
+    }
+
+    /**
+     * @return the list of supported ssl protocols by the default
+     *         {@link SSLContext}
+     */
+    private String[] getSupportedSslProtocols() {
+        try {
+            SSLContext sslContext = SSLContext.getDefault();
+            return sslContext.getSupportedSSLParameters().getProtocols();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(sm.getString("jndiRealm.exception"), e);
+        }
+    }
+
+    private Object constructInstance(String className)
+            throws ClassNotFoundException, InstantiationException,
+            IllegalAccessException {
+        Class<?> clazz = Class.forName(className);
+        return clazz.newInstance();
+    }
 
     // ---------------------------------------------------------- Realm Methods
 
@@ -1933,6 +2141,14 @@ public class JNDIRealm extends RealmBase {
         if (context == null)
             return;
 
+        // Close tls startResponse if used
+        if (tls != null) {
+            try {
+                tls.close();
+            } catch (IOException e) {
+                containerLog.error(sm.getString("jndiRealm.tlsClose"), e);
+            }
+        }
         // Close our opened connection
         try {
             if (containerLog.isDebugEnabled())
@@ -2125,7 +2341,7 @@ public class JNDIRealm extends RealmBase {
         try {
 
             // Ensure that we have a directory context available
-            context = new InitialDirContext(getDirectoryContextEnvironment());
+            context = createDirContext(getDirectoryContextEnvironment());
 
         } catch (Exception e) {
 
@@ -2135,7 +2351,7 @@ public class JNDIRealm extends RealmBase {
             containerLog.info(sm.getString("jndiRealm.exception.retry"), e);
 
             // Try connecting to the alternate url.
-            context = new InitialDirContext(getDirectoryContextEnvironment());
+            context = createDirContext(getDirectoryContextEnvironment());
 
         } finally {
 
@@ -2147,6 +2363,116 @@ public class JNDIRealm extends RealmBase {
 
         return (context);
 
+    }
+
+    private DirContext createDirContext(Hashtable<String, String> env) throws NamingException {
+        if (useStartTls) {
+            return createTlsDirContext(env);
+        } else {
+            return new InitialDirContext(env);
+        }
+    }
+
+    private SSLSocketFactory getSSLSocketFactory() {
+        if (sslSocketFactory != null) {
+            return sslSocketFactory;
+        }
+        final SSLSocketFactory result;
+        if (this.sslSocketFactoryClassName != null
+                && !sslSocketFactoryClassName.trim().equals("")) {
+            result = createSSLSocketFactoryFromClassName(this.sslSocketFactoryClassName);
+        } else {
+            result = createSSLContextFactoryFromProtocol(sslProtocol);
+        }
+        this.sslSocketFactory = result;
+        return result;
+    }
+
+    private SSLSocketFactory createSSLSocketFactoryFromClassName(String className) {
+        try {
+            Object o = constructInstance(className);
+            if (o instanceof SSLSocketFactory) {
+                return sslSocketFactory;
+            } else {
+                throw new IllegalArgumentException(sm.getString(
+                        "jndiRealm.invalidSslSocketFactory",
+                        className));
+            }
+        } catch (ClassNotFoundException | SecurityException
+                | InstantiationException | IllegalAccessException e) {
+            throw new IllegalArgumentException(sm.getString(
+                    "jndiRealm.invalidSslSocketFactory",
+                    className), e);
+        }
+    }
+
+    private SSLSocketFactory createSSLContextFactoryFromProtocol(String protocol) {
+        try {
+            SSLContext sslContext;
+            if (protocol != null) {
+                sslContext = SSLContext.getInstance(protocol);
+                sslContext.init(null, null, null);
+            } else {
+                sslContext = SSLContext.getDefault();
+            }
+            return sslContext.getSocketFactory();
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            List<String> allowedProtocols = Arrays
+                    .asList(getSupportedSslProtocols());
+            throw new IllegalArgumentException(
+                    sm.getString("jndiRealm.invalidSslProtocol", protocol,
+                            allowedProtocols), e);
+        }
+    }
+
+    /**
+     * Create a tls enabled LdapContext and set the StartTlsResponse tls
+     * instance variable.
+     *
+     * @param env
+     *            Environment to use for context creation
+     * @return configured {@link LdapContext}
+     * @throws NamingException
+     *             when something goes wrong while negotiating the connection
+     */
+    private DirContext createTlsDirContext(
+            Hashtable<String, String> env) throws NamingException {
+        Map<String, Object> savedEnv = new HashMap<>();
+        for (String key : Arrays.asList(Context.SECURITY_AUTHENTICATION,
+                Context.SECURITY_CREDENTIALS, Context.SECURITY_PRINCIPAL,
+                Context.SECURITY_PROTOCOL)) {
+            Object entry = env.remove(key);
+            if (entry != null) {
+                savedEnv.put(key, entry);
+            }
+        }
+        LdapContext result = null;
+        try {
+            result = new InitialLdapContext(env, null);
+            tls = (StartTlsResponse) result
+                    .extendedOperation(new StartTlsRequest());
+            if (getHostnameVerifier() != null) {
+                tls.setHostnameVerifier(getHostnameVerifier());
+            }
+            if (getCipherSuitesArray() != null) {
+                tls.setEnabledCipherSuites(getCipherSuitesArray());
+            }
+            try {
+                SSLSession negotiate = tls.negotiate(getSSLSocketFactory());
+                containerLog.debug(sm.getString("jndiRealm.negotiatedTls",
+                        negotiate.getProtocol()));
+            } catch (IOException e) {
+                throw new NamingException(e.getMessage());
+            }
+        } finally {
+            if (result != null) {
+                for (Map.Entry<String, Object> savedEntry : savedEnv.entrySet()) {
+                    result.addToEnvironment(savedEntry.getKey(),
+                            savedEntry.getValue());
+                }
+            }
+        }
+        return result;
     }
 
     /**

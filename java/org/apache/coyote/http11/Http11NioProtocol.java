@@ -16,24 +16,15 @@
  */
 package org.apache.coyote.http11;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 
-import javax.net.ssl.SSLEngine;
-import javax.servlet.http.HttpUpgradeHandler;
-
-import org.apache.coyote.AbstractProtocol;
 import org.apache.coyote.Processor;
-import org.apache.coyote.http11.upgrade.UpgradeProcessor;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.NioChannel;
 import org.apache.tomcat.util.net.NioEndpoint;
 import org.apache.tomcat.util.net.NioEndpoint.Handler;
-import org.apache.tomcat.util.net.SSLImplementation;
-import org.apache.tomcat.util.net.SecureNioChannel;
 import org.apache.tomcat.util.net.SocketStatus;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
@@ -107,14 +98,6 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
     }
 
 
-    public boolean getUseSendfile() {
-        return getEndpoint().getUseSendfile();
-    }
-
-    public void setUseSendfile(boolean useSendfile) {
-        ((NioEndpoint)getEndpoint()).setUseSendfile(useSendfile);
-    }
-
     // -------------------- Tcp setup --------------------
     public void setOomParachute(int oomParachute) {
         ((NioEndpoint)getEndpoint()).setOomParachute(oomParachute);
@@ -135,18 +118,11 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
     // --------------------  Connection handler --------------------
 
     protected static class Http11ConnectionHandler
-            extends AbstractConnectionHandler<NioChannel,Http11NioProcessor>
+            extends AbstractHttp11ConnectionHandler<NioChannel>
             implements Handler {
 
-        protected Http11NioProtocol proto;
-
         Http11ConnectionHandler(Http11NioProtocol proto) {
-            this.proto = proto;
-        }
-
-        @Override
-        protected AbstractProtocol<NioChannel> getProtocol() {
-            return proto;
+            super(proto);
         }
 
         @Override
@@ -154,11 +130,6 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
             return log;
         }
 
-
-        @Override
-        public SSLImplementation getSslImplementation() {
-            return proto.sslImplementation;
-        }
 
         /**
          * Expected to be used by the Poller to release resources on socket
@@ -169,13 +140,13 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
             if (log.isDebugEnabled())
                 log.debug("Iterating through our connections to release a socket channel:"+socket);
             boolean released = false;
-            Iterator<java.util.Map.Entry<NioChannel, Processor<NioChannel>>> it = connections.entrySet().iterator();
+            Iterator<java.util.Map.Entry<NioChannel, Processor>> it = connections.entrySet().iterator();
             while (it.hasNext()) {
-                java.util.Map.Entry<NioChannel, Processor<NioChannel>> entry = it.next();
+                java.util.Map.Entry<NioChannel, Processor> entry = it.next();
                 if (entry.getKey().getIOChannel()==socket) {
                     it.remove();
-                    Processor<NioChannel> result = entry.getValue();
-                    result.recycle(true);
+                    Processor result = entry.getValue();
+                    result.recycle();
                     unregister(result);
                     released = true;
                     break;
@@ -191,10 +162,9 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
          */
         @Override
         public void release(SocketWrapperBase<NioChannel> socket) {
-            Processor<NioChannel> processor =
-                connections.remove(socket.getSocket());
+            Processor processor = connections.remove(socket.getSocket());
             if (processor != null) {
-                processor.recycle(true);
+                processor.recycle();
                 recycledProcessors.push(processor);
             }
         }
@@ -202,8 +172,8 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
         @Override
         public SocketState process(SocketWrapperBase<NioChannel> socket,
                 SocketStatus status) {
-            if (proto.npnHandler != null) {
-                SocketState ss = proto.npnHandler.process(socket, status);
+            if (getProtocol().npnHandler != null) {
+                SocketState ss = getProtocol().npnHandler.process(socket, status);
                 if (ss != SocketState.OPEN) {
                     return ss;
                 }
@@ -212,46 +182,18 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
         }
 
 
-        /**
-         * Expected to be used by the handler once the processor is no longer
-         * required.
-         *
-         * @param socket
-         * @param processor
-         * @param isSocketClosing   Not used in HTTP
-         * @param addToPoller
-         */
         @Override
         public void release(SocketWrapperBase<NioChannel> socket,
-                Processor<NioChannel> processor, boolean isSocketClosing,
-                boolean addToPoller) {
-            processor.recycle(isSocketClosing);
+                Processor processor, boolean addToPoller) {
+            processor.recycle();
             recycledProcessors.push(processor);
             if (addToPoller) {
-                socket.getSocket().getPoller().add(socket.getSocket());
+                socket.registerReadInterest();
             }
         }
 
-
         @Override
-        protected void initSsl(SocketWrapperBase<NioChannel> socket,
-                Processor<NioChannel> processor) {
-            if (proto.isSSLEnabled() &&
-                    (proto.sslImplementation != null)
-                    && (socket.getSocket() instanceof SecureNioChannel)) {
-                SecureNioChannel ch = (SecureNioChannel)socket.getSocket();
-                processor.setSslSupport(
-                        proto.sslImplementation.getSSLSupport(
-                                ch.getSslEngine().getSession()));
-            } else {
-                processor.setSslSupport(null);
-            }
-
-        }
-
-        @Override
-        protected void longPoll(SocketWrapperBase<NioChannel> socket,
-                Processor<NioChannel> processor) {
+        protected void longPoll(SocketWrapperBase<NioChannel> socket, Processor processor) {
 
             if (processor.isAsync()) {
                 socket.setAsync(true);
@@ -260,34 +202,7 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
                 //  - this is an upgraded connection
                 //  - the request line/headers have not been completely
                 //    read
-                socket.getSocket().getPoller().add(socket.getSocket());
-            }
-        }
-
-        @Override
-        public Http11NioProcessor createProcessor() {
-            Http11NioProcessor processor = new Http11NioProcessor(
-                    proto.getMaxHttpHeaderSize(), (NioEndpoint)proto.getEndpoint(),
-                    proto.getMaxTrailerSize(), proto.getMaxExtensionSize(),
-                    proto.getMaxSwallowSize());
-            proto.configureProcessor(processor);
-            register(processor);
-            return processor;
-        }
-
-        @Override
-        protected Processor<NioChannel> createUpgradeProcessor(
-                SocketWrapperBase<NioChannel> socket, ByteBuffer leftoverInput,
-                HttpUpgradeHandler httpUpgradeProcessor)
-                throws IOException {
-            return new UpgradeProcessor<>(socket, leftoverInput, httpUpgradeProcessor,
-                    proto.getUpgradeAsyncWriteBufferSize());
-        }
-
-        @Override
-        public void onCreateSSLEngine(SSLEngine engine) {
-            if (proto.npnHandler != null) {
-                proto.npnHandler.onCreateEngine(engine);
+                socket.registerReadInterest();
             }
         }
     }

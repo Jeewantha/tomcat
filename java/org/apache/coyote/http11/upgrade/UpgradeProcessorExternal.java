@@ -18,44 +18,39 @@ package org.apache.coyote.http11.upgrade;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.concurrent.Executor;
 
 import javax.servlet.ServletInputStream;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpUpgradeHandler;
-import javax.servlet.http.WebConnection;
 
-import org.apache.coyote.Processor;
-import org.apache.coyote.Request;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
-import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SocketStatus;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
-public class UpgradeProcessor<S> implements Processor<S>, WebConnection {
+public class UpgradeProcessorExternal extends UpgradeProcessorBase {
 
-    private static final int INFINITE_TIMEOUT = -1;
+    private static final Log log = LogFactory.getLog(UpgradeProcessorExternal.class);
+    private static final StringManager sm = StringManager.getManager(UpgradeProcessorExternal.class);
 
-    private static final Log log = LogFactory.getLog(UpgradeProcessor.class);
-    private static final StringManager sm = StringManager.getManager(UpgradeProcessor.class);
-
-    private final HttpUpgradeHandler httpUpgradeHandler;
     private final UpgradeServletInputStream upgradeServletInputStream;
     private final UpgradeServletOutputStream upgradeServletOutputStream;
 
 
-    public UpgradeProcessor(SocketWrapperBase<?> wrapper, ByteBuffer leftOverInput,
-            HttpUpgradeHandler httpUpgradeHandler, int asyncWriteBufferSize) {
-        this.httpUpgradeHandler = httpUpgradeHandler;
+    public UpgradeProcessorExternal(SocketWrapperBase<?> wrapper, ByteBuffer leftOverInput,
+            HttpUpgradeHandler httpUpgradeHandler) {
+        super(wrapper, leftOverInput, httpUpgradeHandler);
         this.upgradeServletInputStream = new UpgradeServletInputStream(wrapper);
-        this.upgradeServletOutputStream =
-                new UpgradeServletOutputStream(wrapper, asyncWriteBufferSize);
+        this.upgradeServletOutputStream = new UpgradeServletOutputStream(wrapper);
 
         wrapper.unRead(leftOverInput);
-        wrapper.setTimeout(INFINITE_TIMEOUT);
+        /*
+         * Leave timeouts in the hands of the upgraded protocol.
+         */
+        wrapper.setReadTimeout(INFINITE_TIMEOUT);
+        wrapper.setWriteTimeout(INFINITE_TIMEOUT);
     }
 
 
@@ -84,24 +79,15 @@ public class UpgradeProcessor<S> implements Processor<S>, WebConnection {
     // ------------------------------------------- Implemented Processor methods
 
     @Override
-    public final boolean isUpgrade() {
-        return true;
-    }
-
-
-    @Override
-    public HttpUpgradeHandler getHttpUpgradeHandler() {
-        return httpUpgradeHandler;
-    }
-
-
-    @Override
-    public final SocketState upgradeDispatch(SocketStatus status) throws IOException {
+    public final SocketState upgradeDispatch(SocketStatus status) {
         if (status == SocketStatus.OPEN_READ) {
             upgradeServletInputStream.onDataAvailable();
         } else if (status == SocketStatus.OPEN_WRITE) {
             upgradeServletOutputStream.onWritePossible();
         } else if (status == SocketStatus.STOP) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("upgradeProcessor.stop"));
+            }
             try {
                 upgradeServletInputStream.close();
             } catch (IOException ioe) {
@@ -115,74 +101,20 @@ public class UpgradeProcessor<S> implements Processor<S>, WebConnection {
             return SocketState.CLOSED;
         } else {
             // Unexpected state
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("upgradeProcessor.unexpectedState"));
+            }
             return SocketState.CLOSED;
         }
-        if (upgradeServletInputStream.isCloseRequired() ||
-                upgradeServletOutputStream.isCloseRequired()) {
+        if (upgradeServletInputStream.isClosed() &&
+                upgradeServletOutputStream.isClosed()) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("upgradeProcessor.requiredClose",
+                        Boolean.valueOf(upgradeServletInputStream.isClosed()),
+                        Boolean.valueOf(upgradeServletOutputStream.isClosed())));
+            }
             return SocketState.CLOSED;
         }
         return SocketState.UPGRADED;
-    }
-
-
-    @Override
-    public final void recycle(boolean socketClosing) {
-        // Currently a NO-OP as upgrade processors are not recycled.
-    }
-
-
-    // ---------------------------- Processor methods that are NO-OP for upgrade
-
-    @Override
-    public final Executor getExecutor() {
-        return null;
-    }
-
-
-    @Override
-    public final SocketState process(SocketWrapperBase<S> socketWrapper) throws IOException {
-        return null;
-    }
-
-
-    @Override
-    public final SocketState asyncDispatch(SocketStatus status) {
-        return null;
-    }
-
-
-    @Override
-    public void errorDispatch() {
-        // NO-OP
-    }
-
-
-    @Override
-    public final SocketState asyncPostProcess() {
-        return null;
-    }
-
-
-    @Override
-    public final boolean isAsync() {
-        return false;
-    }
-
-
-    @Override
-    public final Request getRequest() {
-        return null;
-    }
-
-
-    @Override
-    public final void setSslSupport(SSLSupport sslSupport) {
-        // NOOP
-    }
-
-
-    @Override
-    public ByteBuffer getLeftoverInput() {
-        return null;
     }
 }

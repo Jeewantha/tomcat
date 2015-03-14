@@ -83,7 +83,7 @@ public abstract class Compiler {
      * <p>
      * Retrieves the parsed nodes of the JSP page, if they are available. May
      * return null. Used in development mode for generating detailed error
-     * messages. http://issues.apache.org/bugzilla/show_bug.cgi?id=37062.
+     * messages. http://bz.apache.org/bugzilla/show_bug.cgi?id=37062.
      * </p>
      */
     public Node.Nodes getPageNodes() {
@@ -388,7 +388,7 @@ public abstract class Compiler {
             // Only get rid of the pageNodes if in production.
             // In development mode, they are used for detailed
             // error messages.
-            // http://issues.apache.org/bugzilla/show_bug.cgi?id=37062
+            // http://bz.apache.org/bugzilla/show_bug.cgi?id=37062
             if (!this.options.getDevelopment()) {
                 pageNodes = null;
             }
@@ -431,29 +431,30 @@ public abstract class Compiler {
             jsw.setLastModificationTest(System.currentTimeMillis());
         }
 
+        // Test the target file first. Unless there is an error checking the
+        // last modified time of the source (unlikely) the target is going to
+        // have to be checked anyway. If the target doesn't exist (likely during
+        // startup) this saves an unnecessary check of the source.
+        File targetFile;
+        if (checkClass) {
+            targetFile = new File(ctxt.getClassFileName());
+        } else {
+            targetFile = new File(ctxt.getServletJavaFileName());
+        }
+        if (!targetFile.exists()) {
+            return true;
+        }
+        long targetLastModified = targetFile.lastModified();
+        if (checkClass && jsw != null) {
+            jsw.setServletClassLastModifiedTime(targetLastModified);
+        }
+
         Long jspRealLastModified = ctxt.getLastModified(ctxt.getJspFile());
         if (jspRealLastModified.longValue() < 0) {
             // Something went wrong - assume modification
             return true;
         }
 
-        long targetLastModified = 0;
-        File targetFile;
-
-        if (checkClass) {
-            targetFile = new File(ctxt.getClassFileName());
-        } else {
-            targetFile = new File(ctxt.getServletJavaFileName());
-        }
-
-        if (!targetFile.exists()) {
-            return true;
-        }
-
-        targetLastModified = targetFile.lastModified();
-        if (checkClass && jsw != null) {
-            jsw.setServletClassLastModifiedTime(targetLastModified);
-        }
         if (targetLastModified != jspRealLastModified.longValue()) {
             if (log.isDebugEnabled()) {
                 log.debug("Compiler: outdated: " + targetFile + " "

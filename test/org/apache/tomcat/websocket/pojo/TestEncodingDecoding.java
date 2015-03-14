@@ -97,8 +97,8 @@ public class TestEncodingDecoding extends TomcatBaseTest {
                     client.received.size() > 0) {
                 break;
             }
-            Thread.sleep(100);
             i++;
+            Thread.sleep(100);
         }
 
         // Check messages were received
@@ -147,6 +147,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -207,6 +208,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -252,6 +254,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -264,16 +267,6 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         session.close();
 
         Assert.assertNull(server.t);
-
-        // Should not take very long but some failures have been seen
-        i = testEvent(MsgStringEncoder.class.getName()+":init", 0);
-        i = testEvent(MsgStringDecoder.class.getName()+":init", i);
-        i = testEvent(MsgByteEncoder.class.getName()+":init", i);
-        i = testEvent(MsgByteDecoder.class.getName()+":init", i);
-        i = testEvent(MsgStringEncoder.class.getName()+":destroy", i);
-        i = testEvent(MsgStringDecoder.class.getName()+":destroy", i);
-        i = testEvent(MsgByteEncoder.class.getName()+":destroy", i);
-        i = testEvent(MsgByteDecoder.class.getName()+":destroy", i);
     }
 
 
@@ -309,6 +302,7 @@ public class TestEncodingDecoding extends TomcatBaseTest {
             if (server.received.size() > 0 && client.received.size() > 0) {
                 break;
             }
+            i++;
             Thread.sleep(100);
         }
 
@@ -321,16 +315,6 @@ public class TestEncodingDecoding extends TomcatBaseTest {
         session.close();
 
         Assert.assertNull(server.t);
-
-        // Should not take very long but some failures have been seen
-        i = testEvent(MsgStringEncoder.class.getName()+":init", 0);
-        i = testEvent(MsgStringDecoder.class.getName()+":init", i);
-        i = testEvent(MsgByteEncoder.class.getName()+":init", i);
-        i = testEvent(MsgByteDecoder.class.getName()+":init", i);
-        i = testEvent(MsgStringEncoder.class.getName()+":destroy", i);
-        i = testEvent(MsgStringDecoder.class.getName()+":destroy", i);
-        i = testEvent(MsgByteEncoder.class.getName()+":destroy", i);
-        i = testEvent(MsgByteDecoder.class.getName()+":destroy", i);
     }
 
 

@@ -18,19 +18,17 @@ package org.apache.coyote.http11.filters;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.Socket;
 
 import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Response;
-import org.apache.coyote.http11.AbstractOutputBuffer;
+import org.apache.coyote.http11.Http11OutputBuffer;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
 /**
  * Output buffer for use in unit tests. This is a minimal implementation.
  */
-public class TesterOutputBuffer extends AbstractOutputBuffer<Socket> {
+public class TesterOutputBuffer extends Http11OutputBuffer {
 
     /**
      * Underlying output stream.
@@ -47,8 +45,7 @@ public class TesterOutputBuffer extends AbstractOutputBuffer<Socket> {
     // --------------------------------------------------------- Public Methods
 
     @Override
-    public void init(SocketWrapperBase<Socket> socketWrapper,
-            AbstractEndpoint<Socket> endpoint) throws IOException {
+    public void init(SocketWrapperBase<?> socketWrapper) {
         // NO-OP: Unused
     }
 
@@ -82,19 +79,6 @@ public class TesterOutputBuffer extends AbstractOutputBuffer<Socket> {
 
 
     @Override
-    protected boolean hasMoreDataToFlush() {
-        // Unused
-        return false;
-    }
-
-
-    @Override
-    protected void registerWriteInterest() {
-        // NO-OP: Unused
-    }
-
-
-    @Override
     protected boolean flushBuffer(boolean block) throws IOException {
         // Blocking IO so ignore block parameter as this will always use
         // blocking IO.
@@ -117,11 +101,8 @@ public class TesterOutputBuffer extends AbstractOutputBuffer<Socket> {
      */
     protected class OutputStreamOutputBuffer implements OutputBuffer {
 
-        /**
-         * Write chunk.
-         */
         @Override
-        public int doWrite(ByteChunk chunk, Response res) throws IOException {
+        public int doWrite(ByteChunk chunk) throws IOException {
             int length = chunk.getLength();
             outputStream.write(chunk.getBuffer(), chunk.getStart(), length);
             byteCount += chunk.getLength();

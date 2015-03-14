@@ -31,6 +31,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLParameters;
 
 import org.apache.juli.logging.Log;
 import org.apache.tomcat.util.IntrospectionUtils;
@@ -50,7 +52,7 @@ public abstract class AbstractEndpoint<S> {
 
     // -------------------------------------------------------------- Constants
 
-    protected static final String DEFAULT_CIPHERS = "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5";
+    protected static final String DEFAULT_CIPHERS = "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!kRSA";
 
     protected static final StringManager sm = StringManager.getManager(
             AbstractEndpoint.class.getPackage().getName());
@@ -146,6 +148,8 @@ public abstract class AbstractEndpoint<S> {
                     if (asyncTimeout > 0) {
                         long asyncStart = socket.getLastAsyncStart();
                         if ((now - asyncStart) > asyncTimeout) {
+                            // Avoid multiple timeouts
+                            socket.setAsyncTimeout(-1);
                             processSocket(socket, SocketStatus.TIMEOUT, true);
                         }
                     }
@@ -915,6 +919,12 @@ public abstract class AbstractEndpoint<S> {
 
     // --------------------  SSL related properties --------------------
 
+    private String sslImplementationName = null;
+    public String getSslImplementationName() { return sslImplementationName; }
+    public void setSslImplementationName(String s) {
+        this.sslImplementationName = s;
+    }
+
     private String algorithm = KeyManagerFactory.getDefaultAlgorithm();
     public String getAlgorithm() { return algorithm;}
     public void setAlgorithm(String s ) { this.algorithm = s;}
@@ -955,6 +965,10 @@ public abstract class AbstractEndpoint<S> {
      * @return  The ciphers in use by this Endpoint
      */
     public abstract String[] getCiphersUsed();
+
+    private String useServerCipherSuitesOrder = "false";
+    public String getUseServerCipherSuitesOrder() { return useServerCipherSuitesOrder;}
+    public void setUseServerCipherSuitesOrder(String s) { this.useServerCipherSuitesOrder = s;}
 
     private String keyAlias = null;
     public String getKeyAlias() { return keyAlias;}
@@ -1057,6 +1071,22 @@ public abstract class AbstractEndpoint<S> {
     protected final Set<SocketWrapperBase<S>> waitingRequests = Collections
             .newSetFromMap(new ConcurrentHashMap<SocketWrapperBase<S>, Boolean>());
 
+    /**
+     * Configures SSLEngine to honor cipher suites ordering based upon
+     * endpoint configuration.
+     */
+    protected void configureUseServerCipherSuitesOrder(SSLEngine engine) {
+        String useServerCipherSuitesOrderStr = this
+                .getUseServerCipherSuitesOrder().trim();
+
+        SSLParameters sslParameters = engine.getSSLParameters();
+        boolean useServerCipherSuitesOrder =
+            ("true".equalsIgnoreCase(useServerCipherSuitesOrderStr)
+                || "yes".equalsIgnoreCase(useServerCipherSuitesOrderStr));
+
+        sslParameters.setUseCipherSuitesOrder(useServerCipherSuitesOrder);
+        engine.setSSLParameters(sslParameters);
+    }
 
     /**
      * The async timeout thread.

@@ -31,16 +31,16 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
 /**
  * Common interface for processors of all protocols.
  */
-public interface Processor<S> {
+public interface Processor {
     Executor getExecutor();
 
-    SocketState process(SocketWrapperBase<S> socketWrapper) throws IOException;
+    SocketState process(SocketWrapperBase<?> socketWrapper) throws IOException;
 
     SocketState asyncDispatch(SocketStatus status);
     SocketState asyncPostProcess();
 
     HttpUpgradeHandler getHttpUpgradeHandler();
-    SocketState upgradeDispatch(SocketStatus status) throws IOException;
+    SocketState upgradeDispatch(SocketStatus status);
 
     void errorDispatch();
 
@@ -49,7 +49,25 @@ public interface Processor<S> {
 
     Request getRequest();
 
-    void recycle(boolean socketClosing);
+    /**
+     * Recycle the processor, ready for the next request which may be on the
+     * same connection or a different connection.
+     */
+    void recycle();
+
+    /**
+     * When client certificate information is presented in a form other than
+     * instances of {@link java.security.cert.X509Certificate} it needs to be
+     * converted before it can be used and this property controls which JSSE
+     * provider is used to perform the conversion. For example it is used with
+     * the AJP connectors, the HTTP APR connector and with the
+     * {@link org.apache.catalina.valves.SSLValve}. If not specified, the
+     * default provider will be used.
+     *
+     * @return The name of the JSSE provider to use for certificate
+     *         transformation if required
+     */
+    String getClientCertProvider();
 
     void setSslSupport(SSLSupport sslSupport);
 

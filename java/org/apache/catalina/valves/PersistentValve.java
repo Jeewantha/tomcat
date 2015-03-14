@@ -121,14 +121,14 @@ public class PersistentValve extends ValveBase {
         getNext().invoke(request, response);
 
         // If still processing async, don't try to store the session
-        // TODO: Are there some async states where it is would be safe to store
+        // TODO: Are there some async states where it would be safe to store
         // the session?
         if (!request.isAsync()) {
             // Read the sessionid after the response.
             // HttpSession hsess = hreq.getSession(false);
             Session hsess;
             try {
-                hsess = request.getSessionInternal();
+                hsess = request.getSessionInternal(false);
             } catch (Exception ex) {
                 hsess = null;
             }

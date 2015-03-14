@@ -210,6 +210,11 @@ public class StandardContext extends ContainerBase
 
     private final Object applicationListenersLock = new Object();
 
+    /**
+     * The set of application listeners that are required to have limited access
+     * to ServletContext methods. See Servlet 3.1 section 4.4.
+     */
+    private final Set<Object> noPluggabilityListeners = new HashSet<>();
 
     /**
      * The set of instantiated application event listener objects. Note that
@@ -288,6 +293,13 @@ public class StandardContext extends ContainerBase
      * The ServletContext implementation associated with this Context.
      */
     protected ApplicationContext context = null;
+
+    /**
+     * The wrapped version of the associated ServletContext that is presented
+     * to listeners that are required to have limited access to ServletContext
+     * methods. See Servlet 3.1 section 4.4.
+     */
+    private NoPluggabilityServletContext noPluggabilityServletContext = null;
 
 
     /**
@@ -4395,7 +4407,15 @@ public class StandardContext extends ContainerBase
         }
         if (resources != null) {
             try {
-                return resources.getResource(path).getCanonicalPath();
+                WebResource resource = resources.getResource(path);
+                String canonicalPath = resource.getCanonicalPath();
+                if (canonicalPath == null) {
+                    return null;
+                } else if (resource.isDirectory() && !canonicalPath.endsWith(File.separator)) {
+                    return canonicalPath + File.separatorChar;
+                } else {
+                    return canonicalPath;
+                }
             } catch (IllegalArgumentException iae) {
                 // ServletContext.getRealPath() does not allow this to be thrown
             }
@@ -4618,7 +4638,6 @@ public class StandardContext extends ContainerBase
         String listeners[] = findApplicationListeners();
         Object results[] = new Object[listeners.length];
         boolean ok = true;
-        Set<Object> noPluggabilityListeners = new HashSet<>();
         for (int i = 0; i < results.length; i++) {
             if (getLogger().isDebugEnabled())
                 getLogger().debug(" Configuring event listener class '" +
@@ -4687,12 +4706,11 @@ public class StandardContext extends ContainerBase
             return ok;
         }
 
-        ServletContextEvent event =
-                new ServletContextEvent(getServletContext());
+        ServletContextEvent event = new ServletContextEvent(getServletContext());
         ServletContextEvent tldEvent = null;
         if (noPluggabilityListeners.size() > 0) {
-            tldEvent = new ServletContextEvent(new NoPluggabilityServletContext(
-                    getServletContext()));
+            noPluggabilityServletContext = new NoPluggabilityServletContext(getServletContext());
+            tldEvent = new ServletContextEvent(noPluggabilityServletContext);
         }
         for (int i = 0; i < instances.length; i++) {
             if (!(instances[i] instanceof ServletContextListener))
@@ -4734,8 +4752,11 @@ public class StandardContext extends ContainerBase
         boolean ok = true;
         Object listeners[] = getApplicationLifecycleListeners();
         if (listeners != null && listeners.length > 0) {
-            ServletContextEvent event =
-                new ServletContextEvent(getServletContext());
+            ServletContextEvent event = new ServletContextEvent(getServletContext());
+            ServletContextEvent tldEvent = null;
+            if (noPluggabilityServletContext != null) {
+                tldEvent = new ServletContextEvent(noPluggabilityServletContext);
+            }
             for (int i = 0; i < listeners.length; i++) {
                 int j = (listeners.length - 1) - i;
                 if (listeners[j] == null)
@@ -4745,7 +4766,11 @@ public class StandardContext extends ContainerBase
                         (ServletContextListener) listeners[j];
                     try {
                         fireContainerEvent("beforeContextDestroyed", listener);
-                        listener.contextDestroyed(event);
+                        if (noPluggabilityListeners.contains(listener)) {
+                            listener.contextDestroyed(tldEvent);
+                        } else {
+                            listener.contextDestroyed(event);
+                        }
                         fireContainerEvent("afterContextDestroyed", listener);
                     } catch (Throwable t) {
                         ExceptionUtils.handleThrowable(t);
@@ -4792,8 +4817,10 @@ public class StandardContext extends ContainerBase
         setApplicationEventListeners(null);
         setApplicationLifecycleListeners(null);
 
-        return (ok);
+        noPluggabilityServletContext = null;
+        noPluggabilityListeners.clear();
 
+        return ok;
     }
 
 
@@ -5196,6 +5223,12 @@ public class StandardContext extends ContainerBase
                                  sequenceNumber.getAndIncrement());
             broadcaster.sendNotification(notification);
         }
+
+        // The WebResources implementation caches references to JAR files. On
+        // some platforms these references may lock the JAR files. Since web
+        // application start is likely to have read from lots of JARs, trigger
+        // a clean-up now.
+        getResources().gc();
 
         // Reinitializing if something went wrong
         if (!ok) {

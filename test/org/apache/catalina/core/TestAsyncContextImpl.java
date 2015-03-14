@@ -2083,7 +2083,7 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
     }
 
 
-    // https://issues.apache.org/bugzilla/show_bug.cgi?id=57326
+    // https://bz.apache.org/bugzilla/show_bug.cgi?id=57326
     @Test
     public void testAsyncContextListenerClearing() throws Exception {
         resetTracker();
@@ -2143,5 +2143,149 @@ public class TestAsyncContextImpl extends TomcatBaseTest {
             }
             ac.dispatch(target);
          }
+    }
+
+    // https://bz.apache.org/bugzilla/show_bug.cgi?id=57559
+    @Test
+    public void testAsyncRequestURI() throws Exception {
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
+        Servlet servlet = new AsyncRequestUriServlet();
+        Wrapper wrapper1 = Tomcat.addServlet(ctx, "bug57559", servlet);
+        wrapper1.setAsyncSupported(true);
+        ctx.addServletMapping("/", "bug57559");
+
+        tomcat.start();
+
+        String uri = "/foo/%24/bar";
+        String uriDecoded = "/foo/$/bar";
+
+        ByteChunk body = getUrl("http://localhost:" + getPort()+ uri);
+
+        Assert.assertEquals(uriDecoded, body.toString());
+    }
+
+    private static class AsyncRequestUriServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+
+            if (DispatcherType.ASYNC.equals(req.getDispatcherType())) {
+                resp.setContentType("text/plain");
+                resp.setCharacterEncoding("UTF-8");
+                resp.getWriter().write(req.getRequestURI());
+            } else {
+                req.startAsync().dispatch();
+            }
+        }
+    }
+
+    @Test
+    public void testDispatchFromOtherContainerThread() throws Exception {
+        resetTracker();
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
+        NonAsyncServlet nonAsyncServlet = new NonAsyncServlet();
+        Tomcat.addServlet(ctx, "nonAsyncServlet", nonAsyncServlet);
+        ctx.addServletMapping("/target", "nonAsyncServlet");
+
+        AsyncStashServlet asyncStashServlet = new AsyncStashServlet();
+        Wrapper w1 = Tomcat.addServlet(ctx, "asyncStashServlet", asyncStashServlet);
+        w1.setAsyncSupported(true);
+        ctx.addServletMapping("/asyncStashServlet", "asyncStashServlet");
+
+        AsyncRetrieveServlet asyncRetrieveServlet = new AsyncRetrieveServlet();
+        Wrapper w2 = Tomcat.addServlet(ctx, "asyncRetrieveServlet", asyncRetrieveServlet);
+        w2.setAsyncSupported(true);
+        ctx.addServletMapping("/asyncRetrieveServlet", "asyncRetrieveServlet");
+
+        tomcat.start();
+
+        // First request in separate thread because the response won't be
+        // written until after the second request has been made.
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    getUrl("http://localhost:" + getPort() + "/asyncStashServlet");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        t.start();
+
+        // Wait for first request to get as far as it can
+        int count = 0;
+        while (count < 100 && getTrack() != null &&
+                !getTrack().startsWith("AsyncStashServletGet-")) {
+            count++;
+            Thread.sleep(100);
+        }
+
+        getUrl("http://localhost:" + getPort() + "/asyncRetrieveServlet");
+
+        // Wait for second request to release first and allow it to complete
+        String expectedTrack = "AsyncStashServletGet-AsyncRetrieveServletGet-NonAsyncServletGet-";
+        count = 0;
+        while (count < 100 && !getTrack().equals(expectedTrack)) {
+            count++;
+            Thread.sleep(100);
+        }
+
+        Assert.assertEquals(expectedTrack, getTrack());
+    }
+
+    private static class AsyncStashServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+        private static final String DEFAULT_KEY = "DEFAULT";
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+
+            String key = req.getParameter("key");
+            if (key == null) {
+                key = DEFAULT_KEY;
+            }
+
+            req.getServletContext().setAttribute(key, req.startAsync());
+            TestAsyncContextImpl.track("AsyncStashServletGet-");
+        }
+    }
+
+    private static class AsyncRetrieveServlet extends HttpServlet {
+        private static final long serialVersionUID = 1L;
+        private static final String DEFAULT_KEY = "DEFAULT";
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+
+            String key = req.getParameter("key");
+            if (key == null) {
+                key = DEFAULT_KEY;
+            }
+
+            AsyncContext ac = (AsyncContext) req.getServletContext().getAttribute(key);
+            if (ac == null) {
+                TestAsyncContextImpl.track("FAIL:nullAsyncContext-");
+            } else {
+                TestAsyncContextImpl.track("AsyncRetrieveServletGet-");
+                ac.dispatch("/target");
+            }
+        }
     }
 }

@@ -42,7 +42,7 @@
 
   Other fixed issues are added to the end of the list, chronologically.
   They eventually become mixed with the numbered issues. (I.e., numbered
-  issues to not "pop up" wrt. others).
+  issues do not "pop up" wrt. others).
 -->
 <!--
   Note: Until the first 9.0.x release, the only entries that should appear in
@@ -69,6 +69,17 @@
         Refactor HTTP upgrade and AJP implementations to reduce duplication.
         (markt)
       </scode>
+      <fix>
+        <bug>55988</bug>: Add support for Java 8 JSSE server-preferred TLS
+        cipher suite ordering. Patch provided by Ognjen Blagojevic. (schultz)
+      </fix>
+    </changelog>
+  </subsection>
+  <subsection name="Tribes">
+    <changelog>
+      <fix>
+        Clarify the handling of Copy message and Copy nodes. (kfujino)
+      </fix>
     </changelog>
   </subsection>
 </section>

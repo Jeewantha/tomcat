@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import javax.servlet.Filter;
@@ -321,9 +322,8 @@ public final class CorsFilter implements Filter {
 
         CORSRequestType requestType = checkRequestType(request);
         if (requestType != CORSRequestType.PRE_FLIGHT) {
-            throw new IllegalArgumentException(
-                    sm.getString("corsFilter.wrongType1",
-                            CORSRequestType.PRE_FLIGHT.name().toLowerCase()));
+            throw new IllegalArgumentException(sm.getString("corsFilter.wrongType1",
+                    CORSRequestType.PRE_FLIGHT.name().toLowerCase(Locale.ENGLISH)));
         }
 
         final String origin = request
@@ -338,8 +338,7 @@ public final class CorsFilter implements Filter {
         // Section 6.2.3
         String accessControlRequestMethod = request.getHeader(
                 CorsFilter.REQUEST_HEADER_ACCESS_CONTROL_REQUEST_METHOD);
-        if (accessControlRequestMethod == null ||
-                !HTTP_METHODS.contains(accessControlRequestMethod.trim())) {
+        if (accessControlRequestMethod == null) {
             handleInvalidCORS(request, response, filterChain);
             return;
         } else {
@@ -355,7 +354,7 @@ public final class CorsFilter implements Filter {
             String[] headers = accessControlRequestHeadersHeader.trim().split(
                     ",");
             for (String header : headers) {
-                accessControlRequestHeaders.add(header.trim().toLowerCase());
+                accessControlRequestHeaders.add(header.trim().toLowerCase(Locale.ENGLISH));
             }
         }
 
@@ -524,7 +523,7 @@ public final class CorsFilter implements Filter {
                     request.getHeader(CorsFilter.REQUEST_HEADER_ORIGIN));
             request.setAttribute(
                     CorsFilter.HTTP_REQUEST_ATTRIBUTE_REQUEST_TYPE,
-                    corsRequestType.name().toLowerCase());
+                    corsRequestType.name().toLowerCase(Locale.ENGLISH));
             break;
         case ACTUAL:
             request.setAttribute(
@@ -534,7 +533,7 @@ public final class CorsFilter implements Filter {
                     request.getHeader(CorsFilter.REQUEST_HEADER_ORIGIN));
             request.setAttribute(
                     CorsFilter.HTTP_REQUEST_ATTRIBUTE_REQUEST_TYPE,
-                    corsRequestType.name().toLowerCase());
+                    corsRequestType.name().toLowerCase(Locale.ENGLISH));
             break;
         case PRE_FLIGHT:
             request.setAttribute(
@@ -544,7 +543,7 @@ public final class CorsFilter implements Filter {
                     request.getHeader(CorsFilter.REQUEST_HEADER_ORIGIN));
             request.setAttribute(
                     CorsFilter.HTTP_REQUEST_ATTRIBUTE_REQUEST_TYPE,
-                    corsRequestType.name().toLowerCase());
+                    corsRequestType.name().toLowerCase(Locale.ENGLISH));
             String headers = request.getHeader(
                     REQUEST_HEADER_ACCESS_CONTROL_REQUEST_HEADERS);
             if (headers == null) {
@@ -623,7 +622,7 @@ public final class CorsFilter implements Filter {
                 requestType = CORSRequestType.INVALID_CORS;
             } else {
                 String method = request.getMethod();
-                if (method != null && HTTP_METHODS.contains(method)) {
+                if (method != null) {
                     if ("OPTIONS".equals(method)) {
                         String accessControlRequestMethodHeader =
                                 request.getHeader(
@@ -640,11 +639,10 @@ public final class CorsFilter implements Filter {
                     } else if ("GET".equals(method) || "HEAD".equals(method)) {
                         requestType = CORSRequestType.SIMPLE;
                     } else if ("POST".equals(method)) {
-                        String contentType = request.getContentType();
-                        if (contentType != null) {
-                            contentType = contentType.toLowerCase().trim();
+                        String mediaType = getMediaType(request.getContentType());
+                        if (mediaType != null) {
                             if (SIMPLE_HTTP_REQUEST_CONTENT_TYPE_VALUES
-                                    .contains(contentType)) {
+                                    .contains(mediaType)) {
                                 requestType = CORSRequestType.SIMPLE;
                             } else {
                                 requestType = CORSRequestType.ACTUAL;
@@ -662,6 +660,23 @@ public final class CorsFilter implements Filter {
         return requestType;
     }
 
+
+    /*
+     * Return the lower case, trimmed value of the media type from the content
+     * type.
+     */
+    private String getMediaType(String contentType) {
+        if (contentType == null) {
+            return null;
+        }
+        String result = contentType.toLowerCase(Locale.ENGLISH);
+        int firstSemiColonIndex = result.indexOf(';');
+        if (firstSemiColonIndex > -1) {
+            result = result.substring(0, firstSemiColonIndex);
+        }
+        result = result.trim();
+        return result;
+    }
 
     /**
      * Checks if the Origin is allowed to make a CORS request.
@@ -731,7 +746,7 @@ public final class CorsFilter implements Filter {
                     parseStringToSet(allowedHttpHeaders);
             Set<String> lowerCaseHeaders = new HashSet<>();
             for (String header : setAllowedHttpHeaders) {
-                String lowerCase = header.toLowerCase();
+                String lowerCase = header.toLowerCase(Locale.ENGLISH);
                 lowerCaseHeaders.add(lowerCase);
             }
             this.allowedHttpHeaders.clear();
@@ -800,6 +815,7 @@ public final class CorsFilter implements Filter {
      * Checks if a given origin is valid or not. Criteria:
      * <ul>
      * <li>If an encoded character is present in origin, it's not valid.</li>
+     * <li>If origin is "null", it's valid.</li>
      * <li>Origin should be a valid {@link URI}</li>
      * </ul>
      *
@@ -810,6 +826,11 @@ public final class CorsFilter implements Filter {
         // Checks for encoded characters. Helps prevent CRLF injection.
         if (origin.contains("%")) {
             return false;
+        }
+
+        // "null" is a valid origin
+        if ("null".equals(origin)) {
+            return true;
         }
 
         URI originURI;
@@ -1023,46 +1044,9 @@ public final class CorsFilter implements Filter {
     }
 
     /**
-     * {@link Collection} of HTTP methods. Case sensitive.
-     *
-     * @see  <a href="http://tools.ietf.org/html/rfc2616#section-5.1.1"
-     *       >http://tools.ietf.org/html/rfc2616#section-5.1.1</a>
-     *
-     */
-    public static final Collection<String> HTTP_METHODS =
-            new HashSet<>(Arrays.asList("OPTIONS", "GET", "HEAD", "POST", "PUT",
-                    "DELETE", "TRACE", "CONNECT"));
-    /**
-     * {@link Collection} of Simple HTTP methods. Case sensitive.
-     *
-     * @see  <a href="http://www.w3.org/TR/cors/#terminology"
-     *       >http://www.w3.org/TR/cors/#terminology</a>
-     */
-    public static final Collection<String> SIMPLE_HTTP_METHODS =
-            new HashSet<>(Arrays.asList("GET", "POST", "HEAD"));
-
-    /**
-     * {@link Collection} of Simple HTTP request headers. Case in-sensitive.
-     *
-     * @see  <a href="http://www.w3.org/TR/cors/#terminology"
-     *       >http://www.w3.org/TR/cors/#terminology</a>
-     */
-    public static final Collection<String> SIMPLE_HTTP_REQUEST_HEADERS =
-            new HashSet<>(Arrays.asList("Accept", "Accept-Language",
-                    "Content-Language"));
-
-    /**
-     * {@link Collection} of Simple HTTP request headers. Case in-sensitive.
-     *
-     * @see  <a href="http://www.w3.org/TR/cors/#terminology"
-     *       >http://www.w3.org/TR/cors/#terminology</a>
-     */
-    public static final Collection<String> SIMPLE_HTTP_RESPONSE_HEADERS =
-            new HashSet<>(Arrays.asList("Cache-Control", "Content-Language",
-                    "Content-Type", "Expires", "Last-Modified", "Pragma"));
-
-    /**
-     * {@link Collection} of Simple HTTP request headers. Case in-sensitive.
+     * {@link Collection} of media type values for the Content-Type header that
+     * will be treated as 'simple'. Note media-type values are compared ignoring
+     * parameters and in a case-insensitive manner.
      *
      * @see  <a href="http://www.w3.org/TR/cors/#terminology"
      *       >http://www.w3.org/TR/cors/#terminology</a>

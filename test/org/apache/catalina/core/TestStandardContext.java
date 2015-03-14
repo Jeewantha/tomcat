@@ -55,6 +55,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleException;
@@ -871,7 +872,8 @@ public class TestStandardContext extends TomcatBaseTest {
         ctx.stop();
 
         String log = TesterTldListener.getLog();
-        Assert.assertTrue(log, log.contains("PASS"));
+        Assert.assertTrue(log, log.contains("PASS-01"));
+        Assert.assertTrue(log, log.contains("PASS-02"));
         Assert.assertFalse(log, log.contains("FAIL"));
     }
 
@@ -934,6 +936,54 @@ public class TestStandardContext extends TomcatBaseTest {
         String realPath = ((Context) tomcat.getHost().findChildren()[0]).getRealPath("\\");
 
         Assert.assertNull(realPath);
+    }
+
+    /*
+     * Check real path for directories ends with File.separator for consistency
+     * with previous major versions.
+     */
+    @Test
+    public void testBug57556a() throws Exception {
+        Tomcat tomcat = getTomcatInstanceTestWebapp(false, true);
+        Context testContext = ((Context) tomcat.getHost().findChildren()[0]);
+
+        File f = new File(testContext.getDocBase());
+        if (!f.isAbsolute()) {
+            f = new File(((Host) testContext.getParent()).getAppBaseFile(), f.getPath());
+        }
+        String base = f.getCanonicalPath();
+
+
+        doTestBug57556(testContext, "", base + File.separatorChar);
+        doTestBug57556(testContext, "/", base + File.separatorChar);
+        doTestBug57556(testContext, "/jsp", base + File.separatorChar+ "jsp" + File.separatorChar);
+        doTestBug57556(testContext, "/jsp/", base + File.separatorChar+ "jsp" + File.separatorChar);
+        doTestBug57556(testContext, "/index.html", base + File.separatorChar + "index.html");
+        // Doesn't exist so Tomcat will assume it is a file, not a directory.
+        doTestBug57556(testContext, "/foo", base + File.separatorChar + "foo");
+    }
+
+    @Test
+    public void testBug57556b() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+        File docBase = new File("/");
+        Context testContext = tomcat.addContext("", docBase.getAbsolutePath());
+        tomcat.start();
+
+        File f = new File(testContext.getDocBase());
+        if (!f.isAbsolute()) {
+            f = new File(((Host) testContext.getParent()).getAppBaseFile(), f.getPath());
+        }
+        String base = f.getCanonicalPath();
+
+        doTestBug57556(testContext, "", base);
+        doTestBug57556(testContext, "/", base);
+    }
+
+    private void doTestBug57556(Context testContext, String path, String expected) throws Exception {
+        String realPath = testContext.getRealPath(path);
+        Assert.assertNotNull(realPath);
+        Assert.assertEquals(expected, realPath);
     }
 
     @Test

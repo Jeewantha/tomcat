@@ -89,7 +89,7 @@ public class JspCompilationContext {
     private final boolean isTagFile;
     private boolean protoTypeMode;
     private TagInfo tagInfo;
-    private final Jar tagJar;
+    private Jar tagJar;
 
     // jspURI _must_ be relative to the context
     public JspCompilationContext(String jspUri, Options options,
@@ -310,6 +310,10 @@ public class JspCompilationContext {
         return this.tagJar;
     }
 
+    public void setTagFileJar(Jar tagJar) {
+        this.tagJar = tagJar;
+    }
+
     /* ==================== Common implementation ==================== */
 
     /**
@@ -347,7 +351,13 @@ public class JspCompilationContext {
         return jspUri;
     }
 
+
     public Long getLastModified(String resource) {
+        return getLastModified(resource, tagJar);
+    }
+
+
+    public Long getLastModified(String resource, Jar tagJar) {
         long result = -1;
         URLConnection uc = null;
         try {

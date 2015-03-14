@@ -34,7 +34,7 @@ import java.util.Set;
  * @see <a href="https://www.openssl.org/docs/apps/ciphers.html"
  *      >Mapping of OpenSSL cipher suites names to registry names</a>
  */
-enum Cipher {
+public enum Cipher {
     /* The RSA ciphers */
     // Cipher 01
     TLS_RSA_WITH_NULL_MD5(
@@ -280,7 +280,7 @@ enum Cipher {
     /* The Ephemeral DH ciphers */
     // Cipher 11
     TLS_DHE_DSS_EXPORT_WITH_DES40_CBC_SHA(
-            "EXP-EDH-DSS-DES-CBC-SHA",
+            "EXP-DHE-DSS-DES-CBC-SHA",
             KeyExchange.EDH,
             Authentication.DSS,
             Encryption.DES,
@@ -295,7 +295,7 @@ enum Cipher {
     ),
     // Cipher 12
     TLS_DHE_DSS_WITH_DES_CBC_SHA(
-            "EDH-DSS-DES-CBC-SHA",
+            "DHE-DSS-DES-CBC-SHA",
             KeyExchange.EDH,
             Authentication.DSS,
             Encryption.DES,
@@ -310,7 +310,7 @@ enum Cipher {
     ),
     // Cipher 13
     TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA(
-            "EDH-DSS-DES-CBC3-SHA",
+            "DHE-DSS-DES-CBC3-SHA",
             KeyExchange.EDH,
             Authentication.DSS,
             Encryption.TRIPLE_DES,
@@ -325,7 +325,7 @@ enum Cipher {
     ),
     // Cipher 14
     TLS_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA(
-            "EXP-EDH-RSA-DES-CBC-SHA",
+            "EXP-DHE-RSA-DES-CBC-SHA",
             KeyExchange.EDH,
             Authentication.RSA,
             Encryption.DES,
@@ -340,7 +340,7 @@ enum Cipher {
     ),
     // Cipher 15
     TLS_DHE_RSA_WITH_DES_CBC_SHA(
-            "EDH-RSA-DES-CBC-SHA",
+            "DHE-RSA-DES-CBC-SHA",
             KeyExchange.EDH,
             Authentication.RSA,
             Encryption.DES,
@@ -355,7 +355,7 @@ enum Cipher {
     ),
     // Cipher 16
     TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA(
-            "EDH-RSA-DES-CBC3-SHA",
+            "DHE-RSA-DES-CBC3-SHA",
             KeyExchange.EDH,
             Authentication.RSA,
             Encryption.TRIPLE_DES,
@@ -1675,6 +1675,174 @@ enum Cipher {
             256,
             256
     ),
+    // Cipher BA
+    TLS_RSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "CAMELLIA128-SHA256",
+            KeyExchange.RSA,
+            Authentication.RSA,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            128,
+            128
+    ),
+    // Cipher BB
+    TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA256(
+            "DH-DSS-CAMELLIA128-SHA256",
+            KeyExchange.DHd,
+            Authentication.DH,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            128,
+            128
+    ),
+    // Cipher BC
+    TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "DH-RSA-CAMELLIA128-SHA256",
+            KeyExchange.DHr,
+            Authentication.DH,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            128,
+            128
+    ),
+    // Cipher BD
+    TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA256(
+            "DHE-DSS-CAMELLIA128-SHA256",
+            KeyExchange.EDH,
+            Authentication.DSS,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            128,
+            128
+    ),
+    // Cipher BE
+    TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "DHE-RSA-CAMELLIA128-SHA256",
+            KeyExchange.EDH,
+            Authentication.RSA,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            128,
+            128
+    ),
+    // Cipher BF
+    TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA256(
+            "ADH-CAMELLIA128-SHA256",
+            KeyExchange.EDH,
+            Authentication.aNULL,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            128,
+            128
+    ),
+    // Cipher C0
+    TLS_RSA_WITH_CAMELLIA_256_CBC_SHA256(
+            "CAMELLIA256-SHA256",
+            KeyExchange.RSA,
+            Authentication.RSA,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            256,
+            256
+    ),
+    // Cipher C1
+    TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA256(
+            "DH-DSS-CAMELLIA256-SHA256",
+            KeyExchange.DHd,
+            Authentication.DH,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            256,
+            256
+    ),
+    // Cipher C2
+    TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA256(
+            "DH-RSA-CAMELLIA256-SHA256",
+            KeyExchange.DHr,
+            Authentication.DH,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            256,
+            256
+    ),
+    // Cipher C3
+    TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA256(
+            "DHE-DSS-CAMELLIA256-SHA256",
+            KeyExchange.EDH,
+            Authentication.DSS,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            256,
+            256
+    ),
+    // Cipher C4
+    TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA256(
+            "DHE-RSA-CAMELLIA256-SHA256",
+            KeyExchange.EDH,
+            Authentication.RSA,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            256,
+            256
+    ),
+    // Cipher C5
+    TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA256(
+            "ADH-CAMELLIA256-SHA256",
+            KeyExchange.EDH,
+            Authentication.aNULL,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            false,
+            256,
+            256
+    ),
     /* ECC ciphersuites from draft-ietf-tls-ecc-01.txt (
             Mar 15, 2001) */
     // Cipher C001
@@ -1887,6 +2055,7 @@ enum Cipher {
             256,
             256
     ),
+    // Cipher C010
     TLS_ECDHE_RSA_WITH_NULL_SHA(
             "ECDHE-RSA-NULL-SHA",
             KeyExchange.EECDH,
@@ -2372,6 +2541,118 @@ enum Cipher {
             Authentication.ECDH,
             Encryption.AES256GCM,
             MessageDigest.AEAD,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            256,
+            256
+    ),
+    // Cipher C072
+    TLS_ECDHE_ECDSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "ECDHE-ECDSA-CAMELLIA128-SHA256",
+            KeyExchange.EECDH,
+            Authentication.ECDSA,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            128,
+            128
+    ),
+    // Cipher C073
+    TLS_ECDHE_ECDSA_WITH_CAMELLIA_256_CBC_SHA384(
+            "ECDHE-ECDSA-CAMELLIA256-SHA384",
+            KeyExchange.EECDH,
+            Authentication.ECDSA,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA384,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            256,
+            256
+    ),
+    // Cipher C074
+    TLS_ECDH_ECDSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "ECDH-ECDSA-CAMELLIA128-SHA256",
+            KeyExchange.ECDHe,
+            Authentication.ECDH,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            128,
+            128
+    ),
+    // Cipher C075
+    TLS_ECDH_ECDSA_WITH_CAMELLIA_256_CBC_SHA384(
+            "ECDH-ECDSA-CAMELLIA256-SHA384",
+            KeyExchange.ECDHe,
+            Authentication.ECDH,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA384,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            256,
+            256
+    ),
+    // Cipher C076
+    TLS_ECDHE_RSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "ECDHE-RSA-CAMELLIA128-SHA256",
+            KeyExchange.EECDH,
+            Authentication.RSA,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            128,
+            128
+    ),
+    // Cipher C077
+    TLS_ECDHE_RSA_WITH_CAMELLIA_256_CBC_SHA384(
+            "ECDHE-RSA-CAMELLIA256-SHA384",
+            KeyExchange.EECDH,
+            Authentication.RSA,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA384,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            256,
+            256
+    ),
+    // Cipher C078
+    TLS_ECDH_RSA_WITH_CAMELLIA_128_CBC_SHA256(
+            "ECDH-RSA-CAMELLIA128-SHA256",
+            KeyExchange.ECDHr,
+            Authentication.ECDH,
+            Encryption.CAMELLIA128,
+            MessageDigest.SHA256,
+            Protocol.TLSv1_2,
+            false,
+            EncryptionLevel.HIGH,
+            true,
+            128,
+            128
+    ),
+    // Cipher C079
+    TLS_ECDH_RSA_WITH_CAMELLIA_256_CBC_SHA384(
+            "ECDH-RSA-CAMELLIA256-SHA384",
+            KeyExchange.ECDHr,
+            Authentication.ECDH,
+            Encryption.CAMELLIA256,
+            MessageDigest.SHA384,
             Protocol.TLSv1_2,
             false,
             EncryptionLevel.HIGH,

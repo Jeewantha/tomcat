@@ -75,7 +75,7 @@ public class TestImportHandler {
 
     /**
      * Multiple package imports with a single match.
-     * https://issues.apache.org/bugzilla/show_bug.cgi?id=57113
+     * https://bz.apache.org/bugzilla/show_bug.cgi?id=57113
      */
     @Test
     public void testResolveClass04() {
@@ -92,7 +92,7 @@ public class TestImportHandler {
 
     /**
      * Attempting to resolve something that isn't a simple class name
-     * https://issues.apache.org/bugzilla/show_bug.cgi?id=57132
+     * https://bz.apache.org/bugzilla/show_bug.cgi?id=57132
      */
     @Test
     public void testResolveClass05() {
@@ -107,7 +107,7 @@ public class TestImportHandler {
 
     /**
      * Attempting to resolve something that isn't a simple class name
-     * https://issues.apache.org/bugzilla/show_bug.cgi?id=57132
+     * https://bz.apache.org/bugzilla/show_bug.cgi?id=57132
      */
     @Test
     public void testResolveClass06() {
@@ -183,15 +183,16 @@ public class TestImportHandler {
     }
 
 
-
     /**
      * Import an invalid package.
      */
-    @Test(expected=ELException.class)
-    public void testImportPackage01() {
+    @Test
+    public void testImportPackage01_57574() {
         ImportHandler handler = new ImportHandler();
 
         handler.importPackage("org.apache.tomcat.foo");
+
+        // No exception is expected
     }
 
 
@@ -253,5 +254,20 @@ public class TestImportHandler {
                 // Expected
             }
         }
+    }
+
+
+    /**
+     * Package imports with conflicts due to non-public classes should not
+     * conflict.
+     */
+    @Test
+    public void testBug57135() {
+        ImportHandler importHandler = new ImportHandler();
+
+        importHandler.importPackage("util.a");
+        importHandler.importPackage("util.b");
+
+        importHandler.resolveClass("Foo");
     }
 }

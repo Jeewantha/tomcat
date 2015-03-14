@@ -406,7 +406,7 @@ public class TestELInJsp extends TomcatBaseTest {
 
 
     /*
-     * BZ https://issues.apache.org/bugzilla/show_bug.cgi?id=57142
+     * BZ https://bz.apache.org/bugzilla/show_bug.cgi?id=57142
      * javax.servlet, javax.servlet.http and javax.servlet.jsp should be
      * imported by default.
      */
@@ -427,6 +427,22 @@ public class TestELInJsp extends TomcatBaseTest {
         assertEcho(result, "01-" + BigDecimal.ROUND_UP);
         // Class import
         assertEcho(result, "02-" + Collections.EMPTY_LIST.size());
+    }
+
+
+    /*
+     * BZ https://bz.apache.org/bugzilla/show_bug.cgi?id=57441
+     * Can't validate function names defined in lambdas (or via imports)
+     */
+    @Test
+    public void testBug57441() throws Exception {
+        getTomcatInstanceTestWebapp(false, true);
+
+        ByteChunk res = getUrl("http://localhost:" + getPort() +
+                "/test/bug5nnnn/bug57441.jsp");
+
+        String result = res.toString();
+        assertEcho(result, "00-11");
     }
 
 
