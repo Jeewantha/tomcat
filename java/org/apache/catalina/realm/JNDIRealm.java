@@ -76,7 +76,7 @@ import org.ietf.jgss.GSSCredential;
  *     element in the top level <code>DirContext</code> that is accessed
  *     via the <code>connectionURL</code> property.</li>
  *
- * <li>If a socket connection can not be made to the <code>connectURL</code>
+ * <li>If a socket connection cannot be made to the <code>connectURL</code>
  *     an attempt will be made to use the <code>alternateURL</code> if it
  *     exists.</li>
  *
@@ -1799,7 +1799,7 @@ public class JNDIRealm extends RealmBase {
             containerLog.trace("  validating credentials");
 
         if (info == null || credentials == null)
-            return (false);
+            return false;
 
         String password = info.getPassword();
 
@@ -1822,11 +1822,11 @@ public class JNDIRealm extends RealmBase {
          throws NamingException {
 
          if (credentials == null || user == null)
-             return (false);
+             return false;
 
          String dn = user.getDN();
          if (dn == null)
-             return (false);
+             return false;
 
          // Validate the credentials specified by the user
          if (containerLog.isTraceEnabled()) {

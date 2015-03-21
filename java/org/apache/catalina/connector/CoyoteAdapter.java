@@ -29,9 +29,11 @@ import javax.servlet.SessionTrackingMode;
 import javax.servlet.WriteListener;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.catalina.Authenticator;
 import org.apache.catalina.Context;
 import org.apache.catalina.Host;
 import org.apache.catalina.Wrapper;
+import org.apache.catalina.authenticator.AuthenticatorBase;
 import org.apache.catalina.core.AsyncContextImpl;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.catalina.util.SessionConfig;
@@ -570,7 +572,7 @@ public class CoyoteAdapter implements Adapter {
      * @throws IOException If there is insufficient space in a buffer while
      *                     processing headers
      * @throws ServletException If the supported methods of the target servlet
-     *                          can not be determined
+     *                          cannot be determined
      */
     protected boolean postParseRequest(org.apache.coyote.Request req, Request request,
             org.apache.coyote.Response res, Response response) throws IOException, ServletException {
@@ -679,18 +681,6 @@ public class CoyoteAdapter implements Adapter {
                 decodedURI.setChars
                     (uriCC.getBuffer(), uriCC.getStart(), semicolon);
             }
-        }
-
-        // Set the remote principal
-        String principal = req.getRemoteUser().toString();
-        if (principal != null) {
-            request.setUserPrincipal(new CoyotePrincipal(principal));
-        }
-
-        // Set the authorization type
-        String authtype = req.getAuthType().toString();
-        if (authtype != null) {
-            request.setAuthType(authtype);
         }
 
         // Request mapping.
@@ -853,7 +843,51 @@ public class CoyoteAdapter implements Adapter {
             return false;
         }
 
+        doConnectorAuthenticationAuthorization(req, request);
+
         return true;
+    }
+
+
+    private void doConnectorAuthenticationAuthorization(org.apache.coyote.Request req, Request request) {
+        // Set the remote principal
+        String username = req.getRemoteUser().toString();
+        if (username != null) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("coyoteAdapter.authenticate", username));
+            }
+            if (req.getRemoteUserNeedsAuthorization()) {
+                Authenticator authenticator = request.getContext().getAuthenticator();
+                if (authenticator == null) {
+                    // No security constraints configured for the application so
+                    // no need to authorize the user. Use the CoyotePrincipal to
+                    // provide the authenticated user.
+                    request.setUserPrincipal(new CoyotePrincipal(username));
+                } else if (!(authenticator instanceof AuthenticatorBase)) {
+                    if (log.isDebugEnabled()) {
+                        log.debug(sm.getString("coyoteAdapter.authorize", username));
+                    }
+                    // Custom authenticator that may not trigger authorization.
+                    // Do the authorization here to make sure it is done.
+                    request.setUserPrincipal(
+                            request.getContext().getRealm().authenticate(username));
+                }
+                // If the Authenticator is an instance of AuthenticatorBase then
+                // it will check req.getRemoteUserNeedsAuthorization() and
+                // trigger authorization as necessary. It will also cache the
+                // result preventing excessive calls to the Realm.
+            } else {
+                // The connector isn't configured for authorization. Create a
+                // user without any roles using the supplied user name.
+                request.setUserPrincipal(new CoyotePrincipal(username));
+            }
+        }
+
+        // Set the authorization type
+        String authtype = req.getAuthType().toString();
+        if (authtype != null) {
+            request.setAuthType(authtype);
+        }
     }
 
 
@@ -1111,7 +1145,7 @@ public class CoyoteAdapter implements Adapter {
      *
      * @param uriMB URI to be normalized
      *
-     * @return <code>false</false> if normalizing this URI would require going
+     * @return <code>false</code> if normalizing this URI would require going
      *         above the root, or if the URI contains a null byte, otherwise
      *         <code>true</code>
      */

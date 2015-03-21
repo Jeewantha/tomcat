@@ -3536,10 +3536,10 @@ public class StandardContext extends ContainerBase
         synchronized (securityRolesLock) {
             for (int i = 0; i < securityRoles.length; i++) {
                 if (role.equals(securityRoles[i]))
-                    return (true);
+                    return true;
             }
         }
-        return (false);
+        return false;
 
     }
 
@@ -3640,10 +3640,10 @@ public class StandardContext extends ContainerBase
         synchronized (welcomeFilesLock) {
             for (int i = 0; i < welcomeFiles.length; i++) {
                 if (name.equals(welcomeFiles[i]))
-                    return (true);
+                    return true;
             }
         }
-        return (false);
+        return false;
 
     }
 
@@ -4606,7 +4606,7 @@ public class StandardContext extends ContainerBase
             }
             filterConfigs.clear();
         }
-        return (true);
+        return true;
 
     }
 
@@ -4644,7 +4644,7 @@ public class StandardContext extends ContainerBase
                     listeners[i] + "'");
             try {
                 String listener = listeners[i];
-                results[i] = instanceManager.newInstance(listener);
+                results[i] = getInstanceManager().newInstance(listener);
             } catch (Throwable t) {
                 t = ExceptionUtils.unwrapInvocationTargetException(t);
                 ExceptionUtils.handleThrowable(t);
@@ -4655,7 +4655,7 @@ public class StandardContext extends ContainerBase
         }
         if (!ok) {
             getLogger().error(sm.getString("standardContext.applicationSkipped"));
-            return (false);
+            return false;
         }
 
         // Sort listeners in two arrays
@@ -4782,7 +4782,9 @@ public class StandardContext extends ContainerBase
                     }
                 }
                 try {
-                    getInstanceManager().destroyInstance(listeners[j]);
+                    if (getInstanceManager() != null) {
+                        getInstanceManager().destroyInstance(listeners[j]);
+                    }
                 } catch (Throwable t) {
                     t = ExceptionUtils.unwrapInvocationTargetException(t);
                     ExceptionUtils.handleThrowable(t);
@@ -4802,7 +4804,9 @@ public class StandardContext extends ContainerBase
                 if (listeners[j] == null)
                     continue;
                 try {
-                    getInstanceManager().destroyInstance(listeners[j]);
+                    if (getInstanceManager() != null) {
+                        getInstanceManager().destroyInstance(listeners[j]);
+                    }
                 } catch (Throwable t) {
                     t = ExceptionUtils.unwrapInvocationTargetException(t);
                     ExceptionUtils.handleThrowable(t);
@@ -5452,7 +5456,7 @@ public class StandardContext extends ContainerBase
         }
 
         //reset the instance manager
-        instanceManager = null;
+        setInstanceManager(null);
 
         if (log.isDebugEnabled())
             log.debug("Stopping complete");
@@ -6101,9 +6105,9 @@ public class StandardContext extends ContainerBase
     private boolean validateURLPattern(String urlPattern) {
 
         if (urlPattern == null)
-            return (false);
+            return false;
         if (urlPattern.indexOf('\n') >= 0 || urlPattern.indexOf('\r') >= 0) {
-            return (false);
+            return false;
         }
         if (urlPattern.equals("")) {
             return true;
@@ -6111,16 +6115,16 @@ public class StandardContext extends ContainerBase
         if (urlPattern.startsWith("*.")) {
             if (urlPattern.indexOf('/') < 0) {
                 checkUnusualURLPattern(urlPattern);
-                return (true);
+                return true;
             } else
-                return (false);
+                return false;
         }
         if ( (urlPattern.startsWith("/")) &&
                 (urlPattern.indexOf("*.") < 0)) {
             checkUnusualURLPattern(urlPattern);
-            return (true);
+            return true;
         } else
-            return (false);
+            return false;
 
     }
 

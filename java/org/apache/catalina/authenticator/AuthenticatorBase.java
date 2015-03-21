@@ -40,6 +40,7 @@ import org.apache.catalina.Valve;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
+import org.apache.catalina.realm.GenericPrincipal;
 import org.apache.catalina.util.SessionIdGeneratorBase;
 import org.apache.catalina.util.StandardSessionIdGenerator;
 import org.apache.catalina.valves.ValveBase;
@@ -683,6 +684,83 @@ public abstract class AuthenticatorBase extends ValveBase implements Authenticat
     @Override
     public abstract boolean authenticate(Request request,
             HttpServletResponse response) throws IOException;
+
+
+    /**
+     * Check to see if the user has already been authenticated earlier in the
+     * processing chain or if there is enough information available to
+     * authenticate the user without requiring further user interaction.
+     *
+     * @param request The current request
+     * @param response The current response
+     * @param useSSO  Should information available from SSO be used to attempt
+     *                to authenticate the current user?
+     *
+     * @return <code>true</code> if the user was authenticated via the cache,
+     *         otherwise <code>false</code>
+     */
+    protected boolean checkForCachedAuthentication(Request request,
+            HttpServletResponse response, boolean useSSO) {
+
+        // Has the user already been authenticated?
+        Principal principal = request.getUserPrincipal();
+        String ssoId = (String) request.getNote(Constants.REQ_SSOID_NOTE);
+        if (principal != null) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("authenticator.check.found", principal.getName()));
+            }
+            // Associate the session with any existing SSO session. Even if
+            // useSSO is false, this will ensure coordinated session
+            // invalidation at log out.
+            if (ssoId != null) {
+                associate(ssoId, request.getSessionInternal(true));
+            }
+            return true;
+        }
+
+        // Is there an SSO session against which we can try to reauthenticate?
+        if (useSSO && ssoId != null) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("authenticator.check.sso", ssoId));
+            }
+            /* Try to reauthenticate using data cached by SSO.  If this fails,
+               either the original SSO logon was of DIGEST or SSL (which
+               we can't reauthenticate ourselves because there is no
+               cached username and password), or the realm denied
+               the user's reauthentication for some reason.
+               In either case we have to prompt the user for a logon */
+            if (reauthenticateFromSSO(ssoId, request)) {
+                return true;
+            }
+        }
+
+        // Has the Connector provided a pre-authenticated Principal that now
+        // needs to be authorized?
+        if (request.getCoyoteRequest().getRemoteUserNeedsAuthorization()) {
+            String username = request.getCoyoteRequest().getRemoteUser().toString();
+            if (username != null) {
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("authenticator.check.authorize", username));
+                }
+                Principal authorized = context.getRealm().authenticate(username);
+                if (authorized == null) {
+                    // Realm doesn't recognise user. Create a user with no roles
+                    // from the authenticated user name
+                    if (log.isDebugEnabled()) {
+                        log.debug(sm.getString("authenticator.check.authorizeFail", username));
+                    }
+                    authorized = new GenericPrincipal(username, null,  null);
+                }
+                String authType = request.getAuthType();
+                if (authType == null || authType.length() == 0) {
+                    authType = getAuthMethod();
+                }
+                register(request, response, authorized, authType, username, null);
+                return true;
+            }
+        }
+        return false;
+    }
 
 
     /**
