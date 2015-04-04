@@ -39,9 +39,8 @@ import org.apache.tomcat.websocket.WsRemoteEndpointImplBase;
 public class WsRemoteEndpointImplServer extends WsRemoteEndpointImplBase {
 
     private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
-    private static final Log log =
-            LogFactory.getLog(WsHttpUpgradeHandler.class);
+            StringManager.getManager(WsRemoteEndpointImplServer.class);
+    private static final Log log = LogFactory.getLog(WsRemoteEndpointImplServer.class);
 
     private final SocketWrapperBase<?> socketWrapper;
     private final WsWriteTimeout wsWriteTimeout;

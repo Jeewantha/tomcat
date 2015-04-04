@@ -49,13 +49,7 @@ import org.apache.tomcat.util.res.StringManager;
 public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
     private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
-
-    // Milliseconds so this is 20 seconds
-    private static final long DEFAULT_BLOCKING_SEND_TIMEOUT = 20 * 1000;
-
-    public static final String BLOCKING_SEND_TIMEOUT_PROPERTY =
-            "org.apache.tomcat.websocket.BLOCKING_SEND_TIMEOUT";
+            StringManager.getManager(WsRemoteEndpointImplBase.class);
 
     protected static final SendResult SENDRESULT_OK = new SendResult();
 
@@ -311,6 +305,10 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
             if (!bsh.getSendResult().isOK()) {
                 throw new IOException (bsh.getSendResult().getException());
             }
+            // The BlockingSendHandler doesn't call end message so update the
+            // flags.
+            fragmented = nextFragmented;
+            text = nextText;
         }
 
         if (payload != null) {
@@ -335,7 +333,7 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
         // Some extensions/transformations may buffer messages so it is possible
         // that no message parts will be returned. If this is the case the
-        // trigger the suppler SendHandler
+        // trigger the supplied SendHandler
         if (messageParts.size() == 0) {
             handler.onResult(new SendResult());
             return;
@@ -491,14 +489,13 @@ public abstract class WsRemoteEndpointImplBase implements RemoteEndpoint {
 
 
     private long getBlockingSendTimeout() {
-        Object obj = wsSession.getUserProperties().get(
-                BLOCKING_SEND_TIMEOUT_PROPERTY);
+        Object obj = wsSession.getUserProperties().get(Constants.BLOCKING_SEND_TIMEOUT_PROPERTY);
         Long userTimeout = null;
         if (obj instanceof Long) {
             userTimeout = (Long) obj;
         }
         if (userTimeout == null) {
-            return DEFAULT_BLOCKING_SEND_TIMEOUT;
+            return Constants.DEFAULT_BLOCKING_SEND_TIMEOUT;
         } else {
             return userTimeout.longValue();
         }

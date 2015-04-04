@@ -78,11 +78,12 @@ public abstract class AbstractProcessor implements ActionHook, Processor {
     protected void setErrorState(ErrorState errorState, Throwable t) {
         boolean blockIo = this.errorState.isIoAllowed() && !errorState.isIoAllowed();
         this.errorState = this.errorState.getMostSevere(errorState);
-        if (blockIo && !ContainerThreadMarker.isContainerThread()) {
-            // The error occurred on a non-container thread which means not all
-            // of the necessary clean-up will have been completed. Dispatch to
-            // a container thread to do the clean-up. Need to do it this way to
-            // ensure that all the necessary clean-up is performed.
+        if (blockIo && !ContainerThreadMarker.isContainerThread() && isAsync()) {
+            // The error occurred on a non-container thread during async
+            // processing which means not all of the necessary clean-up will
+            // have been completed. Dispatch to a container thread to do the
+            // clean-up. Need to do it this way to ensure that all the necessary
+            // clean-up is performed.
             if (response.getStatus() < 400) {
                 response.setStatus(500);
             }
@@ -201,18 +202,14 @@ public abstract class AbstractProcessor implements ActionHook, Processor {
     public abstract SocketState process(SocketWrapperBase<?> socket) throws IOException;
 
     /**
-     * Process in-progress Servlet 3.0 Async requests. These will start as HTTP
-     * requests.
+     * Process an in-progress request that is not longer in standard HTTP mode.
+     * Uses currently include Servlet 3.0 Async and HTTP upgrade connections.
+     * Further uses may be added in the future. These will typically start as
+     * HTTP requests.
      */
     @Override
-    public abstract SocketState asyncDispatch(SocketStatus status);
+    public abstract SocketState dispatch(SocketStatus status);
 
-    /**
-     * Processes data received on a connection that has been through an HTTP
-     * upgrade.
-     */
-    @Override
-    public abstract SocketState upgradeDispatch(SocketStatus status);
 
     @Override
     public abstract HttpUpgradeHandler getHttpUpgradeHandler();

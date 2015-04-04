@@ -64,7 +64,6 @@ import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.modeler.Registry;
 import org.apache.tomcat.util.res.StringManager;
 
-
 /**
  * Startup event listener for a <b>Host</b> that configures the properties
  * of that Host, and the associated defined contexts.
@@ -72,13 +71,22 @@ import org.apache.tomcat.util.res.StringManager;
  * @author Craig R. McClanahan
  * @author Remy Maucherat
  */
-public class HostConfig
-    implements LifecycleListener {
+public class HostConfig implements LifecycleListener {
 
-    private static final Log log = LogFactory.getLog( HostConfig.class );
+    private static final Log log = LogFactory.getLog(HostConfig.class);
+
+    /**
+     * The string resources for this package.
+     */
+    protected static final StringManager sm = StringManager.getManager(HostConfig.class);
+
+    /**
+     * The resolution, in milliseconds, of file modification times.
+     */
+    protected static final long FILE_MODIFICATION_RESOLUTION_MS = 1000;
+
 
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * The Java class name of the Context implementation we should use.
@@ -96,13 +104,6 @@ public class HostConfig
      * The JMX ObjectName of this component.
      */
     protected ObjectName oname = null;
-
-
-    /**
-     * The string resources for this package.
-     */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
 
 
     /**
@@ -1226,6 +1227,9 @@ public class HostConfig
     protected synchronized void checkResources(DeployedApplication app) {
         String[] resources =
             app.redeployResources.keySet().toArray(new String[0]);
+        // Offset the current time by the resolution of File.lastModified()
+        long currentTimeWithResolutionOffset =
+                System.currentTimeMillis() - FILE_MODIFICATION_RESOLUTION_MS;
         for (int i = 0; i < resources.length; i++) {
             File resource = new File(resources[i]);
             if (log.isDebugEnabled())
@@ -1234,7 +1238,12 @@ public class HostConfig
             long lastModified =
                     app.redeployResources.get(resources[i]).longValue();
             if (resource.exists() || lastModified == 0) {
-                if (resource.lastModified() > lastModified) {
+                // File.lastModified() has a resolution of 1s (1000ms). The last
+                // modified time has to be more than 1000ms ago to ensure that
+                // modifications that take place in the same second are not
+                // missed. See Bug 57765.
+                if (resource.lastModified() != lastModified && (!host.getAutoDeploy() ||
+                        resource.lastModified() < currentTimeWithResolutionOffset)) {
                     if (resource.isDirectory()) {
                         // No action required for modified directory
                         app.redeployResources.put(resources[i],
@@ -1255,12 +1264,10 @@ public class HostConfig
                                 docBaseFile = new File(host.getAppBaseFile(),
                                         docBase);
                             }
-                            ExpandWar.delete(docBaseFile);
-                            // Reset the docBase to trigger re-expansion of the
-                            // WAR
-                            context.setDocBase(resource.getAbsolutePath());
+                            reload(app, docBaseFile, resource.getAbsolutePath());
+                        } else {
+                            reload(app, null, null);
                         }
-                        reload(app);
                         // Update times
                         app.redeployResources.put(resources[i],
                                 Long.valueOf(resource.lastModified()));
@@ -1312,10 +1319,17 @@ public class HostConfig
                 log.debug("Checking context[" + app.name + "] reload resource " + resource);
             }
             long lastModified = app.reloadResources.get(resources[i]).longValue();
-            if (resource.lastModified() != lastModified || update) {
+            // File.lastModified() has a resolution of 1s (1000ms). The last
+            // modified time has to be more than 1000ms ago to ensure that
+            // modifications that take place in the same second are not
+            // missed. See Bug 57765.
+            if ((resource.lastModified() != lastModified &&
+                    (!host.getAutoDeploy() ||
+                            resource.lastModified() < currentTimeWithResolutionOffset)) ||
+                    update) {
                 if (!update) {
                     // Reload application
-                    reload(app);
+                    reload(app, null, null);
                     update = true;
                 }
                 // Update times. More than one file may have been updated. We
@@ -1328,16 +1342,28 @@ public class HostConfig
     }
 
 
-    private void reload(DeployedApplication app) {
+    /*
+     * Note: If either of fileToRemove and newDocBase are null, both will be
+     *       ignored.
+     */
+    private void reload(DeployedApplication app, File fileToRemove, String newDocBase) {
         if(log.isInfoEnabled())
             log.info(sm.getString("hostConfig.reload", app.name));
         Context context = (Context) host.findChild(app.name);
         if (context.getState().isAvailable()) {
+            if (fileToRemove != null && newDocBase != null) {
+                context.addLifecycleListener(
+                        new ExpandedDirectoryRemovalListener(fileToRemove, newDocBase));
+            }
             // Reload catches and logs exceptions
             context.reload();
         } else {
             // If the context was not started (for example an error
             // in web.xml) we'll still get to try to start
+            if (fileToRemove != null && newDocBase != null) {
+                ExpandWar.delete(fileToRemove);
+                context.setDocBase(newDocBase);
+            }
             try {
                 context.start();
             } catch (Exception e) {
@@ -1754,6 +1780,56 @@ public class HostConfig
         @Override
         public void run() {
             config.deployDirectory(cn, dir);
+        }
+    }
+
+
+    /*
+     * The purpose of this class is to provide a way for HostConfig to get
+     * a Context to delete an expanded WAR after the Context stops. This is to
+     * resolve this issue described in Bug 57772. The alternative solutions
+     * require either duplicating a lot of the Context.reload() code in
+     * HostConfig or adding a new reload(boolean) method to Context that allows
+     * the caller to optionally delete any expanded WAR.
+     *
+     * The LifecycleListener approach offers greater flexibility and enables the
+     * behaviour to be changed / extended / removed in future without changing
+     * the Context API.
+     */
+    private static class ExpandedDirectoryRemovalListener implements LifecycleListener {
+
+        private final File toDelete;
+        private final String newDocBase;
+
+        /**
+         * Create a listener that will ensure that any expanded WAR is removed
+         * and the docBase set to the specified WAR.
+         *
+         * @param toDelete The file (a directory representing an expanded WAR)
+         *                 to be deleted
+         * @param newDocBase The new docBase for the Context
+         */
+        public ExpandedDirectoryRemovalListener(File toDelete, String newDocBase) {
+            this.toDelete = toDelete;
+            this.newDocBase = newDocBase;
+        }
+
+        @Override
+        public void lifecycleEvent(LifecycleEvent event) {
+            if (event.getType() == Lifecycle.AFTER_STOP_EVENT) {
+                // The context has stopped.
+                Context context = (Context) event.getLifecycle();
+
+                // Remove the old expanded WAR.
+                ExpandWar.delete(toDelete);
+
+                // Reset the docBase to trigger re-expansion of the WAR.
+                context.setDocBase(newDocBase);
+
+                // Remove this listener from the Context else it will run every
+                // time the Context is stopped.
+                context.removeLifecycleListener(this);
+            }
         }
     }
 }
