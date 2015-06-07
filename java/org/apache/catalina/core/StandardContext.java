@@ -759,7 +759,7 @@ public class StandardContext extends ContainerBase
      * Should Tomcat renew the threads of the thread pool when the application
      * is stopped to avoid memory leaks because of uncleaned ThreadLocal
      * variables. This also requires that the threadRenewalDelay property of the
-     * StandardThreadExecutor of ThreadPoolExecutor be set to a positive value.
+     * StandardThreadExecutor or ThreadPoolExecutor be set to a positive value.
      */
     private boolean renewThreadsWhenStoppingContext = true;
 
@@ -4411,7 +4411,8 @@ public class StandardContext extends ContainerBase
                 String canonicalPath = resource.getCanonicalPath();
                 if (canonicalPath == null) {
                     return null;
-                } else if (resource.isDirectory() && !canonicalPath.endsWith(File.separator)) {
+                } else if ((resource.isDirectory() && !canonicalPath.endsWith(File.separator) ||
+                        !resource.exists()) && path.endsWith("/")) {
                     return canonicalPath + File.separatorChar;
                 } else {
                     return canonicalPath;
@@ -4963,7 +4964,7 @@ public class StandardContext extends ContainerBase
             try {
                 setResources(new StandardRoot(this));
             } catch (IllegalArgumentException e) {
-                log.error("Error initializing resources: " + e.getMessage());
+                log.error(sm.getString("standardContext.resourcesInit"), e);
                 ok = false;
             }
         }
@@ -4989,7 +4990,7 @@ public class StandardContext extends ContainerBase
             dependencyCheck = ExtensionValidator.validateApplication
                 (getResources(), this);
         } catch (IOException ioe) {
-            log.error("Error in dependencyCheck", ioe);
+            log.error(sm.getString("standardContext.extensionValidationError"), ioe);
             dependencyCheck = false;
         }
 
@@ -5115,7 +5116,7 @@ public class StandardContext extends ContainerBase
             }
 
             if (!getConfigured()) {
-                log.error( "Error getConfigured");
+                log.error(sm.getString("standardContext.configurationFail"));
                 ok = false;
             }
 
@@ -5164,7 +5165,7 @@ public class StandardContext extends ContainerBase
             // Configure and call application event listeners
             if (ok) {
                 if (!listenerStart()) {
-                    log.error( "Error listenerStart");
+                    log.error(sm.getString("standardContext.listenerFail"));
                     ok = false;
                 }
             }
@@ -5183,14 +5184,14 @@ public class StandardContext extends ContainerBase
                     ((Lifecycle) manager).start();
                 }
             } catch(Exception e) {
-                log.error("Error manager.start()", e);
+                log.error(sm.getString("standardContext.managerFail"), e);
                 ok = false;
             }
 
             // Configure and call application filters
             if (ok) {
                 if (!filterStart()) {
-                    log.error("Error filterStart");
+                    log.error(sm.getString("standardContext.filterFail"));
                     ok = false;
                 }
             }
@@ -5198,7 +5199,7 @@ public class StandardContext extends ContainerBase
             // Load and initialize all "load on startup" servlets
             if (ok) {
                 if (!loadOnStartup(findChildren())){
-                    log.error("Error loadOnStartup");
+                    log.error(sm.getString("standardContext.servletFail"));
                     ok = false;
                 }
             }

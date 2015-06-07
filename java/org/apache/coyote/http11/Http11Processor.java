@@ -19,9 +19,10 @@ package org.apache.coyote.http11;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
+import java.util.Enumeration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
-import java.util.StringTokenizer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
@@ -33,7 +34,9 @@ import org.apache.coyote.AbstractProcessor;
 import org.apache.coyote.ActionCode;
 import org.apache.coyote.AsyncContextCallback;
 import org.apache.coyote.ErrorState;
+import org.apache.coyote.Request;
 import org.apache.coyote.RequestInfo;
+import org.apache.coyote.UpgradeProtocol;
 import org.apache.coyote.http11.filters.BufferedInputFilter;
 import org.apache.coyote.http11.filters.ChunkedInputFilter;
 import org.apache.coyote.http11.filters.ChunkedOutputFilter;
@@ -43,6 +46,7 @@ import org.apache.coyote.http11.filters.IdentityOutputFilter;
 import org.apache.coyote.http11.filters.SavedRequestInputFilter;
 import org.apache.coyote.http11.filters.VoidInputFilter;
 import org.apache.coyote.http11.filters.VoidOutputFilter;
+import org.apache.coyote.http11.upgrade.InternalHttpUpgradeHandler;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
@@ -201,11 +205,11 @@ public class Http11Processor extends AbstractProcessor {
      */
     protected Pattern noCompressionUserAgents = null;
 
+
     /**
-     * List of MIMES which could be gzipped
+     * List of MIMES for which compression may be enabled.
      */
-    protected String[] compressableMimeTypes =
-    { "text/html", "text/xml", "text/plain" };
+    protected String[] compressableMimeTypes;
 
 
     /**
@@ -239,8 +243,15 @@ public class Http11Processor extends AbstractProcessor {
     protected SSLSupport sslSupport;
 
 
+    /**
+     * UpgradeProtocol information
+     */
+    private final Map<String,UpgradeProtocol> httpUpgradeProtocols;
+
+
     public Http11Processor(int maxHttpHeaderSize, AbstractEndpoint<?> endpoint,int maxTrailerSize,
-            Set<String> allowedTrailerHeaders, int maxExtensionSize, int maxSwallowSize) {
+            Set<String> allowedTrailerHeaders, int maxExtensionSize, int maxSwallowSize,
+            Map<String,UpgradeProtocol> httpUpgradeProtocols) {
 
         super(endpoint);
         userDataHelper = new UserDataHelper(log);
@@ -272,6 +283,8 @@ public class Http11Processor extends AbstractProcessor {
         outputBuffer.addFilter(new GzipOutputFilter());
 
         pluggableFilterIndex = inputBuffer.getFilters().length;
+
+        this.httpUpgradeProtocols = httpUpgradeProtocols;
     }
 
 
@@ -320,18 +333,6 @@ public class Http11Processor extends AbstractProcessor {
         }
     }
 
-    /**
-     * Add a mime-type which will be compressible
-     * The mime-type String will be exactly matched
-     * in the response mime-type header .
-     *
-     * @param mimeType mime-type string
-     */
-    public void addCompressableMimeType(String mimeType) {
-        compressableMimeTypes =
-            addStringArray(compressableMimeTypes, mimeType);
-    }
-
 
     /**
      * Set compressible mime-type list (this method is best when used with
@@ -340,24 +341,6 @@ public class Http11Processor extends AbstractProcessor {
      */
     public void setCompressableMimeTypes(String[] compressableMimeTypes) {
         this.compressableMimeTypes = compressableMimeTypes;
-    }
-
-
-    /**
-     * Set compressable mime-type list
-     * List contains users agents separated by ',' :
-     *
-     * ie: "text/html,text/xml,text/plain"
-     */
-    public void setCompressableMimeTypes(String compressableMimeTypes) {
-        if (compressableMimeTypes != null) {
-            this.compressableMimeTypes = null;
-            StringTokenizer st = new StringTokenizer(compressableMimeTypes, ",");
-
-            while (st.hasMoreTokens()) {
-                addCompressableMimeType(st.nextToken().trim());
-            }
-        }
     }
 
 
@@ -374,29 +357,6 @@ public class Http11Processor extends AbstractProcessor {
             return "force";
         }
         return "off";
-    }
-
-
-    /**
-     * General use method
-     *
-     * @param sArray the StringArray
-     * @param value string
-     */
-    private String[] addStringArray(String sArray[], String value) {
-        String[] result = null;
-        if (sArray == null) {
-            result = new String[1];
-            result[0] = value;
-        }
-        else {
-            result = new String[sArray.length + 1];
-            for (int i = 0; i < sArray.length; i++) {
-                result[i] = sArray[i];
-            }
-            result[sArray.length] = value;
-        }
-        return result;
     }
 
 
@@ -1068,6 +1028,33 @@ public class Http11Processor extends AbstractProcessor {
                 getAdapter().log(request, response, 0);
             }
 
+            // Has an upgrade been requested?
+            Enumeration<String> connectionValues = request.getMimeHeaders().values("Connection");
+            boolean foundUpgrade = false;
+            while (connectionValues.hasMoreElements() && !foundUpgrade) {
+                foundUpgrade = connectionValues.nextElement().toLowerCase(
+                        Locale.ENGLISH).contains("upgrade");
+            }
+
+            if (foundUpgrade) {
+                // Check the protocol
+                String requestedProtocol = request.getHeader("Upgrade");
+
+                UpgradeProtocol upgradeProtocol = httpUpgradeProtocols.get(requestedProtocol);
+                if (upgradeProtocol != null) {
+                    if (upgradeProtocol.accept(request)) {
+                        // TODO Figure out how to handle request bodies at this
+                        // point.
+
+                        InternalHttpUpgradeHandler upgradeHandler =
+                                upgradeProtocol.getInteralUpgradeHandler(
+                                        getAdapter(), cloneRequest(request));
+                        action(ActionCode.UPGRADE, upgradeHandler);
+                        return SocketState.UPGRADING;
+                    }
+                }
+            }
+
             if (!getErrorState().isError()) {
                 // Setting up filters, and parse some request headers
                 rp.setStage(org.apache.coyote.Constants.STAGE_PREPARE);
@@ -1197,22 +1184,27 @@ public class Http11Processor extends AbstractProcessor {
     }
 
 
+    private Request cloneRequest(Request source) throws IOException {
+        Request dest = new Request();
+
+        // Transfer the minimal information required for the copy of the Request
+        // that is passed to the HTTP upgrade process
+
+        dest.decodedURI().duplicate(source.decodedURI());
+        dest.method().duplicate(source.method());
+        dest.getMimeHeaders().duplicate(source.getMimeHeaders());
+        dest.requestURI().duplicate(source.requestURI());
+
+        return dest;
+
+    }
     private boolean handleIncompleteRequestLineRead() {
         // Haven't finished reading the request so keep the socket
         // open
         openSocket = true;
         // Check to see if we have read any of the request line yet
-        if (inputBuffer.getParsingRequestLinePhase() < 1) {
-            if (keptAlive) {
-                // Haven't read the request line and have previously processed a
-                // request. Must be keep-alive. Make sure poller uses keepAlive.
-                socketWrapper.setReadTimeout(endpoint.getKeepAliveTimeout());
-            }
-        } else {
+        if (inputBuffer.getParsingRequestLinePhase() > 1) {
             // Started to read request line.
-            if (request.getStartTime() < 0) {
-                request.setStartTime(System.currentTimeMillis());
-            }
             if (endpoint.isPaused()) {
                 // Partially processed the request so need to respond
                 response.setStatus(503);
@@ -1222,8 +1214,6 @@ public class Http11Processor extends AbstractProcessor {
             } else {
                 // Need to keep processor associated with socket
                 readComplete = false;
-                // Make sure poller uses soTimeout from here onwards
-                socketWrapper.setReadTimeout(endpoint.getSoTimeout());
             }
         }
         return true;

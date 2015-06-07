@@ -96,7 +96,7 @@ public final class LegacyCookieProcessor implements CookieProcessor {
 
     @SuppressWarnings("deprecation") // Default to STRICT_SERVLET_COMPLIANCE
                                      // when deprecated code is removed
-    private boolean presserveCookieHeader = CookieSupport.PRESERVE_COOKIE_HEADER;
+    private boolean preserveCookieHeader = CookieSupport.PRESERVE_COOKIE_HEADER;
 
     @SuppressWarnings("deprecation") // Default to !STRICT_SERVLET_COMPLIANCE
                                      // when deprecated code is removed
@@ -184,7 +184,7 @@ public final class LegacyCookieProcessor implements CookieProcessor {
             if (allowHttpSepsInV0) {
                 allowedWithoutQuotes.set(sep);
             } else {
-                allowedWithoutQuotes.clear();
+                allowedWithoutQuotes.clear(sep);
             }
         }
         if (getForwardSlashIsSeparator() && !allowHttpSepsInV0) {
@@ -196,12 +196,12 @@ public final class LegacyCookieProcessor implements CookieProcessor {
 
 
     public boolean getPreserveCookieHeader() {
-        return presserveCookieHeader;
+        return preserveCookieHeader;
     }
 
 
-    public void setPreserveCookieHeader(boolean presserveCookieHeader) {
-        this.presserveCookieHeader = presserveCookieHeader;
+    public void setPreserveCookieHeader(boolean preserveCookieHeader) {
+        this.preserveCookieHeader = preserveCookieHeader;
     }
 
 
@@ -255,7 +255,8 @@ public final class LegacyCookieProcessor implements CookieProcessor {
             if (cookieValue != null && !cookieValue.isNull() ) {
                 if (cookieValue.getType() != MessageBytes.T_BYTES ) {
                     Exception e = new Exception();
-                    log.warn("Cookies: Parsing cookie as String. Expected bytes.", e);
+                    // TODO: Review this in light of HTTP/2
+                    log.debug("Cookies: Parsing cookie as String. Expected bytes.", e);
                     cookieValue.toBytes();
                 }
                 if (log.isDebugEnabled()) {

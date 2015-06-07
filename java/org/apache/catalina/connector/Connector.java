@@ -32,9 +32,11 @@ import org.apache.catalina.core.AprLifecycleListener;
 import org.apache.catalina.util.LifecycleMBeanBase;
 import org.apache.coyote.Adapter;
 import org.apache.coyote.ProtocolHandler;
+import org.apache.coyote.UpgradeProtocol;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.IntrospectionUtils;
+import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.res.StringManager;
 
 
@@ -849,6 +851,16 @@ public class Connector extends LifecycleMBeanBase  {
             return ((org.apache.catalina.Executor) obj).getName();
         }
         return "Internal";
+    }
+
+
+    public void addSslHostConfig(SSLHostConfig sslHostConfig) {
+        protocolHandler.addSslHostConfig(sslHostConfig);
+    }
+
+
+    public void addUpgradeProtocol(UpgradeProtocol upgradeProtocol) {
+        protocolHandler.addUpgradeProtocol(upgradeProtocol);
     }
 
     // --------------------------------------------------------- Public Methods

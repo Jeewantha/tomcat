@@ -21,8 +21,9 @@ import java.nio.ByteBuffer;
 import javax.servlet.http.HttpUpgradeHandler;
 
 import org.apache.coyote.AbstractProtocol;
-import org.apache.coyote.Processor;
+import org.apache.coyote.UpgradeProtocol;
 import org.apache.tomcat.util.net.AbstractEndpoint;
+import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -64,6 +65,17 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     @Override
     protected AbstractEndpoint<S> getEndpoint() {
         return super.getEndpoint();
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * AJP does not support protocol negotiation so this always returns null.
+     */
+    @Override
+    protected UpgradeProtocol getNegotiatedProtocol(String name) {
+        return null;
     }
 
 
@@ -114,6 +126,21 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         }
     }
 
+
+    // --------------------------------------------- SSL is not supported in AJP
+
+    @Override
+    public void addSslHostConfig(SSLHostConfig sslHostConfig) {
+        getLog().warn(sm.getString("ajpprotocol.noSSL", sslHostConfig.getHostName()));
+    }
+
+
+    @Override
+    public void addUpgradeProtocol(UpgradeProtocol upgradeProtocol) {
+        getLog().warn(sm.getString("ajpprotocol.noUpgrade", upgradeProtocol.getClass().getName()));
+    }
+
+
     protected void configureProcessor(AjpProcessor processor) {
         processor.setAdapter(getAdapter());
         processor.setTomcatAuthentication(getTomcatAuthentication());
@@ -146,11 +173,6 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
             return processor;
         }
 
-        @Override
-        protected void longPoll(SocketWrapperBase<S> socket, Processor processor) {
-            // Same requirements for all AJP connectors
-            socket.setAsync(true);
-        }
 
         @Override
         protected AjpProcessor createUpgradeProcessor(SocketWrapperBase<?> socket,

@@ -292,16 +292,13 @@ public class Http11InputBuffer implements InputBuffer {
 
     // ---------------------------------------------------- InputBuffer Methods
 
-    /**
-     * Read some bytes.
-     */
     @Override
-    public int doRead(ByteChunk chunk, Request req) throws IOException {
+    public int doRead(ByteChunk chunk) throws IOException {
 
         if (lastActiveFilter == -1)
-            return inputStreamInputBuffer.doRead(chunk, req);
+            return inputStreamInputBuffer.doRead(chunk);
         else
-            return activeFilters[lastActiveFilter].doRead(chunk,req);
+            return activeFilters[lastActiveFilter].doRead(chunk);
 
     }
 
@@ -384,7 +381,7 @@ public class Http11InputBuffer implements InputBuffer {
      * @return true if data is properly fed; false if no data is available
      * immediately and thread should be freed
      */
-    boolean parseRequestLine(boolean useAvailableDataOnly) throws IOException {
+    boolean parseRequestLine(boolean keptAlive) throws IOException {
 
         //check state
         if ( !parsingRequestLine ) return true;
@@ -397,15 +394,19 @@ public class Http11InputBuffer implements InputBuffer {
 
                 // Read new bytes if needed
                 if (pos >= lastValid) {
-                    if (useAvailableDataOnly) {
-                        return false;
+                    if (keptAlive) {
+                        // Haven't read any request data yet so use the keep-alive
+                        // timeout.
+                        wrapper.setReadTimeout(wrapper.getEndpoint().getKeepAliveTimeout());
                     }
-                    // Do a simple read with a short timeout
                     if (!fill(false)) {
                         // A read is pending, so no longer in initial state
                         parsingRequestLinePhase = 1;
                         return false;
                     }
+                    // At least one byte of the request has been received.
+                    // Switch to the socket timeout.
+                    wrapper.setReadTimeout(wrapper.getEndpoint().getSoTimeout());
                 }
                 // Set the start time once we start reading data (even if it is
                 // just skipping blank lines)
@@ -1046,12 +1047,8 @@ public class Http11InputBuffer implements InputBuffer {
      */
     private class SocketInputBuffer implements InputBuffer {
 
-        /**
-         * Read bytes into the specified chunk.
-         */
         @Override
-        public int doRead(ByteChunk chunk, Request req )
-            throws IOException {
+        public int doRead(ByteChunk chunk) throws IOException {
 
             if (pos >= lastValid) {
                 // The application is reading the HTTP request body which is

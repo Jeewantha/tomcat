@@ -18,13 +18,15 @@ package org.apache.tomcat.util.net;
 
 import java.nio.ByteBuffer;
 
+import org.apache.tomcat.util.buf.ByteBufferUtils;
+
 public class SocketBufferHandler {
 
     private volatile boolean readBufferConfiguredForWrite = true;
-    private final ByteBuffer readBuffer;
+    private volatile ByteBuffer readBuffer;
 
     private volatile boolean writeBufferConfiguredForWrite = true;
-    private final ByteBuffer writeBuffer;
+    private volatile ByteBuffer writeBuffer;
 
 
     public SocketBufferHandler(int readBufferSize, int writeBufferSize,
@@ -145,5 +147,13 @@ public class SocketBufferHandler {
         readBufferConfiguredForWrite = true;
         writeBuffer.clear();
         writeBufferConfiguredForWrite = true;
+    }
+
+
+    public void expand(int newSize) {
+        configureReadBufferForWrite();
+        readBuffer = ByteBufferUtils.expand(readBuffer, newSize);
+        configureWriteBufferForWrite();
+        writeBuffer = ByteBufferUtils.expand(writeBuffer, newSize);
     }
 }

@@ -16,7 +16,6 @@
  */
 package org.apache.tomcat.util.net;
 
-import java.io.File;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -24,15 +23,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLParameters;
 
 import org.apache.juli.logging.Log;
 import org.apache.tomcat.util.IntrospectionUtils;
@@ -43,7 +39,9 @@ import org.apache.tomcat.util.threads.ResizableExecutor;
 import org.apache.tomcat.util.threads.TaskQueue;
 import org.apache.tomcat.util.threads.TaskThreadFactory;
 import org.apache.tomcat.util.threads.ThreadPoolExecutor;
+
 /**
+ * @param <S> The type for the sockets managed by this endpoint.
  *
  * @author Mladen Turk
  * @author Remy Maucherat
@@ -51,8 +49,6 @@ import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 public abstract class AbstractEndpoint<S> {
 
     // -------------------------------------------------------------- Constants
-
-    protected static final String DEFAULT_CIPHERS = "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!kRSA";
 
     protected static final StringManager sm = StringManager.getManager(
             AbstractEndpoint.class.getPackage().getName());
@@ -83,8 +79,18 @@ public abstract class AbstractEndpoint<S> {
 
         /**
          * Obtain the GlobalRequestProcessor associated with the handler.
+         *
+         * @return the GlobalRequestProcessor
          */
         public Object getGlobal();
+
+
+        /**
+         * Release any resources associated with the given SocketWrapper.
+         *
+         * @param socketWrapper The socketWrapper to release resources for
+         */
+        public void release(SocketWrapperBase<S> socketWrapper);
 
 
         /**
@@ -215,6 +221,57 @@ public abstract class AbstractEndpoint<S> {
 
     // ----------------------------------------------------------------- Properties
 
+    private String defaultSSLHostConfigName = SSLHostConfig.DEFAULT_SSL_HOST_NAME;
+    public String getDefaultSSLHostConfigName() {
+        return defaultSSLHostConfigName;
+    }
+    public void setDefaultSSLHostConfigName(String defaultSSLHostConfigName) {
+        this.defaultSSLHostConfigName = defaultSSLHostConfigName;
+    }
+
+
+    protected Map<String,SSLHostConfig> sslHostConfigs = new ConcurrentHashMap<>();
+    public void addSslHostConfig(SSLHostConfig sslHostConfig) {
+        String key = sslHostConfig.getHostName();
+        if (key == null || key.length() == 0) {
+            throw new IllegalArgumentException(sm.getString("endpoint.noSslHostName"));
+        }
+        SSLHostConfig duplicate = sslHostConfigs.put(key, sslHostConfig);
+        if (duplicate != null) {
+            throw new IllegalArgumentException(sm.getString("endpoint.duplicateSslHostName", key));
+        }
+        sslHostConfig.setConfigType(getSslConfigType());
+    }
+    protected abstract SSLHostConfig.Type getSslConfigType();
+
+    protected SSLHostConfig getSSLHostConfig(String sniHostName) {
+        SSLHostConfig result = null;
+
+        if (sniHostName != null) {
+            // First choice - direct match
+            result = sslHostConfigs.get(sniHostName);
+            if (result != null) {
+                return result;
+            }
+            // Second choice, wildcard match
+            int indexOfDot = sniHostName.indexOf('.');
+            if (indexOfDot > -1) {
+                result = sslHostConfigs.get("*" + sniHostName.substring(indexOfDot));
+            }
+        }
+
+        // Fall-back. Use the default
+        if (result == null) {
+            result = sslHostConfigs.get(getDefaultSSLHostConfigName());
+        }
+        if (result == null) {
+            // Should never happen.
+            throw new IllegalStateException();
+        }
+        return result;
+    }
+
+
     /**
      * Has the user requested that send file be used where possible?
      */
@@ -225,8 +282,6 @@ public abstract class AbstractEndpoint<S> {
     public void setUseSendfile(boolean useSendfile) {
         this.useSendfile = useSendfile;
     }
-
-
 
 
     /**
@@ -371,6 +426,9 @@ public abstract class AbstractEndpoint<S> {
 
     /**
      * Socket TCP no delay.
+     *
+     * @return The current TCP no delay setting for sockets created by this
+     *         endpoint
      */
     public boolean getTcpNoDelay() { return socketProperties.getTcpNoDelay();}
     public void setTcpNoDelay(boolean tcpNoDelay) { socketProperties.setTcpNoDelay(tcpNoDelay); }
@@ -378,6 +436,9 @@ public abstract class AbstractEndpoint<S> {
 
     /**
      * Socket linger.
+     *
+     * @return The current socket linger time for sockets created by this
+     *         endpoint
      */
     public int getSoLinger() { return socketProperties.getSoLingerTime(); }
     public void setSoLinger(int soLinger) {
@@ -388,6 +449,8 @@ public abstract class AbstractEndpoint<S> {
 
     /**
      * Socket timeout.
+     *
+     * @return The current socket timeout for sockets created by this endpoint
      */
     public int getSoTimeout() { return socketProperties.getSoTimeout(); }
     public void setSoTimeout(int soTimeout) { socketProperties.setSoTimeout(soTimeout); }
@@ -496,6 +559,11 @@ public abstract class AbstractEndpoint<S> {
     protected abstract boolean getDeferAccept();
 
 
+    protected final List<String> negotiableProtocols = new ArrayList<>();
+    public void addNegotiatedProtocol(String negotiableProtocol) {
+        negotiableProtocols.add(negotiableProtocol);
+    }
+
     /**
      * Attributes provide a way for configuration to be passed to sub-components
      * without the {@link org.apache.coyote.ProtocolHandler} being aware of the
@@ -509,6 +577,9 @@ public abstract class AbstractEndpoint<S> {
      * {@link org.apache.coyote.ProtocolHandler} needs to be made available to
      * sub-components. The specific setter will call this method to populate the
      * attributes.
+     *
+     * @param name  Name of property to set
+     * @param value The value to set the property to
      */
     public void setAttribute(String name, Object value) {
         if (getLog().isTraceEnabled()) {
@@ -518,6 +589,11 @@ public abstract class AbstractEndpoint<S> {
     }
     /**
      * Used by sub-components to retrieve configuration information.
+     *
+     * @param key The name of the property for which the value should be
+     *            retrieved
+     *
+     * @return The value of the specified property
      */
     public Object getAttribute(String key) {
         Object value = attributes.get(key);
@@ -658,7 +734,6 @@ public abstract class AbstractEndpoint<S> {
                 if (getSocketProperties().getUnlockTimeout() > utmo)
                     utmo = getSocketProperties().getUnlockTimeout();
                 s.setSoTimeout(stmo);
-                // TODO Consider hard-coding to s.setSoLinger(true,0)
                 s.setSoLinger(getSocketProperties().getSoLingerOn(),getSocketProperties().getSoLingerTime());
                 if (getLog().isDebugEnabled()) {
                     getLog().debug("About to unlock socket for:"+saddr);
@@ -831,24 +906,6 @@ public abstract class AbstractEndpoint<S> {
     }
 
 
-    private String adjustRelativePath(String path, String relativeTo) {
-        // Empty or null path can't point to anything useful. The assumption is
-        // that the value is deliberately empty / null so leave it that way.
-        if (path == null || path.length() == 0) {
-            return path;
-        }
-        String newPath = path;
-        File f = new File(newPath);
-        if ( !f.isAbsolute()) {
-            newPath = relativeTo + File.separator + newPath;
-            f = new File(newPath);
-        }
-        if (!f.exists()) {
-            getLog().warn("configured file:["+newPath+"] does not exist.");
-        }
-        return newPath;
-    }
-
     protected abstract Log getLog();
 
     protected LimitLatch initializeConnectionLatch() {
@@ -915,176 +972,9 @@ public abstract class AbstractEndpoint<S> {
 
     }
 
-    // --------------------  SSL related properties --------------------
-
-    private String sslImplementationName = null;
-    public String getSslImplementationName() { return sslImplementationName; }
-    public void setSslImplementationName(String s) {
-        this.sslImplementationName = s;
-    }
-
-    private String algorithm = KeyManagerFactory.getDefaultAlgorithm();
-    public String getAlgorithm() { return algorithm;}
-    public void setAlgorithm(String s ) { this.algorithm = s;}
-
-    private String clientAuth = "false";
-    public String getClientAuth() { return clientAuth;}
-    public void setClientAuth(String s ) { this.clientAuth = s;}
-
-    private String keystoreFile = System.getProperty("user.home")+"/.keystore";
-    public String getKeystoreFile() { return keystoreFile;}
-    public void setKeystoreFile(String s ) {
-        keystoreFile = adjustRelativePath(s,
-                System.getProperty(Constants.CATALINA_BASE_PROP));
-    }
-
-    private String keystorePass = null;
-    public String getKeystorePass() { return keystorePass;}
-    public void setKeystorePass(String s ) { this.keystorePass = s;}
-
-    private String keystoreType = "JKS";
-    public String getKeystoreType() { return keystoreType;}
-    public void setKeystoreType(String s ) { this.keystoreType = s;}
-
-    private String keystoreProvider = null;
-    public String getKeystoreProvider() { return keystoreProvider;}
-    public void setKeystoreProvider(String s ) { this.keystoreProvider = s;}
-
-    private String sslProtocol = "TLS";
-    public String getSslProtocol() { return sslProtocol;}
-    public void setSslProtocol(String s) { sslProtocol = s;}
-
-    private String ciphers = DEFAULT_CIPHERS;
-    public String getCiphers() { return ciphers;}
-    public void setCiphers(String s) {
-        ciphers = s;
-    }
-    /**
-     * @return  The ciphers in use by this Endpoint
-     */
-    public abstract String[] getCiphersUsed();
-
-    private String useServerCipherSuitesOrder = "false";
-    public String getUseServerCipherSuitesOrder() { return useServerCipherSuitesOrder;}
-    public void setUseServerCipherSuitesOrder(String s) { this.useServerCipherSuitesOrder = s;}
-
-    private String keyAlias = null;
-    public String getKeyAlias() { return keyAlias;}
-    public void setKeyAlias(String s ) { keyAlias = s;}
-
-    private String keyPass = null;
-    public String getKeyPass() { return keyPass;}
-    public void setKeyPass(String s ) { this.keyPass = s;}
-
-    private String truststoreFile = System.getProperty("javax.net.ssl.trustStore");
-    public String getTruststoreFile() {return truststoreFile;}
-    public void setTruststoreFile(String s) {
-        truststoreFile = adjustRelativePath(s,
-                System.getProperty(Constants.CATALINA_BASE_PROP));
-    }
-
-    private String truststorePass =
-        System.getProperty("javax.net.ssl.trustStorePassword");
-    public String getTruststorePass() {return truststorePass;}
-    public void setTruststorePass(String truststorePass) {
-        this.truststorePass = truststorePass;
-    }
-
-    private String truststoreType =
-        System.getProperty("javax.net.ssl.trustStoreType");
-    public String getTruststoreType() {return truststoreType;}
-    public void setTruststoreType(String truststoreType) {
-        this.truststoreType = truststoreType;
-    }
-
-    private String truststoreProvider = null;
-    public String getTruststoreProvider() {return truststoreProvider;}
-    public void setTruststoreProvider(String truststoreProvider) {
-        this.truststoreProvider = truststoreProvider;
-    }
-
-    private String truststoreAlgorithm = null;
-    public String getTruststoreAlgorithm() {return truststoreAlgorithm;}
-    public void setTruststoreAlgorithm(String truststoreAlgorithm) {
-        this.truststoreAlgorithm = truststoreAlgorithm;
-    }
-
-    private String trustManagerClassName = null;
-    public String getTrustManagerClassName() {return trustManagerClassName;}
-    public void setTrustManagerClassName(String trustManagerClassName) {
-        this.trustManagerClassName = trustManagerClassName;
-    }
-
-    private String crlFile = null;
-    public String getCrlFile() {return crlFile;}
-    public void setCrlFile(String crlFile) {
-        this.crlFile = crlFile;
-    }
-
-    private String trustMaxCertLength = null;
-    public String getTrustMaxCertLength() {return trustMaxCertLength;}
-    public void setTrustMaxCertLength(String trustMaxCertLength) {
-        this.trustMaxCertLength = trustMaxCertLength;
-    }
-
-    private String sessionCacheSize = null;
-    public String getSessionCacheSize() { return sessionCacheSize;}
-    public void setSessionCacheSize(String s) { sessionCacheSize = s;}
-
-    private String sessionTimeout = "86400";
-    public String getSessionTimeout() { return sessionTimeout;}
-    public void setSessionTimeout(String s) { sessionTimeout = s;}
-
-    private String allowUnsafeLegacyRenegotiation = null;
-    public String getAllowUnsafeLegacyRenegotiation() {
-        return allowUnsafeLegacyRenegotiation;
-    }
-    public void setAllowUnsafeLegacyRenegotiation(String s) {
-        allowUnsafeLegacyRenegotiation = s;
-    }
-
-
-    private String[] sslEnabledProtocolsarr = new String[0];
-    public String[] getSslEnabledProtocolsArray() {
-        return this.sslEnabledProtocolsarr;
-    }
-    public void setSslEnabledProtocols(String s) {
-        if (s == null) {
-            this.sslEnabledProtocolsarr = new String[0];
-        } else {
-            ArrayList<String> sslEnabledProtocols = new ArrayList<>();
-            StringTokenizer t = new StringTokenizer(s,",");
-            while (t.hasMoreTokens()) {
-                String p = t.nextToken().trim();
-                if (p.length() > 0) {
-                    sslEnabledProtocols.add(p);
-                }
-            }
-            sslEnabledProtocolsarr = sslEnabledProtocols.toArray(
-                    new String[sslEnabledProtocols.size()]);
-        }
-    }
-
 
     protected final Set<SocketWrapperBase<S>> waitingRequests = Collections
             .newSetFromMap(new ConcurrentHashMap<SocketWrapperBase<S>, Boolean>());
-
-    /**
-     * Configures SSLEngine to honor cipher suites ordering based upon
-     * endpoint configuration.
-     */
-    protected void configureUseServerCipherSuitesOrder(SSLEngine engine) {
-        String useServerCipherSuitesOrderStr = this
-                .getUseServerCipherSuitesOrder().trim();
-
-        SSLParameters sslParameters = engine.getSSLParameters();
-        boolean useServerCipherSuitesOrder =
-            ("true".equalsIgnoreCase(useServerCipherSuitesOrderStr)
-                || "yes".equalsIgnoreCase(useServerCipherSuitesOrderStr));
-
-        sslParameters.setUseCipherSuitesOrder(useServerCipherSuitesOrder);
-        engine.setSSLParameters(sslParameters);
-    }
 
     /**
      * The async timeout thread.

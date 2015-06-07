@@ -70,11 +70,20 @@ public class Nio2Channel implements AsynchronousByteChannel {
         sc.close();
     }
 
+
+    /**
+     * Close the connection.
+     *
+     * @param force Should the underlying socket be forcibly closed?
+     *
+     * @throws IOException If closing the secure channel fails.
+     */
     public void close(boolean force) throws IOException {
         if (isOpen() || force) {
             close();
         }
     }
+
 
     /**
      * Tells whether or not this channel is open.
@@ -133,6 +142,12 @@ public class Nio2Channel implements AsynchronousByteChannel {
             long timeout, TimeUnit unit, A attachment,
             CompletionHandler<Integer, ? super A> handler) {
         sc.read(dst, timeout, unit, attachment, handler);
+    }
+
+    public <A> void read(ByteBuffer[] dsts,
+            int offset, int length, long timeout, TimeUnit unit,
+            A attachment, CompletionHandler<Long,? super A> handler) {
+        sc.read(dsts, offset, length, timeout, unit, attachment, handler);
     }
 
     @Override

@@ -40,7 +40,6 @@ import org.apache.catalina.ha.ClusterMessage;
 import org.apache.catalina.ha.ClusterSession;
 import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.session.StandardSession;
-import org.apache.catalina.tribes.io.ReplicationStream;
 import org.apache.catalina.tribes.tipis.ReplicatedMapEntry;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -161,8 +160,7 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
     @Override
     public void applyDiff(byte[] diff, int offset, int length) throws IOException, ClassNotFoundException {
         lock();
-        try {
-            ReplicationStream stream = ( (ClusterManager) getManager()).getReplicationStream(diff, offset, length);
+        try (ObjectInputStream stream = ((ClusterManager) getManager()).getReplicationStream(diff, offset, length)) {
             ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
             try {
                 ClassLoader[] loaders = getClassLoaders();
@@ -504,10 +502,14 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
 
     @Override
     public void addSessionListener(SessionListener listener) {
+        addSessionListener(listener, true);
+    }
+
+    public void addSessionListener(SessionListener listener, boolean addDeltaRequest) {
         lock();
         try {
             super.addSessionListener(listener);
-            if (deltaRequest != null && listener instanceof ReplicatedSessionListener) {
+            if (addDeltaRequest && deltaRequest != null && listener instanceof ReplicatedSessionListener) {
                 deltaRequest.addSessionListener(listener);
             }
         } finally {
@@ -517,10 +519,14 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
 
     @Override
     public void removeSessionListener(SessionListener listener) {
+        removeSessionListener(listener, true);
+    }
+
+    public void removeSessionListener(SessionListener listener, boolean addDeltaRequest) {
         lock();
         try {
             super.removeSessionListener(listener);
-            if (deltaRequest != null && listener instanceof ReplicatedSessionListener) {
+            if (addDeltaRequest && deltaRequest != null && listener instanceof ReplicatedSessionListener) {
                 deltaRequest.removeSessionListener(listener);
             }
         } finally {
@@ -586,7 +592,9 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         lock();
         try {
             if (deltaRequest == null) {
-                deltaRequest = new DeltaRequest(getIdInternal(), false);
+                boolean recordAllActions = manager instanceof ClusterManagerBase &&
+                        ((ClusterManagerBase)manager).isRecordAllActions();
+                deltaRequest = new DeltaRequest(getIdInternal(), recordAllActions);
             } else {
                 deltaRequest.reset();
                 deltaRequest.setSessionId(getIdInternal());

@@ -253,10 +253,6 @@
       description="Total number of sessions created by this manager"
       type="long"/>
     <attribute
-      name="sessionIdLength"
-      description="The session id length (in bytes) of Sessions created by this Manager"
-      type="int"/>
-    <attribute
       name="sessionMaxAliveTime"
       description="Longest time an expired session had been alive"
       type="int"/>
@@ -308,6 +304,11 @@
       name="stateTimestampDrop"
       is="true"
       description="All session messages before state transfer message creation are dropped."
+      type="boolean"/>
+    <attribute
+      name="recordAllActions"
+      is="true"
+      description="Flag whether send all actions for session across Tomcat cluster nodes."
       type="boolean"/>
     <operation
       name="expireSession"
@@ -474,10 +475,6 @@
       description="Send session attribute change events on backup nodes"
       type="boolean"/>
     <attribute
-      name="pathname"
-      description="Path name of the disk file in which active sessions"
-      type="java.lang.String"/>
-    <attribute
       name="processExpiresFrequency"
       description="The frequency of the manager checks (expiration and passivation)"
       type="int"/>
@@ -493,10 +490,6 @@
       name="sessionCounter"
       description="Total number of sessions created by this manager"
       type="long"/>
-    <attribute
-      name="sessionIdLength"
-      description="The session id length (in bytes) of Sessions created by this Manager"
-      type="int"/>
     <attribute
       name="sessionMaxAliveTime"
       description="Longest time an expired session had been alive"
@@ -530,6 +523,11 @@
       name="secureRandomProvider"
       description="The secure random number generator provider name"
       type="java.lang.String"/>
+    <attribute
+      name="recordAllActions"
+      is="true"
+      description="Flag whether send all actions for session across Tomcat cluster nodes."
+      type="boolean"/>
     <operation
       name="expireSession"
       description="Expired the given session"
