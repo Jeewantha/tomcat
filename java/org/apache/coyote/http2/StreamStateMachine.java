@@ -83,12 +83,12 @@ public class StreamStateMachine {
 
 
     public synchronized void sendReset() {
-        stateChange(state, State.CLOSED_TX);
+        stateChange(state, State.CLOSED_RST_TX);
     }
 
 
     public synchronized void receiveReset() {
-        stateChange(state, State.CLOSED_RST);
+        stateChange(state, State.CLOSED_RST_RX);
     }
 
 
@@ -107,15 +107,15 @@ public class StreamStateMachine {
         // No state change. Checks that the frame type is valid for the current
         // state of this stream.
         if (!isFrameTypePermitted(frameType)) {
-            int errorStream;
             if (state.connectionErrorForInvalidFrame) {
-                errorStream = 0;
+                throw new ConnectionException(sm.getString("streamStateMachine.invalidFrame",
+                        stream.getConnectionId(), stream.getIdentifier(), state, frameType),
+                        state.errorCodeForInvalidFrame);
             } else {
-                errorStream = stream.getIdentifier().intValue();
+                throw new StreamException(sm.getString("streamStateMachine.invalidFrame",
+                        stream.getConnectionId(), stream.getIdentifier(), state, frameType),
+                        state.errorCodeForInvalidFrame, stream.getIdentifier().intValue());
             }
-            throw new Http2Exception(sm.getString("streamStateMachine.invalidFrame",
-                    stream.getConnectionId(), stream.getIdentifier(), state, frameType),
-                    errorStream, state.errorCodeForInvalidFrame);
         }
     }
 
@@ -125,36 +125,74 @@ public class StreamStateMachine {
     }
 
 
-    private enum State {
-        IDLE               (true,  ErrorCode.PROTOCOL_ERROR, FrameType.HEADERS, FrameType.PRIORITY),
-        OPEN               (true,  ErrorCode.PROTOCOL_ERROR, FrameType.DATA, FrameType.HEADERS,
-                                    FrameType.PRIORITY, FrameType.RST, FrameType.PUSH_PROMISE,
-                                    FrameType.WINDOW_UPDATE),
-        RESERVED_LOCAL     (true,  ErrorCode.PROTOCOL_ERROR, FrameType.PRIORITY, FrameType.RST,
-                                    FrameType.WINDOW_UPDATE),
-        RESERVED_REMOTE    (true,  ErrorCode.PROTOCOL_ERROR, FrameType.HEADERS, FrameType.PRIORITY,
-                                    FrameType.RST),
-        HALF_CLOSED_LOCAL  (true,  ErrorCode.PROTOCOL_ERROR, FrameType.DATA, FrameType.HEADERS,
-                                    FrameType.PRIORITY, FrameType.RST, FrameType.PUSH_PROMISE,
-                                    FrameType.WINDOW_UPDATE),
-        HALF_CLOSED_REMOTE (true,  ErrorCode.STREAM_CLOSED, FrameType.PRIORITY, FrameType.RST,
-                                    FrameType.WINDOW_UPDATE),
-        CLOSED_RX          (true,  ErrorCode.STREAM_CLOSED, FrameType.PRIORITY),
-        CLOSED_RST         (false, ErrorCode.STREAM_CLOSED, FrameType.PRIORITY),
-        CLOSED_TX          (true,  ErrorCode.STREAM_CLOSED, FrameType.PRIORITY, FrameType.RST,
-                                    FrameType.WINDOW_UPDATE);
+    public synchronized boolean isActive() {
+        return state.isActive();
+    }
 
+
+    public synchronized boolean isClosedFinal() {
+        return state == State.CLOSED_FINAL;
+    }
+
+    public synchronized void closeIfIdle() {
+        stateChange(State.IDLE, State.CLOSED_FINAL);
+    }
+
+
+    private enum State {
+        IDLE               (false, true,  Http2Error.PROTOCOL_ERROR, FrameType.HEADERS,
+                                                                     FrameType.PRIORITY),
+        OPEN               (true,  true,  Http2Error.PROTOCOL_ERROR, FrameType.DATA,
+                                                                     FrameType.HEADERS,
+                                                                     FrameType.PRIORITY,
+                                                                     FrameType.RST,
+                                                                     FrameType.PUSH_PROMISE,
+                                                                     FrameType.WINDOW_UPDATE),
+        RESERVED_LOCAL     (false, true,  Http2Error.PROTOCOL_ERROR, FrameType.PRIORITY,
+                                                                     FrameType.RST,
+                                                                     FrameType.WINDOW_UPDATE),
+        RESERVED_REMOTE    (false, true,  Http2Error.PROTOCOL_ERROR, FrameType.HEADERS,
+                                                                     FrameType.PRIORITY,
+                                                                     FrameType.RST),
+        HALF_CLOSED_LOCAL  (true,  true,  Http2Error.PROTOCOL_ERROR, FrameType.DATA,
+                                                                     FrameType.HEADERS,
+                                                                     FrameType.PRIORITY,
+                                                                     FrameType.RST,
+                                                                     FrameType.PUSH_PROMISE,
+                                                                     FrameType.WINDOW_UPDATE),
+        HALF_CLOSED_REMOTE (true,  true,  Http2Error.STREAM_CLOSED,  FrameType.PRIORITY,
+                                                                     FrameType.RST,
+                                                                     FrameType.WINDOW_UPDATE),
+        CLOSED_RX          (false, true,  Http2Error.STREAM_CLOSED,  FrameType.PRIORITY),
+        CLOSED_TX          (false, true,  Http2Error.STREAM_CLOSED,  FrameType.PRIORITY,
+                                                                     FrameType.RST,
+                                                                     FrameType.WINDOW_UPDATE),
+        CLOSED_RST_RX      (false, false, Http2Error.STREAM_CLOSED,  FrameType.PRIORITY),
+        CLOSED_RST_TX      (false, false, Http2Error.STREAM_CLOSED,  FrameType.DATA,
+                                                                     FrameType.HEADERS,
+                                                                     FrameType.PRIORITY,
+                                                                     FrameType.RST,
+                                                                     FrameType.PUSH_PROMISE,
+                                                                     FrameType.WINDOW_UPDATE),
+        CLOSED_FINAL       (false, true,  Http2Error.PROTOCOL_ERROR, FrameType.PRIORITY);
+
+        private final boolean active;
         private final boolean connectionErrorForInvalidFrame;
-        private final ErrorCode errorCodeForInvalidFrame;
+        private final Http2Error errorCodeForInvalidFrame;
         private final Set<FrameType> frameTypesPermitted = new HashSet<>();
 
-        private State(boolean connectionErrorForInvalidFrame, ErrorCode errorCode,
-                FrameType... frameTypes) {
+        private State(boolean active, boolean connectionErrorForInvalidFrame,
+                Http2Error errorCode, FrameType... frameTypes) {
+            this.active = active;
             this.connectionErrorForInvalidFrame = connectionErrorForInvalidFrame;
             this.errorCodeForInvalidFrame = errorCode;
             for (FrameType frameType : frameTypes) {
                 frameTypesPermitted.add(frameType);
             }
+        }
+
+        public boolean isActive() {
+            return active;
         }
 
         public boolean isFrameTypePermitted(FrameType frameType) {

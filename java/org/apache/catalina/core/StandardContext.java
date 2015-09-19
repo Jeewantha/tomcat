@@ -42,6 +42,7 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -129,7 +130,7 @@ import org.apache.tomcat.util.descriptor.web.MessageDestinationRef;
 import org.apache.tomcat.util.descriptor.web.SecurityCollection;
 import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 import org.apache.tomcat.util.http.CookieProcessor;
-import org.apache.tomcat.util.http.LegacyCookieProcessor;
+import org.apache.tomcat.util.http.Rfc6265CookieProcessor;
 import org.apache.tomcat.util.scan.StandardJarScanner;
 import org.apache.tomcat.util.security.PrivilegedGetTccl;
 import org.apache.tomcat.util.security.PrivilegedSetTccl;
@@ -217,12 +218,11 @@ public class StandardContext extends ContainerBase
     private final Set<Object> noPluggabilityListeners = new HashSet<>();
 
     /**
-     * The set of instantiated application event listener objects. Note that
+     * The list of instantiated application event listener objects. Note that
      * SCIs and other code may use the pluggability APIs to add listener
      * instances directly to this list before the application starts.
      */
-    private Object applicationEventListenersObjects[] =
-        new Object[0];
+    private List<Object> applicationEventListenersList = new CopyOnWriteArrayList<>();
 
 
     /**
@@ -818,15 +818,16 @@ public class StandardContext extends ContainerBase
 
     @Override
     public void setCookieProcessor(CookieProcessor cookieProcessor) {
+        if (cookieProcessor == null) {
+            throw new IllegalArgumentException(
+                    sm.getString("standardContext.cookieProcessor.null"));
+        }
         this.cookieProcessor = cookieProcessor;
     }
 
 
     @Override
     public CookieProcessor getCookieProcessor() {
-        if (cookieProcessor == null) {
-            cookieProcessor = new LegacyCookieProcessor();
-        }
         return cookieProcessor;
     }
 
@@ -1149,26 +1150,34 @@ public class StandardContext extends ContainerBase
 
     @Override
     public Object[] getApplicationEventListeners() {
-        return (applicationEventListenersObjects);
+        return applicationEventListenersList.toArray();
     }
 
 
+    /**
+     * {@inheritDoc}
+     *
+     * Note that this implementation is not thread safe. If two threads call
+     * this method concurrently, the result may be either set of listeners or a
+     * the union of both.
+     */
     @Override
     public void setApplicationEventListeners(Object listeners[]) {
-        applicationEventListenersObjects = listeners;
+        applicationEventListenersList.clear();
+        if (listeners != null && listeners.length > 0) {
+            applicationEventListenersList.addAll(Arrays.asList(listeners));
+        }
     }
 
 
     /**
      * Add a listener to the end of the list of initialized application event
      * listeners.
+     *
+     * @param listener The listener to add
      */
     public void addApplicationEventListener(Object listener) {
-        int len = applicationEventListenersObjects.length;
-        Object[] newListeners = Arrays.copyOf(applicationEventListenersObjects,
-                len + 1);
-        newListeners[len] = listener;
-        applicationEventListenersObjects = newListeners;
+        applicationEventListenersList.add(listener);
     }
 
 
@@ -2342,7 +2351,7 @@ public class StandardContext extends ContainerBase
         try {
             if (getState().isAvailable()) {
                 throw new IllegalStateException
-                    (sm.getString("standardContext.resources.started"));
+                    (sm.getString("standardContext.resourcesStart"));
             }
 
             oldResources = this.resources;
@@ -4978,6 +4987,11 @@ public class StandardContext extends ContainerBase
             setLoader(webappLoader);
         }
 
+        // An explicit cookie processor hasn't been specified; use the default
+        if (cookieProcessor == null) {
+            cookieProcessor = new Rfc6265CookieProcessor();
+        }
+
         // Initialize character set mapper
         getCharsetMapper();
 
@@ -5572,7 +5586,7 @@ public class StandardContext extends ContainerBase
         distributable = false;
 
         applicationListeners = new String[0];
-        applicationEventListenersObjects = new Object[0];
+        applicationEventListenersList.clear();
         applicationLifecycleListenersObjects = new Object[0];
         jspConfigDescriptor = null;
 

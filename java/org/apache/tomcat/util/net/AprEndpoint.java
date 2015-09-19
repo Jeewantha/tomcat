@@ -24,7 +24,6 @@ import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -51,6 +50,7 @@ import org.apache.tomcat.jni.Sockaddr;
 import org.apache.tomcat.jni.Socket;
 import org.apache.tomcat.jni.Status;
 import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.buf.ByteBufferUtils;
 import org.apache.tomcat.util.net.AbstractEndpoint.Acceptor.AcceptorState;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SSLHostConfig.Type;
@@ -76,11 +76,6 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
     // -------------------------------------------------------------- Constants
 
     private static final Log log = LogFactory.getLog(AprEndpoint.class);
-
-    // http/1.1 with preceding length
-    private static final byte[] ALPN_DEFAULT =
-            new byte[] { 0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31 };
-
 
     // ----------------------------------------------------------------- Fields
 
@@ -143,6 +138,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
      */
     protected Handler<Long> handler = null;
     public void setHandler(Handler<Long> handler ) { this.handler = handler; }
+    @Override
     public Handler<Long> getHandler() { return handler; }
 
 
@@ -367,9 +363,15 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         if (isSSLEnabled()) {
             for (SSLHostConfig sslHostConfig : sslHostConfigs.values()) {
 
-                if (SSLHostConfig.adjustRelativePath(sslHostConfig.getCertificateFile()) == null) {
-                    // This is required
-                    throw new Exception(sm.getString("endpoint.apr.noSslCertFile"));
+                for (SSLHostConfigCertificate certificate : sslHostConfig.getCertificates(true)) {
+                    if (SSLHostConfig.adjustRelativePath(certificate.getCertificateFile()) == null) {
+                        // This is required
+                        throw new Exception(sm.getString("endpoint.apr.noSslCertFile"));
+                    }
+                }
+                if (sslHostConfig.getCertificates().size() > 2) {
+                    // TODO: Can this limitation be removed?
+                    throw new Exception(sm.getString("endpoint.apr.tooManyCertFiles"));
                 }
 
                 // SSL protocol
@@ -495,14 +497,15 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 // List the ciphers that the client is permitted to negotiate
                 SSLContext.setCipherSuite(ctx, sslHostConfig.getCiphers());
                 // Load Server key and certificate
-                SSLContext.setCertificate(ctx,
-                        SSLHostConfig.adjustRelativePath(sslHostConfig.getCertificateFile()),
-                        SSLHostConfig.adjustRelativePath(sslHostConfig.getCertificateKeyFile()),
-                        sslHostConfig.getCertificateKeyPassword(), SSL.SSL_AIDX_RSA);
-                // Set certificate chain file
-                SSLContext.setCertificateChainFile(ctx,
-                        SSLHostConfig.adjustRelativePath(sslHostConfig.getCertificateChainFile()),
-                        false);
+                // TODO: Confirm assumption that idx is not specific to
+                //       key/certificate type
+                int idx = 0;
+                for (SSLHostConfigCertificate certificate : sslHostConfig.getCertificates(true)) {
+                    SSLContext.setCertificate(ctx,
+                            SSLHostConfig.adjustRelativePath(certificate.getCertificateFile()),
+                            SSLHostConfig.adjustRelativePath(certificate.getCertificateKeyFile()),
+                            certificate.getCertificateKeyPassword(), idx++);
+                }
                 // Support Client Certificates
                 SSLContext.setCACertificate(ctx,
                         SSLHostConfig.adjustRelativePath(sslHostConfig.getCaCertificateFile()),
@@ -538,15 +541,16 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 }
 
                 if (negotiableProtocols.size() > 0) {
-                    byte[] protocols = buildAlpnConfig(negotiableProtocols);
-                    if (SSLContext.setALPN(ctx, protocols, protocols.length) != 0) {
-                        log.warn(sm.getString("endpoint.alpn.fail", negotiableProtocols));
-                    }
+                    ArrayList<String> protocols = new ArrayList<>();
+                    protocols.addAll(negotiableProtocols);
+                    protocols.add("http/1.1");
+                    String[] protocolsArray = protocols.toArray(new String[0]);
+                    SSLContext.setAlpnProtos(ctx, protocolsArray, SSL.SSL_SELECTOR_FAILURE_NO_ADVERTISE);
                 }
-                sslHostConfig.setSslContext(Long.valueOf(ctx));
+                sslHostConfig.setOpenSslContext(Long.valueOf(ctx));
             }
             SSLHostConfig defaultSSLHostConfig = sslHostConfigs.get(getDefaultSSLHostConfigName());
-            Long defaultSSLContext = (Long) defaultSSLHostConfig.getSslContext();
+            Long defaultSSLContext = (Long) defaultSSLHostConfig.getOpenSslContext();
             sslContext = defaultSSLContext.longValue();
             SSLContext.registerDefault(defaultSSLContext, this);
         }
@@ -556,45 +560,12 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
     @Override
     public long getSslContext(String sniHostName) {
         SSLHostConfig sslHostConfig = getSSLHostConfig(sniHostName);
-        Long ctx = (Long) sslHostConfig.getSslContext();
+        Long ctx = (Long) sslHostConfig.getOpenSslContext();
         if (ctx != null) {
             return ctx.longValue();
         }
         // Default
         return 0;
-    }
-
-
-    private byte[] buildAlpnConfig(List<String> protocols) {
-        /*
-         * The expected format is zero or more of the following:
-         * - Single byte for size
-         * - Sequence of size bytes for the identifier
-         */
-        byte[][] protocolsBytes = new byte[protocols.size()][];
-        int i = 0;
-        int size = 0;
-        for (String protocol : protocols) {
-            protocolsBytes[i] = protocol.getBytes(StandardCharsets.UTF_8);
-            size += protocolsBytes[i].length;
-            // And one byte to store the size
-            size++;
-            i++;
-        }
-
-        size += ALPN_DEFAULT.length;
-
-        byte[] result = new byte[size];
-        int pos = 0;
-        for (byte[] protocolBytes : protocolsBytes) {
-            result[pos++] = (byte) (0xff & protocolBytes.length);
-            System.arraycopy(protocolBytes, 0, result, pos, protocolBytes.length);
-            pos += protocolBytes.length;
-        }
-
-        System.arraycopy(ALPN_DEFAULT, 0, result, pos, ALPN_DEFAULT.length);
-
-        return result;
     }
 
 
@@ -735,7 +706,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             Long ctx = Long.valueOf(sslContext);
             SSLContext.unregisterDefault(ctx);
             for (SSLHostConfig sslHostConfig : sslHostConfigs.values()) {
-                sslHostConfig.setSslContext(null);
+                sslHostConfig.setOpenSslContext(null);
             }
             sslContext = 0;
         }
@@ -1599,8 +1570,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         }
 
         /**
-         * The background thread that listens for incoming TCP/IP connections
-         * and hands them off to an appropriate processor.
+         * The background thread that adds sockets to the Poller, checks the
+         * poller for triggered events and hands the associated socket off to an
+         * appropriate processor as events occur.
          */
         @Override
         public void run() {
@@ -1611,14 +1583,6 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             // Loop until we receive a shutdown command
             while (pollerRunning) {
 
-                // Loop if endpoint is paused
-                while (pollerRunning && paused) {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        // Ignore
-                    }
-                }
                 // Check timeouts if the poller is empty.
                 while (pollerRunning && connectionCount.get() < 1 &&
                         addList.size() < 1 && closeList.size() < 1) {
@@ -1904,7 +1868,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     }
                 } catch (Throwable t) {
                     ExceptionUtils.handleThrowable(t);
-                    getLog().warn(sm.getString("endpoint.timeout.error"), t);
+                    getLog().warn(sm.getString("endpoint.timeout.err"), t);
                 }
             }
 
@@ -2227,7 +2191,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                                 errn -=  Status.APR_OS_START_USERERR;
                             }
                             getLog().error(sm.getString(
-                                    "Unexpected poller error",
+                                    "endpoint.apr.pollError",
                                     Integer.valueOf(errn),
                                     Error.strerror(errn)));
                             // Handle poll critical failure
@@ -2484,8 +2448,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     // Set the current settings for this socket
                     setBlockingStatus(block);
                     if (block) {
+                        Socket.optSet(getSocket().longValue(), Socket.APR_SO_NONBLOCK, 0);
                         Socket.timeoutSet(getSocket().longValue(), getReadTimeout() * 1000);
                     } else {
+                        Socket.optSet(getSocket().longValue(), Socket.APR_SO_NONBLOCK, 1);
                         Socket.timeoutSet(getSocket().longValue(), 0);
                     }
                     // Downgrade the lock
@@ -2569,6 +2535,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     return;
                 }
                 closed = true;
+                if (sslOutputBuffer != null) {
+                    ByteBufferUtils.cleanDirectBuffer(sslOutputBuffer);
+                }
                 ((AprEndpoint) getEndpoint()).getPoller().close(getSocket().longValue());
             }
         }
@@ -2577,7 +2546,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         @Override
         protected void doWriteInternal(boolean block) throws IOException {
             if (closed) {
-                throw new IOException(sm.getString("apr.closed", getSocket()));
+                throw new IOException(sm.getString("socket.apr.closed", getSocket()));
             }
 
             Lock readLock = getBlockingStatusReadLock();
@@ -2600,8 +2569,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 // Set the current settings for this socket
                 setBlockingStatus(block);
                 if (block) {
+                    Socket.optSet(getSocket().longValue(), Socket.APR_SO_NONBLOCK, 0);
                     Socket.timeoutSet(getSocket().longValue(), getWriteTimeout() * 1000);
                 } else {
+                    Socket.optSet(getSocket().longValue(), Socket.APR_SO_NONBLOCK, 1);
                     Socket.timeoutSet(getSocket().longValue(), 0);
                 }
 

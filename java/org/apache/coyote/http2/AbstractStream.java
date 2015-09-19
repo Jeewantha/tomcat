@@ -18,18 +18,24 @@ package org.apache.coyote.http2;
 
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Used to managed prioritisation.
  */
 abstract class AbstractStream {
 
+    private static final Log log = LogFactory.getLog(AbstractStream.class);
+    private static final StringManager sm = StringManager.getManager(AbstractStream.class);
+
     private final Integer identifier;
 
     private volatile AbstractStream parentStream = null;
     private final Set<AbstractStream> childStreams = new HashSet<>();
-    private AtomicLong windowSize = new AtomicLong(ConnectionSettings.DEFAULT_WINDOW_SIZE);
+    private long windowSize = ConnectionSettingsBase.DEFAULT_INITIAL_WINDOW_SIZE;
 
     public Integer getIdentifier() {
         return identifier;
@@ -88,13 +94,13 @@ abstract class AbstractStream {
     }
 
 
-    protected void setWindowSize(long windowSize) {
-        this.windowSize.set(windowSize);
+    protected synchronized void setWindowSize(long windowSize) {
+        this.windowSize = windowSize;
     }
 
 
-    protected long getWindowSize() {
-        return windowSize.get();
+    protected synchronized long getWindowSize() {
+        return windowSize;
     }
 
 
@@ -102,13 +108,39 @@ abstract class AbstractStream {
      * @param increment
      * @throws Http2Exception
      */
-    protected void incrementWindowSize(int increment) throws Http2Exception {
-        windowSize.addAndGet(increment);
+    protected synchronized void incrementWindowSize(int increment) throws Http2Exception {
+        // No need for overflow protection here.
+        // Increment can't be more than Integer.MAX_VALUE and once windowSize
+        // goes beyond 2^31-1 an error is triggered.
+        windowSize += increment;
+
+        if (log.isDebugEnabled()) {
+            log.debug(sm.getString("abstractStream.windowSizeInc", getConnectionId(),
+                    getIdentifier(), Integer.toString(increment), Long.toString(windowSize)));
+        }
+
+        if (windowSize > ConnectionSettingsBase.MAX_WINDOW_SIZE) {
+            String msg = sm.getString("abstractStream.windowSizeTooBig", getConnectionId(), identifier,
+                    Integer.toString(increment), Long.toString(windowSize));
+            if (identifier.intValue() == 0) {
+                throw new ConnectionException(msg, Http2Error.FLOW_CONTROL_ERROR);
+            } else {
+                throw new StreamException(
+                        msg, Http2Error.FLOW_CONTROL_ERROR, identifier.intValue());
+            }
+        }
     }
 
 
-    protected void decrementWindowSize(int decrement) {
-        windowSize.addAndGet(-decrement);
+    protected synchronized void decrementWindowSize(int decrement) {
+        // No need for overflow protection here. Decrement can never be larger
+        // the Integer.MAX_VALUE and once windowSize goes negative no further
+        // decrements are permitted
+        windowSize -= decrement;
+        if (log.isDebugEnabled()) {
+            log.debug(sm.getString("abstractStream.windowSizeDec", getConnectionId(),
+                    getIdentifier(), Integer.toString(decrement), Long.toString(windowSize)));
+        }
     }
 
 

@@ -22,17 +22,17 @@ import org.apache.tomcat.util.res.StringManager;
 
 public enum FrameType {
 
-    DATA          (0,   false,  true, null),
-    HEADERS       (1,   false,  true, null),
-    PRIORITY      (2,   false,  true, (x) -> x == 5),
-    RST           (3,   false,  true, (x) -> x == 4),
-    SETTINGS      (4,    true, false, (x) -> x % 6 == 0),
-    PUSH_PROMISE  (5,   false,  true, (x) -> x >= 4),
-    PING          (6,    true, false, (x) -> x == 8),
-    GOAWAY        (7,    true, false, (x) -> x >= 8),
-    WINDOW_UPDATE (8,    true,  true, (x) -> x == 4),
-    CONTINUATION  (9,   false,  true, null),
-    UNKNOWN       (256,  true,  true, null);
+    DATA          (0,   false,  true, null,              false),
+    HEADERS       (1,   false,  true, null,               true),
+    PRIORITY      (2,   false,  true, (x) -> x == 5,     false),
+    RST           (3,   false,  true, (x) -> x == 4,     false),
+    SETTINGS      (4,    true, false, (x) -> x % 6 == 0,  true),
+    PUSH_PROMISE  (5,   false,  true, (x) -> x >= 4,      true),
+    PING          (6,    true, false, (x) -> x == 8,     false),
+    GOAWAY        (7,    true, false, (x) -> x >= 8,     false),
+    WINDOW_UPDATE (8,    true,  true, (x) -> x == 4,      true),
+    CONTINUATION  (9,   false,  true, null,               true),
+    UNKNOWN       (256,  true,  true, null,              false);
 
     private static final StringManager sm = StringManager.getManager(FrameType.class);
 
@@ -40,14 +40,16 @@ public enum FrameType {
     private final boolean streamZero;
     private final boolean streamNonZero;
     private final IntPredicate payloadSizeValidator;
+    private final boolean payloadErrorFatal;
 
 
     private FrameType(int id, boolean streamZero, boolean streamNonZero,
-            IntPredicate payloadSizeValidator) {
+            IntPredicate payloadSizeValidator,  boolean payloadErrorFatal) {
         this.id = id;
         this.streamZero = streamZero;
         this.streamNonZero = streamNonZero;
         this.payloadSizeValidator =  payloadSizeValidator;
+        this.payloadErrorFatal = payloadErrorFatal;
     }
 
 
@@ -56,23 +58,24 @@ public enum FrameType {
     }
 
 
-    public void checkStream(String connectionId, int streamId) throws Http2Exception {
-        if (streamId == 0 && !streamZero) {
-            throw new Http2Exception(sm.getString("frameType.checkStream.invalidForZero",
-                    connectionId, this), 0, ErrorCode.PROTOCOL_ERROR);
-        } else if (streamId != 0 && !streamNonZero) {
-            throw new Http2Exception(sm.getString("frameType.checkStream.invalidForNonZero",
-                    connectionId, Integer.valueOf(streamId), this), 0, ErrorCode.PROTOCOL_ERROR);
+    public void check(int streamId, int payloadSize) throws Http2Exception {
+        // Is FrameType valid for the given stream?
+        if (streamId == 0 && !streamZero || streamId != 0 && !streamNonZero) {
+            throw new ConnectionException(sm.getString("frameType.checkStream", this),
+                    Http2Error.PROTOCOL_ERROR);
         }
-    }
 
-
-    public void checkPayloadSize(String connectionId, int streamId, int payloadSize)
-            throws Http2Exception {
+        // Is the payload size valid for the given FrameType
         if (payloadSizeValidator != null && !payloadSizeValidator.test(payloadSize)) {
-            throw new Http2Exception(sm.getString("frameType.checkPayloadSize",
-                    connectionId, Integer.toString(streamId), this, Integer.toString(payloadSize)),
-                    0, ErrorCode.FRAME_SIZE_ERROR);
+            if (payloadErrorFatal || streamId == 0) {
+                throw new ConnectionException(sm.getString("frameType.checkPayloadSize",
+                        Integer.toString(payloadSize), this),
+                        Http2Error.FRAME_SIZE_ERROR);
+            } else {
+                throw new StreamException(sm.getString("frameType.checkPayloadSize",
+                        Integer.toString(payloadSize), this),
+                        Http2Error.FRAME_SIZE_ERROR, streamId);
+            }
         }
     }
 

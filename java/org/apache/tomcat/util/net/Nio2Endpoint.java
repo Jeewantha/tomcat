@@ -96,14 +96,21 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
     private SynchronizedStack<Nio2Channel> nioChannels;
 
 
-    // ------------------------------------------------------------- Properties
+    public Nio2Endpoint() {
+        // Override the defaults for NIO2
+        // Disable maxConnections by default for NIO2 (see BZ58103)
+        setMaxConnections(-1);
+    }
 
+
+    // ------------------------------------------------------------- Properties
 
     /**
      * Handling of accepted sockets.
      */
     private Handler handler = null;
     public void setHandler(Handler handler ) { this.handler = handler; }
+    @Override
     public Handler getHandler() { return handler; }
 
 
@@ -337,10 +344,8 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
      * Process the specified connection.
      */
     protected boolean setSocketOptions(AsynchronousSocketChannel socket) {
-        // Process the connection
         try {
             socketProperties.setProperties(socket);
-
             Nio2Channel channel = nioChannels.pop();
             if (channel == null) {
                 SocketBufferHandler bufhandler = new SocketBufferHandler(
@@ -362,18 +367,13 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
             socketWrapper.setReadTimeout(getSoTimeout());
             socketWrapper.setWriteTimeout(getSoTimeout());
             // Continue processing on another thread
-            processSocket(socketWrapper, SocketStatus.OPEN_READ, true);
+            return processSocket0(socketWrapper, SocketStatus.OPEN_READ, true);
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
-            try {
-                log.error("",t);
-            } catch (Throwable tt) {
-                ExceptionUtils.handleThrowable(t);
-            }
-            // Tell to close the socket
-            return false;
+            log.error("",t);
         }
-        return true;
+        // Tell to close the socket
+        return false;
     }
 
 
@@ -429,26 +429,30 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         }
         try {
             handler.release(socket);
-            try {
-                if (socket.getSocket() != null) {
-                    socket.getSocket().close(true);
-                }
-            } catch (Exception e){
-                if (log.isDebugEnabled()) {
-                    log.debug(sm.getString(
-                            "endpoint.debug.socketCloseFail"), e);
+        } catch (Throwable e) {
+            ExceptionUtils.handleThrowable(e);
+            if (log.isDebugEnabled()) log.error("",e);
+        }
+        try {
+            if (socket.getSocket() != null) {
+                synchronized (socket.getSocket()) {
+                    if (socket.getSocket() != null && socket.getSocket().isOpen()) {
+                        countDownConnection();
+                        socket.getSocket().close(true);
+                    }
                 }
             }
+        } catch (Throwable e) {
+            ExceptionUtils.handleThrowable(e);
+            if (log.isDebugEnabled()) log.error("",e);
+        }
+        try {
             Nio2SocketWrapper nio2Socket = (Nio2SocketWrapper) socket;
-            try {
-                if (nio2Socket.getSendfileData() != null
-                        && nio2Socket.getSendfileData().fchannel != null
-                        && nio2Socket.getSendfileData().fchannel.isOpen()) {
-                    nio2Socket.getSendfileData().fchannel.close();
-                }
-            } catch (Exception ignore) {
+            if (nio2Socket.getSendfileData() != null
+                    && nio2Socket.getSendfileData().fchannel != null
+                    && nio2Socket.getSendfileData().fchannel.isOpen()) {
+                nio2Socket.getSendfileData().fchannel.close();
             }
-            countDownConnection();
         } catch (Throwable e) {
             ExceptionUtils.handleThrowable(e);
             if (log.isDebugEnabled()) log.error("",e);
@@ -522,12 +526,24 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                         // Hand this socket off to an appropriate processor
                         if (!setSocketOptions(socket)) {
                             countDownConnection();
-                            closeSocket(socket);
-                        }
+                            try {
+                                socket.close();
+                            } catch (IOException ioe) {
+                                if (log.isDebugEnabled()) {
+                                    log.debug("", ioe);
+                                }
+                            }
+                       }
                     } else {
                         countDownConnection();
                         // Close socket right away
-                        closeSocket(socket);
+                        try {
+                            socket.close();
+                        } catch (IOException ioe) {
+                            if (log.isDebugEnabled()) {
+                                log.debug("", ioe);
+                            }
+                        }
                     }
                 } catch (Throwable t) {
                     ExceptionUtils.handleThrowable(t);
@@ -537,17 +553,6 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
             state = AcceptorState.ENDED;
         }
 
-    }
-
-
-    private void closeSocket(AsynchronousSocketChannel socket) {
-        try {
-            socket.close();
-        } catch (IOException ioe) {
-            if (log.isDebugEnabled()) {
-                log.debug("", ioe);
-            }
-        }
     }
 
 
@@ -572,6 +577,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         private final Semaphore writePending = new Semaphore(1);
         private boolean writeInterest = false; // Guarded by writeCompletionHandler
         private boolean writeNotify = false;
+        private volatile IOException error = null;
 
         private CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>> awaitBytesHandler
                 = new CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>>() {
@@ -842,6 +848,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         public void setSendfileData(SendfileData sf) { this.sendfileData = sf; }
         public SendfileData getSendfileData() { return this.sendfileData; }
 
+        public IOException getError() { return error; }
+        public void setError(IOException error) { this.error = error; }
+
 
         @Override
         public boolean isReadyForRead() throws IOException {
@@ -944,7 +953,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 if (log.isDebugEnabled()) {
                     log.debug("Socket: [" + this + "], Read: [" + nRead + "]");
                 }
-                return nRead;
+                return (nRead > len) ? len : nRead;
             }
         }
 
@@ -1010,7 +1019,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     if (complete) {
                         readPending.release();
                         state.state = currentState;
-                        if (completion) {
+                        if (completion && state.handler != null) {
                             state.handler.completed(Long.valueOf(state.nBytes), state.attachment);
                         }
                     } else {
@@ -1033,8 +1042,10 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     // If already closed, don't call onError and close again
                     return;
                 }
-                state.state = Nio2Endpoint.isInline() ? CompletionState.INLINE : CompletionState.DONE;
-                state.handler.failed(ioe, state.attachment);
+                state.state = Nio2Endpoint.isInline() ? CompletionState.ERROR : CompletionState.DONE;
+                if (state.handler != null) {
+                    state.handler.failed(ioe, state.attachment);
+                }
             }
         }
 
@@ -1063,7 +1074,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     if (complete) {
                         writePending.release();
                         state.state = currentState;
-                        if (completion) {
+                        if (completion && state.handler != null) {
                             state.handler.completed(Long.valueOf(state.nBytes), state.attachment);
                         }
                     } else {
@@ -1082,8 +1093,10 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 }
                 Nio2SocketWrapper.this.setError(ioe);
                 writePending.release();
-                state.state = Nio2Endpoint.isInline() ? CompletionState.INLINE : CompletionState.DONE;
-                state.handler.failed(ioe, state.attachment);
+                state.state = Nio2Endpoint.isInline() ? CompletionState.ERROR : CompletionState.DONE;
+                if (state.handler != null) {
+                    state.handler.failed(ioe, state.attachment);
+                }
             }
         }
 
@@ -1241,6 +1254,11 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
 
         @Override
         protected void flushBlocking() throws IOException {
+            if (getError() != null) {
+                throw getError();
+            }
+
+
             // Before doing a blocking flush, make sure that any pending non
             // blocking write has completed.
             try {
@@ -1257,7 +1275,11 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         }
 
         @Override
-        protected boolean flushNonBlocking() {
+        protected boolean flushNonBlocking() throws IOException {
+            if (getError() != null) {
+                throw getError();
+            }
+
             return flushNonBlocking(false);
         }
 
@@ -1630,6 +1652,8 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                             if (socket.getSocket().isHandshakeComplete() ||
                                     status == SocketStatus.STOP) {
                                 handshake = 0;
+                            } else if (status == SocketStatus.ERROR) {
+                                handshake = -1;
                             } else {
                                 handshake = socket.getSocket().handshake();
                                 // The handshake process reads/writes from/to the
@@ -1660,7 +1684,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                             // Close socket and pool
                             closeSocket(socket);
                             if (running && !paused) {
-                                nioChannels.push(socket.getSocket());
+                                if (!nioChannels.push(socket.getSocket())) {
+                                    socket.getSocket().free();
+                                }
                             }
                         } else if (state == Handler.SocketState.LONG) {
                             if (socket.isAsync()) {
@@ -1673,7 +1699,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     } else if (handshake == -1 ) {
                         closeSocket(socket);
                         if (running && !paused) {
-                            nioChannels.push(socket.getSocket());
+                            if (!nioChannels.push(socket.getSocket())) {
+                                socket.getSocket().free();
+                            }
                         }
                     }
                 } catch (VirtualMachineError vme) {

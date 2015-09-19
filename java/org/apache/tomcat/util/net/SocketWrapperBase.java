@@ -46,7 +46,6 @@ public abstract class SocketWrapperBase<E> {
     private volatile long readTimeout = -1;
     private volatile long writeTimeout = -1;
 
-    private IOException error = null;
     private volatile int keepAliveLeft = 100;
     private volatile boolean async = false;
     private boolean keptAlive = false;
@@ -199,8 +198,6 @@ public abstract class SocketWrapperBase<E> {
     }
 
 
-    public IOException getError() { return error; }
-    public void setError(IOException error) { this.error = error; }
     public void setKeepAliveLeft(int keepAliveLeft) { this.keepAliveLeft = keepAliveLeft;}
     public int decrementKeepAlive() { return (--keepAliveLeft);}
     public boolean isKeptAlive() {return keptAlive;}
@@ -484,10 +481,6 @@ public abstract class SocketWrapperBase<E> {
             return false;
         }
 
-        if (getError() != null) {
-            throw getError();
-        }
-
         boolean result = false;
         if (block) {
             // A blocking flush will always empty the buffer.
@@ -642,6 +635,10 @@ public abstract class SocketWrapperBase<E> {
          * The operation completed inline.
          */
         INLINE,
+        /**
+         * The operation completed inline but failed.
+         */
+        ERROR,
         /**
          * The operation completed, but not inline.
          */

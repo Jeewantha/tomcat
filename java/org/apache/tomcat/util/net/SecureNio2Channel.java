@@ -22,6 +22,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.channels.WritePendingException;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +38,8 @@ import javax.net.ssl.SSLException;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteBufferUtils;
-import org.apache.tomcat.util.net.SNIExtractor.SNIResult;
+import org.apache.tomcat.util.net.TLSClientHelloExtractor.ExtractorResult;
+import org.apache.tomcat.util.net.jsse.openssl.Cipher;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -59,14 +62,14 @@ public class SecureNio2Channel extends Nio2Channel  {
 
     protected boolean sniComplete = false;
 
-    protected boolean handshakeComplete;
-    protected HandshakeStatus handshakeStatus; //gets set by handshake
+    private volatile boolean handshakeComplete;
+    private volatile HandshakeStatus handshakeStatus; //gets set by handshake
 
     protected boolean closed;
     protected boolean closing;
 
-    private CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>> handshakeReadCompletionHandler;
-    private CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>> handshakeWriteCompletionHandler;
+    private final CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>> handshakeReadCompletionHandler;
+    private final CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>> handshakeWriteCompletionHandler;
 
     public SecureNio2Channel(SocketBufferHandler bufHandler, Nio2Endpoint endpoint) {
         super(bufHandler);
@@ -89,7 +92,7 @@ public class SecureNio2Channel extends Nio2Channel  {
             }
             @Override
             public void failed(Throwable exc, SocketWrapperBase<Nio2Channel> attachment) {
-                endpoint.closeSocket(attachment);
+                endpoint.processSocket(attachment, SocketStatus.ERROR, false);
             }
         };
         handshakeWriteCompletionHandler = new CompletionHandler<Integer, SocketWrapperBase<Nio2Channel>>() {
@@ -103,7 +106,7 @@ public class SecureNio2Channel extends Nio2Channel  {
             }
             @Override
             public void failed(Throwable exc, SocketWrapperBase<Nio2Channel> attachment) {
-                endpoint.closeSocket(attachment);
+                endpoint.processSocket(attachment, SocketStatus.ERROR, false);
             }
         };
     }
@@ -116,12 +119,22 @@ public class SecureNio2Channel extends Nio2Channel  {
     public void reset(AsynchronousSocketChannel channel, SocketWrapperBase<Nio2Channel> socket)
             throws IOException {
         super.reset(channel, socket);
+        sslEngine = null;
         sniComplete = false;
         handshakeComplete = false;
         closed = false;
         closing = false;
+        netInBuffer.clear();
     }
 
+    @Override
+    public void free() {
+        super.free();
+        if (endpoint.getSocketProperties().getDirectSslBuffer()) {
+            ByteBufferUtils.cleanDirectBuffer(netInBuffer);
+            ByteBufferUtils.cleanDirectBuffer(netOutBuffer);
+        }
+    }
 
     private class FutureFlush implements Future<Boolean> {
         private Future<Integer> integer;
@@ -165,17 +178,20 @@ public class SecureNio2Channel extends Nio2Channel  {
     }
 
     /**
-     * Performs SSL handshake, non blocking, but performs NEED_TASK on the same thread.<br>
-     * Hence, you should never call this method using your Acceptor thread, as you would slow down
-     * your system significantly.<br>
-     * The return for this operation is 0 if the handshake is complete and a positive value if it is not complete.
-     * In the event of a positive value coming back, reregister the selection key for the return values interestOps.
+     * Performs SSL handshake, non blocking, but performs NEED_TASK on the same
+     * thread. Hence, you should never call this method using your Acceptor
+     * thread, as you would slow down your system significantly.
+     * <p>
+     * The return for this operation is 0 if the handshake is complete and a
+     * positive value if it is not complete. In the event of a positive value
+     * coming back, the appropriate read/write will already have been called
+     * with an appropriate CompletionHandler.
      *
-     * @return int - 0 if hand shake is complete, otherwise it returns a SelectionKey interestOps value
-     * @throws IOException If an I/O error occurs during the handshake or if the
-     *                     handshake fails during wrapping or unwrapping
-     */
-    @Override
+     * @return 0 if hand shake is complete, negative if the socket needs to
+     *         close and positive if the handshake is incomplete
+     *
+     * @throws IOException if an error occurs during the handshake
+     */    @Override
     public int handshake() throws IOException {
         return handshakeInternal(true);
     }
@@ -203,6 +219,9 @@ public class SecureNio2Channel extends Nio2Channel  {
                     throw new IOException(sm.getString("channel.nio.ssl.notHandshaking"));
                 }
                 case FINISHED: {
+                    if (endpoint.hasNegotiableProtocols() && sslEngine instanceof SSLUtil.ProtocolInfo) {
+                        socket.setNegotiatedProtocol(((SSLUtil.ProtocolInfo) sslEngine).getNegotiatedProtocol());
+                    }
                     //we are complete if we have delivered the last package
                     handshakeComplete = !netOutBuffer.hasRemaining();
                     //return 0 if we are complete, otherwise we still have data to write
@@ -306,9 +325,9 @@ public class SecureNio2Channel extends Nio2Channel  {
             return 1;
         }
 
-        SNIExtractor extractor = new SNIExtractor(netInBuffer);
+        TLSClientHelloExtractor extractor = new TLSClientHelloExtractor(netInBuffer);
 
-        while (extractor.getResult() == SNIResult.UNDERFLOW &&
+        while (extractor.getResult() == ExtractorResult.UNDERFLOW &&
                 netInBuffer.capacity() < endpoint.getSniParseLimit()) {
             // extractor needed more data to process but netInBuffer was full so
             // expand the buffer and read some more data.
@@ -318,16 +337,17 @@ public class SecureNio2Channel extends Nio2Channel  {
 
             netInBuffer = ByteBufferUtils.expand(netInBuffer, newLimit);
             sc.read(netInBuffer);
-            extractor = new SNIExtractor(netInBuffer);
+            extractor = new TLSClientHelloExtractor(netInBuffer);
         }
 
         String hostName = null;
+        List<Cipher> clientRequestedCiphers = null;
         switch (extractor.getResult()) {
-        case FOUND:
+        case COMPLETE:
             hostName = extractor.getSNIValue();
-            break;
+            //$FALL-THROUGH$ to set the client requested ciphers
         case NOT_PRESENT:
-            // NO-OP
+            clientRequestedCiphers = extractor.getClientRequestedCiphers();
             break;
         case NEED_READ:
             sc.read(netInBuffer, socket, handshakeReadCompletionHandler);
@@ -338,6 +358,7 @@ public class SecureNio2Channel extends Nio2Channel  {
                 log.debug(sm.getString("channel.nio.ssl.sniDefault"));
             }
             hostName = endpoint.getDefaultSSLHostConfigName();
+            clientRequestedCiphers = Collections.emptyList();
             break;
         }
 
@@ -345,7 +366,7 @@ public class SecureNio2Channel extends Nio2Channel  {
             log.debug(sm.getString("channel.nio.ssl.sniHostName", hostName));
         }
 
-        sslEngine = endpoint.createSSLEngine(hostName);
+        sslEngine = endpoint.createSSLEngine(hostName, clientRequestedCiphers);
 
         // Ensure the application buffers (which have to be created earlier) are
         // big enough.

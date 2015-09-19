@@ -19,7 +19,6 @@ package org.apache.coyote.http2;
 import java.nio.ByteBuffer;
 
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -39,9 +38,8 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
         parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.PROTOCOL_ERROR.getErrorCode() + "]-["));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
     }
 
 
@@ -53,9 +51,8 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
         parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.PROTOCOL_ERROR.getErrorCode() + "]-["));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
     }
 
 
@@ -65,12 +62,11 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
     @Test
     public void halfClosedRemoteInvalidFrame() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
         http2Connect();
 
         // This half-closes the stream since it includes the end of stream flag
-        sendSimpleRequest(3);
-        readSimpleResponse();
+        sendSimpleGetRequest(3);
+        readSimpleGetResponse();
         Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
         output.clearTrace();
 
@@ -78,24 +74,20 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         sendData(3, new byte[] {});
         parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.STREAM_CLOSED.getErrorCode() + "]-["));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[3]-[" + Http2Error.STREAM_CLOSED.getCode() + "]-["));
     }
 
 
     @Test
-    @Ignore // Need to handle stream closes
     public void testClosedInvalidFrame01() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
-
         // HTTP2 upgrade
         http2Connect();
 
         // Build the simple request
         byte[] frameHeader = new byte[9];
         ByteBuffer headersPayload = ByteBuffer.allocate(128);
-        buildSimpleRequest(frameHeader, headersPayload, 3);
+        buildSimpleGetRequest(frameHeader, headersPayload, null, 3);
 
         // Remove the end of stream and end of headers flags
         frameHeader[4] = 0;
@@ -104,15 +96,14 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         writeFrame(frameHeader, headersPayload);
 
         // Send a rst
-        sendRst(3, ErrorCode.INTERNAL_ERROR.getErrorCode());
+        sendRst(3, Http2Error.INTERNAL_ERROR.getCode());
 
         // Then try sending some data (which should fail)
         sendData(3, new byte[] {});
         parser.readFrame(true);
 
         Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.STREAM_CLOSED.getErrorCode() + "]-["));
+                output.getTrace().startsWith("3-RST-[" + Http2Error.STREAM_CLOSED.getCode() + "]"));
     }
 
 
@@ -124,11 +115,133 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         sendData(1, new byte[] {});
         parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.STREAM_CLOSED.getErrorCode() + "]-["));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[1]-[" + Http2Error.STREAM_CLOSED.getCode() + "]-["));
     }
 
 
     // TODO: Invalid frames for each of the remaining states
+
+    // Section 5.1.1
+
+    @Test
+    public void testClientSendEvenStream() throws Exception {
+        // HTTP2 upgrade
+        http2Connect();
+
+        // Part 1
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 4);
+        writeFrame(frameHeader, headersPayload);
+
+        // headers
+        parser.readFrame(true);
+
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+    }
+
+
+    @Test
+    public void testClientSendOldStream() throws Exception {
+        http2Connect();
+        sendSimpleGetRequest(5);
+        readSimpleGetResponse();
+        Assert.assertEquals(getSimpleResponseTrace(5), output.getTrace());
+        output.clearTrace();
+
+
+        // Build the simple request on an old stream
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequest(frameHeader, headersPayload, null, 3);
+
+        os.write(frameHeader);
+        os.flush();
+
+        // headers
+        parser.readFrame(true);
+
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[5]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+    }
+
+
+    @Test
+    public void testImplicitClose() throws Exception {
+        http2Connect();
+
+        sendPriority(3, 0, 16);
+        sendPriority(5, 0, 16);
+
+        sendSimpleGetRequest(5);
+        readSimpleGetResponse();
+        Assert.assertEquals(getSimpleResponseTrace(5), output.getTrace());
+        output.clearTrace();
+
+        // Should trigger an error since stream 3 should have been implicitly
+        // closed.
+        sendSimpleGetRequest(3);
+
+        parser.readFrame(true);
+
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[5]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+    }
+
+
+    @Test
+    public void testExceedMaxActiveStreams() throws Exception {
+        // http2Connect() - modified
+        enableHttp2(1);
+        configureAndStartWebApplication();
+        openClientConnection();
+        doHttpUpgrade();
+        sendClientPreface();
+
+        // validateHttp2InitialResponse() - modified
+        parser.readFrame(true);
+        parser.readFrame(true);
+        parser.readFrame(true);
+        parser.readFrame(true);
+        parser.readFrame(true);
+
+        Assert.assertEquals("0-Settings-[3]-[1]\n" +
+                "0-Settings-End\n" +
+                "0-Settings-Ack\n" +
+                "0-Ping-[0,0,0,0,0,0,0,1]\n" +
+                getSimpleResponseTrace(1)
+                , output.getTrace());
+        output.clearTrace();
+
+        sendLargeGetRequest(3);
+
+        sendSimpleGetRequest(5);
+
+        // Default connection window size is 64k - 1. Initial request will have
+        // used 8k (56k -1).
+        // Expecting
+        // 1 * headers
+        // 56k-1 of body (7 * ~8k)
+        // 1 * error (could be in any order)
+        for (int i = 0; i < 8; i++) {
+            parser.readFrame(true);
+        }
+        parser.readFrame(true);
+
+        // Release the remaining body
+        sendWindowUpdate(0, (1 << 31) - 1);
+        sendWindowUpdate(3, (1 << 31) - 1);
+
+        // 192k of body (24 * 8k)
+        // 1 * error (could be in any order)
+        for (int i = 0; i < 24; i++) {
+            parser.readFrame(true);
+        }
+
+        Assert.assertTrue(output.getTrace(),
+                output.getTrace().contains("5-RST-[" +
+                        Http2Error.REFUSED_STREAM.getCode() + "]"));
+    }
 }

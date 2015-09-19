@@ -32,15 +32,13 @@ public class TestHttp2Section_4_3 extends Http2TestBase {
 
     @Test
     public void testHeaderDecodingError() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
-
         // HTTP2 upgrade
         http2Connect();
 
         // Build the simple request
         byte[] frameHeader = new byte[9];
         ByteBuffer headersPayload = ByteBuffer.allocate(128);
-        buildSimpleRequest(frameHeader, headersPayload, 3);
+        buildSimpleGetRequest(frameHeader, headersPayload, null, 3);
 
         // Try and corrupt the headerPayload
         headersPayload.put(0, (byte) (headersPayload.get(0) + 128));
@@ -51,28 +49,25 @@ public class TestHttp2Section_4_3 extends Http2TestBase {
         // Read GOAWAY frame
         parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.COMPRESSION_ERROR.getErrorCode() + "]-["));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[1]-[" + Http2Error.COMPRESSION_ERROR.getCode() + "]-["));
     }
 
 
     @Test
     public void testHeaderContinuationContiguous() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
-
         // HTTP2 upgrade
         http2Connect();
 
         // Part 1
         byte[] frameHeader = new byte[9];
         ByteBuffer headersPayload = ByteBuffer.allocate(128);
-        buildSimpleRequestPart1(frameHeader, headersPayload, 3);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 3);
         writeFrame(frameHeader, headersPayload);
 
         // Part 2
         headersPayload.clear();
-        buildSimpleRequestPart2(frameHeader, headersPayload, 3);
+        buildSimpleGetRequestPart2(frameHeader, headersPayload, 3);
         writeFrame(frameHeader, headersPayload);
 
         // headers, body
@@ -85,29 +80,21 @@ public class TestHttp2Section_4_3 extends Http2TestBase {
 
     @Test
     public void testHeaderContinuationNonContiguous() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
-
         // HTTP2 upgrade
         http2Connect();
 
         // Part 1
         byte[] frameHeader = new byte[9];
         ByteBuffer headersPayload = ByteBuffer.allocate(128);
-        buildSimpleRequestPart1(frameHeader, headersPayload, 3);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 3);
         writeFrame(frameHeader, headersPayload);
 
         sendPing();
 
-        // Part 2
-        headersPayload.clear();
-        buildSimpleRequestPart2(frameHeader, headersPayload, 3);
-        writeFrame(frameHeader, headersPayload);
-
         // Read GOAWAY frame
         parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("0-Goaway-[2147483647]-[" +
-                        ErrorCode.COMPRESSION_ERROR.getErrorCode() + "]-["));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
+                "0-Goaway-[1]-[" + Http2Error.COMPRESSION_ERROR.getCode() + "]-["));
     }
 }

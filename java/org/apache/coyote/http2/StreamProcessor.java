@@ -76,7 +76,7 @@ public class StreamProcessor extends AbstractProcessor implements Runnable {
         }
         case CLOSE: {
             // Tell the output buffer there will be no more data
-            stream.getOutputBuffer().finished();
+            stream.getOutputBuffer().close();
             // Then flush it
             action(ActionCode.CLIENT_FLUSH, null);
             break;
@@ -132,6 +132,12 @@ public class StreamProcessor extends AbstractProcessor implements Runnable {
     @Override
     protected Log getLog() {
         return log;
+    }
+
+
+    @Override
+    public void pause() {
+        // NO-OP. Handled by the Http2UpgradeHandler
     }
 
 

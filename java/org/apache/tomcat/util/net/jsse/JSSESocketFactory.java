@@ -54,10 +54,11 @@ import javax.net.ssl.X509KeyManager;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.compat.JreVendor;
 import org.apache.tomcat.util.net.SSLContext;
 import org.apache.tomcat.util.net.SSLHostConfig;
+import org.apache.tomcat.util.net.SSLHostConfigCertificate;
 import org.apache.tomcat.util.net.SSLUtil;
-import org.apache.tomcat.util.net.jsse.openssl.OpenSSLCipherConfigurationParser;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -78,16 +79,18 @@ public class JSSESocketFactory implements SSLUtil {
     private static final StringManager sm = StringManager.getManager(JSSESocketFactory.class);
 
     private final SSLHostConfig sslHostConfig;
+    private final SSLHostConfigCertificate certificate;
 
     private final String[] defaultServerProtocols;
 
 
-    public JSSESocketFactory (SSLHostConfig sslHostConfig) {
+    public JSSESocketFactory (SSLHostConfig sslHostConfig, SSLHostConfigCertificate certificate) {
         this.sslHostConfig = sslHostConfig;
+        this.certificate = certificate;
 
         SSLContext context;
         try {
-            context = createSSLContext();
+            context = createSSLContext(null);
             context.init(null,  null,  null);
         } catch (NoSuchAlgorithmException | KeyManagementException e) {
             // This is fatal for the connector so throw an exception to prevent
@@ -139,17 +142,31 @@ public class JSSESocketFactory implements SSLUtil {
 
     @Override
     public String[] getEnableableCiphers(SSLContext context) {
-        String requestedCiphersStr = sslHostConfig.getCiphers();
-
-        List<String> requestedCiphers =
-                OpenSSLCipherConfigurationParser.parseExpression(requestedCiphersStr);
+        List<String> requestedCiphers = sslHostConfig.getJsseCipherNames();
 
         List<String> ciphers = new ArrayList<>(requestedCiphers);
-        ciphers.retainAll(Arrays.asList(context.getSupportedSSLParameters().getCipherSuites()));
+        String[] supportedCipherSuiteArray = context.getSupportedSSLParameters().getCipherSuites();
+        // The IBM JRE will accept cipher suites names SSL_xxx or TLS_xxx but
+        // only returns the SSL_xxx form for supported cipher suites. Therefore
+        // need to filter the requested cipher suites using both forms with an
+        // IBM JRE.
+        List<String> supportedCipherSuiteList;
+        if (JreVendor.IS_IBM_JVM) {
+            supportedCipherSuiteList = new ArrayList<>(supportedCipherSuiteArray.length * 2);
+            for (String name : supportedCipherSuiteArray) {
+                supportedCipherSuiteList.add(name);
+                if (name.startsWith("SSL")) {
+                    supportedCipherSuiteList.add("TLS" + name.substring(3));
+                }
+            }
+        } else {
+            supportedCipherSuiteList = Arrays.asList(supportedCipherSuiteArray);
+        }
+        ciphers.retainAll(supportedCipherSuiteList);
 
         if (ciphers.isEmpty()) {
             log.warn(sm.getString("jsse.requested_ciphers_not_supported",
-                    requestedCiphersStr));
+                    sslHostConfig.getCiphers()));
         }
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("jsse.enableable_ciphers", ciphers));
@@ -252,25 +269,25 @@ public class JSSESocketFactory implements SSLUtil {
 
 
     @Override
-    public SSLContext createSSLContext() throws NoSuchAlgorithmException {
+    public SSLContext createSSLContext(List<String> negotiableProtocols) throws NoSuchAlgorithmException {
         return new JSSESSLContext(sslHostConfig.getSslProtocol());
     }
 
 
     @Override
     public KeyManager[] getKeyManagers() throws Exception {
-        String keystoreType = sslHostConfig.getCertificateKeystoreType();
-        String keystoreProvider = sslHostConfig.getCertificateKeystoreProvider();
+        String keystoreType = certificate.getCertificateKeystoreType();
+        String keystoreProvider = certificate.getCertificateKeystoreProvider();
         String keystoreFile = SSLHostConfig.adjustRelativePath(
-                sslHostConfig.getCertificateKeystoreFile());
-        String keystorePass = sslHostConfig.getCertificateKeystorePassword();
-        String keyAlias = sslHostConfig.getCertificateKeyAlias();
+                certificate.getCertificateKeystoreFile());
+        String keystorePass = certificate.getCertificateKeystorePassword();
+        String keyAlias = certificate.getCertificateKeyAlias();
         String algorithm = sslHostConfig.getKeyManagerAlgorithm();
-        String keyPass = sslHostConfig.getCertificateKeyPassword();
+        String keyPass = certificate.getCertificateKeyPassword();
         // This has to be here as it can't be moved to SSLHostConfig since the
         // defaults vary between JSSE and OpenSSL.
         if (keyPass == null) {
-            keyPass = sslHostConfig.getCertificateKeystorePassword();
+            keyPass = certificate.getCertificateKeystorePassword();
         }
 
         KeyManager[] kms = null;

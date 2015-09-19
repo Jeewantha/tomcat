@@ -19,6 +19,8 @@ package org.apache.tomcat.util.net;
 import java.io.File;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -27,6 +29,7 @@ import javax.net.ssl.TrustManagerFactory;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.net.jsse.openssl.Cipher;
 import org.apache.tomcat.util.net.jsse.openssl.OpenSSLCipherConfigurationParser;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -59,24 +62,27 @@ public class SSLHostConfig {
 
     private String hostName = DEFAULT_SSL_HOST_NAME;
 
-    private Object sslContext;
+    // OpenSSL can handle multiple certs in a single config so the reference to
+    // the context is here at the virtual host level. JSSE can't so the
+    // reference is held on the certificate.
+    private Long openSslContext;
 
     // Configuration properties
 
+    // Nested
+    private SSLHostConfigCertificate defaultCertificate = null;
+    private Set<SSLHostConfigCertificate> certificates = new HashSet<>(4);
+
     // Common
-    private String certificateKeyPassword = null;
     private String certificateRevocationListFile;
     private CertificateVerification certificateVerification = CertificateVerification.NONE;
     private int certificateVerificationDepth = 10;
     private String ciphers = "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!kRSA";
+    private LinkedHashSet<Cipher> cipherList = null;
+    private List<String> jsseCipherNames = null;
     private boolean honorCipherOrder = true;
     private Set<String> protocols = new HashSet<>();
     // JSSE
-    private String certificateKeyAlias;
-    private String certificateKeystorePassword = "changeit";
-    private String certificateKeystoreFile = System.getProperty("user.home")+"/.keystore";
-    private String certificateKeystoreProvider = System.getProperty("javax.net.ssl.keyStoreProvider");
-    private String certificateKeystoreType = System.getProperty("javax.net.ssl.keyStoreType");
     private String keyManagerAlgorithm = KeyManagerFactory.getDefaultAlgorithm();
     private int sessionCacheSize = 0;
     private int sessionTimeout = 86400;
@@ -88,9 +94,6 @@ public class SSLHostConfig {
     private String truststoreProvider = System.getProperty("javax.net.ssl.trustStoreProvider");
     private String truststoreType = System.getProperty("javax.net.ssl.trustStoreType");
     // OpenSSL
-    private String certificateChainFile;
-    private String certificateFile;
-    private String certificateKeyFile;
     private String certificateRevocationListPath;
     private String caCertificateFile;
     private String caCertificatePath;
@@ -101,20 +104,16 @@ public class SSLHostConfig {
     public SSLHostConfig() {
         // Set defaults that can't be (easily) set when defining the fields.
         setProtocols(Constants.SSL_PROTO_ALL);
-        // Configure fall-back defaults if system property is not set.
-        if (certificateKeystoreType == null) {
-            certificateKeystoreType = "JKS";
-        }
     }
 
 
-    public Object getSslContext() {
-        return sslContext;
+    public Object getOpenSslContext() {
+        return openSslContext;
     }
 
 
-    public void setSslContext(Object sslContext) {
-        this.sslContext = sslContext;
+    public void setOpenSslContext(Long openSslContext) {
+        this.openSslContext = openSslContext;
     }
 
 
@@ -130,7 +129,7 @@ public class SSLHostConfig {
     }
 
 
-    private void setProperty(String name, Type configType) {
+    void setProperty(String name, Type configType) {
         if (this.configType == null) {
             Set<String> properties = configuredProperties.get(configType);
             if (properties == null) {
@@ -147,15 +146,56 @@ public class SSLHostConfig {
     }
 
 
-    // ----------------------------------------- Common configuration properties
+    // ------------------------------------------- Nested configuration elements
 
-    public void setCertificateKeyPassword(String certificateKeyPassword) {
-        this.certificateKeyPassword = certificateKeyPassword;
+    private void registerDefaultCertificate() {
+        if (defaultCertificate == null) {
+            defaultCertificate = new SSLHostConfigCertificate(
+                    this, SSLHostConfigCertificate.Type.UNDEFINED);
+            certificates.add(defaultCertificate);
+        }
     }
 
 
-    public String getCertificateKeyPassword() {
-        return certificateKeyPassword;
+    public void addCertificate(SSLHostConfigCertificate certificate) {
+        // Need to make sure that if there is more than one certificate, none of
+        // them have a type of undefined.
+        if (certificates.size() == 0) {
+            certificates.add(certificate);
+            return;
+        }
+
+        if (certificates.size() == 1 &&
+                certificates.iterator().next().getType() == SSLHostConfigCertificate.Type.UNDEFINED ||
+                        certificate.getType() == SSLHostConfigCertificate.Type.UNDEFINED) {
+            // Invalid config
+        }
+
+        certificates.add(certificate);
+    }
+
+
+    public Set<SSLHostConfigCertificate> getCertificates() {
+        return getCertificates(false);
+    }
+
+
+    public Set<SSLHostConfigCertificate> getCertificates(boolean createDefaultIfEmpty) {
+        if (certificates.size() == 0 && createDefaultIfEmpty) {
+            registerDefaultCertificate();
+        }
+        return certificates;
+    }
+
+
+    // ----------------------------------------- Common configuration properties
+
+    // TODO: This certificate setter can be removed once it is no longer
+    // necessary to support the old configuration attributes (Tomcat 10?).
+
+    public void setCertificateKeyPassword(String certificateKeyPassword) {
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeyPassword(certificateKeyPassword);
     }
 
 
@@ -215,11 +255,30 @@ public class SSLHostConfig {
         } else {
             this.ciphers = ciphersList;
         }
+        this.cipherList = null;
+        this.jsseCipherNames = null;
+
     }
 
 
     public String getCiphers() {
         return ciphers;
+    }
+
+
+    public LinkedHashSet<Cipher> getCipherList() {
+        if (cipherList == null) {
+            cipherList = OpenSSLCipherConfigurationParser.parse(ciphers);
+        }
+        return cipherList;
+    }
+
+
+    public List<String> getJsseCipherNames() {
+        if (jsseCipherNames == null) {
+            jsseCipherNames = OpenSSLCipherConfigurationParser.convertForJSSE(getCipherList());
+        }
+        return jsseCipherNames;
     }
 
 
@@ -301,58 +360,36 @@ public class SSLHostConfig {
 
     // ---------------------------------- JSSE specific configuration properties
 
+    // TODO: These certificate setters can be removed once it is no longer
+    // necessary to support the old configuration attributes (Tomcat 10?).
+
     public void setCertificateKeyAlias(String certificateKeyAlias) {
-        setProperty("certificateKeyAlias", Type.JSSE);
-        this.certificateKeyAlias = certificateKeyAlias;
-    }
-
-
-    public String getCertificateKeyAlias() {
-        return certificateKeyAlias;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeyAlias(certificateKeyAlias);
     }
 
 
     public void setCertificateKeystoreFile(String certificateKeystoreFile) {
-        setProperty("certificateKeystoreFile", Type.JSSE);
-        this.certificateKeystoreFile = certificateKeystoreFile;
-    }
-
-
-    public String getCertificateKeystoreFile() {
-        return certificateKeystoreFile;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeystoreFile(certificateKeystoreFile);
     }
 
 
     public void setCertificateKeystorePassword(String certificateKeystorePassword) {
-        setProperty("certificateKeystorePassword", Type.JSSE);
-        this.certificateKeystorePassword = certificateKeystorePassword;
-    }
-
-
-    public String getCertificateKeystorePassword() {
-        return certificateKeystorePassword;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeystorePassword(certificateKeystorePassword);
     }
 
 
     public void setCertificateKeystoreProvider(String certificateKeystoreProvider) {
-        setProperty("certificateKeystoreProvider", Type.JSSE);
-        this.certificateKeystoreProvider = certificateKeystoreProvider;
-    }
-
-
-    public String getCertificateKeystoreProvider() {
-        return certificateKeystoreProvider;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeystoreProvider(certificateKeystoreProvider);
     }
 
 
     public void setCertificateKeystoreType(String certificateKeystoreType) {
-        setProperty("certificateKeystoreType", Type.JSSE);
-        this.certificateKeystoreType = certificateKeystoreType;
-    }
-
-
-    public String getCertificateKeystoreType() {
-        return certificateKeystoreType;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeystoreType(certificateKeystoreType);
     }
 
 
@@ -452,7 +489,11 @@ public class SSLHostConfig {
 
     public String getTruststoreProvider() {
         if (truststoreProvider == null) {
-            return getCertificateKeystoreProvider();
+            if (defaultCertificate == null) {
+                return SSLHostConfigCertificate.DEFAULT_KEYSTORE_PROVIDER;
+            } else {
+                return defaultCertificate.getCertificateKeystoreProvider();
+            }
         } else {
             return truststoreProvider;
         }
@@ -467,7 +508,11 @@ public class SSLHostConfig {
 
     public String getTruststoreType() {
         if (truststoreType == null) {
-            return getCertificateKeystoreType();
+            if (defaultCertificate == null) {
+                return SSLHostConfigCertificate.DEFAULT_KEYSTORE_TYPE;
+            } else {
+                return defaultCertificate.getCertificateKeystoreType();
+            }
         } else {
             return truststoreType;
         }
@@ -476,36 +521,18 @@ public class SSLHostConfig {
 
     // ------------------------------- OpenSSL specific configuration properties
 
-    public void setCertificateChainFile(String certificateChainFile) {
-        setProperty("certificateChainFile", Type.OPENSSL);
-        this.certificateChainFile = certificateChainFile;
-    }
-
-
-    public String getCertificateChainFile() {
-        return certificateChainFile;
-    }
-
+    // TODO: These certificate setters can be removed once it is no longer
+    // necessary to support the old configuration attributes (Tomcat 10?).
 
     public void setCertificateFile(String certificateFile) {
-        setProperty("certificateFile", Type.OPENSSL);
-        this.certificateFile = certificateFile;
-    }
-
-
-    public String getCertificateFile() {
-        return certificateFile;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateFile(certificateFile);
     }
 
 
     public void setCertificateKeyFile(String certificateKeyFile) {
-        setProperty("certificateKeyFile", Type.OPENSSL);
-        this.certificateKeyFile = certificateKeyFile;
-    }
-
-
-    public String getCertificateKeyFile() {
-        return certificateKeyFile;
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeyFile(certificateKeyFile);
     }
 
 

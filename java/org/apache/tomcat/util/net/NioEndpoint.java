@@ -144,6 +144,7 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
      */
     private Handler handler = null;
     public void setHandler(Handler handler ) { this.handler = handler; }
+    @Override
     public Handler getHandler() { return handler; }
 
 
@@ -551,6 +552,26 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
     }
 
 
+    private void close(NioChannel socket, SelectionKey key) {
+        try {
+            if (socket.getPoller().cancelledKey(key) != null) {
+                // SocketWrapper (attachment) was removed from the
+                // key - recycle the key. This can only happen once
+                // per attempted closure so it is used to determine
+                // whether or not to return the key to the cache.
+                // We do NOT want to do this more than once - see BZ
+                // 57340 / 57943.
+                if (running && !paused) {
+                    if (!nioChannels.push(socket)) {
+                        socket.free();
+                    }
+                }
+            }
+        } catch (Exception x) {
+            log.error("",x);
+        }
+    }
+
     private void closeSocket(SocketChannel socket) {
         try {
             socket.socket().close();
@@ -730,6 +751,7 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
         public void register(final NioChannel socket) {
             socket.setPoller(this);
             NioSocketWrapper ka = new NioSocketWrapper(socket, NioEndpoint.this);
+            socket.setSocketWrapper(ka);
             ka.setPoller(this);
             ka.setReadTimeout(getSocketProperties().getSoTimeout());
             ka.setWriteTimeout(getSocketProperties().getSoTimeout());
@@ -789,22 +811,16 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
             }
             return ka;
         }
+
         /**
-         * The background thread that listens for incoming TCP/IP connections and
-         * hands them off to an appropriate processor.
+         * The background thread that adds sockets to the Poller, checks the
+         * poller for triggered events and hands the associated socket off to an
+         * appropriate processor as events occur.
          */
         @Override
         public void run() {
             // Loop until destroy() is called
             while (true) {
-                // Loop if endpoint is paused
-                while (paused && (!close) ) {
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        // Ignore
-                    }
-                }
 
                 boolean hasEvents = false;
 
@@ -942,7 +958,9 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
 
                 // Configure output channel
                 sc = socketWrapper.getSocket();
-                sc.setSendFile(true);
+                if (calledByProcessor) {
+                    sc.setSendFile(true);
+                }
                 // TLS/SSL channel is slightly different
                 WritableByteChannel wc = ((sc instanceof SecureNioChannel)?sc:sc.getIOChannel());
 
@@ -971,6 +989,7 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
                         log.debug("Send file complete for: "+sd.fileName);
                     }
                     socketWrapper.setSendfileData(null);
+                    sc.setSendFile(false);
                     try {
                         sd.fchannel.close();
                     } catch (Exception ignore) {
@@ -988,7 +1007,7 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
                             if (log.isDebugEnabled()) {
                                 log.debug("Send file connection is being closed");
                             }
-                            cancelledKey(sk);
+                            close(sc, sk);
                         }
                     }
                     return SendfileState.DONE;
@@ -1005,14 +1024,20 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
                 }
             } catch (IOException x) {
                 if (log.isDebugEnabled()) log.debug("Unable to complete sendfile request:", x);
-                cancelledKey(sk);
+                if (!calledByProcessor && sc != null) {
+                    close(sc, sk);
+                } else {
+                    cancelledKey(sk);
+                }
                 return SendfileState.ERROR;
             } catch (Throwable t) {
                 log.error("", t);
-                cancelledKey(sk);
+                if (!calledByProcessor && sc != null) {
+                    close(sc, sk);
+                } else {
+                    cancelledKey(sk);
+                }
                 return SendfileState.ERROR;
-            } finally {
-                if (sc!=null) sc.setSendFile(false);
             }
         }
 
@@ -1047,8 +1072,6 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
                         NioSocketWrapper ka = (NioSocketWrapper) key.attachment();
                         if ( ka == null ) {
                             cancelledKey(key); //we don't support any keys without attachments
-                        } else if ( ka.getError() != null) {
-                            cancelledKey(key);//TODO this is not yet being used
                         } else if ((ka.interestOps()&SelectionKey.OP_READ) == SelectionKey.OP_READ ||
                                   (ka.interestOps()&SelectionKey.OP_WRITE) == SelectionKey.OP_WRITE) {
                             if (close) {
@@ -1526,50 +1549,22 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
                             state = handler.process(ka, status);
                         }
                         if (state == SocketState.CLOSED) {
-                            // Close socket and pool
-                            try {
-                                if (socket.getPoller().cancelledKey(key) != null) {
-                                    // SocketWrapper (attachment) was removed from the
-                                    // key - recycle the key. This can only happen once
-                                    // per attempted closure so it is used to determine
-                                    // whether or not to return the key to the cache.
-                                    // We do NOT want to do this more than once - see BZ
-                                    // 57340.
-                                    if (running && !paused) {
-                                        nioChannels.push(socket);
-                                    }
-                                    socket = null;
-                                }
-                                ka = null;
-                            } catch (Exception x) {
-                                log.error("",x);
-                            }
+                            close(socket, key);
                         }
                     } else if (handshake == -1 ) {
-                        if (key != null) {
-                            socket.getPoller().cancelledKey(key);
-                        }
-                        if (running && !paused) {
-                            nioChannels.push(socket);
-                        }
-                        socket = null;
-                        ka = null;
+                        close(socket, key);
                     } else {
                         ka.getPoller().add(socket,handshake);
                     }
                 } catch (CancelledKeyException cx) {
-                    if (socket != null) {
-                        socket.getPoller().cancelledKey(key);
-                    }
+                    socket.getPoller().cancelledKey(key);
                 } catch (VirtualMachineError vme) {
                     ExceptionUtils.handleThrowable(vme);
                 } catch (Throwable t) {
                     log.error("", t);
-                    if (socket != null) {
-                        socket.getPoller().cancelledKey(key);
-                    }
+                    socket.getPoller().cancelledKey(key);
                 } finally {
-                    socket = null;
+                    ka = null;
                     status = null;
                     //return to cache
                     if (running && !paused) {
@@ -1578,6 +1573,7 @@ public class NioEndpoint extends AbstractJsseEndpoint<NioChannel> {
                 }
             }
         }
+
     }
 
     // ----------------------------------------------- SendfileData Inner Class

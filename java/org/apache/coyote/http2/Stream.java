@@ -38,11 +38,12 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     private volatile int weight = Constants.DEFAULT_WEIGHT;
 
     private final Http2UpgradeHandler handler;
+    private final StreamStateMachine state;
+    // TODO: null these when finished to reduce memory used by closed stream
     private final Request coyoteRequest;
     private final Response coyoteResponse = new Response();
     private final StreamInputBuffer inputBuffer;
     private final StreamOutputBuffer outputBuffer = new StreamOutputBuffer();
-    private final StreamStateMachine state;
 
 
     public Stream(Integer identifier, Http2UpgradeHandler handler) {
@@ -70,6 +71,8 @@ public class Stream extends AbstractStream implements HeaderEmitter {
             // TODO Assuming the body has been read at this point is not valid
             state.recievedEndOfStream();
         }
+        // No sendfile for HTTP/2 (it is enabled by default in the request)
+        this.coyoteRequest.setSendfile(false);
         this.coyoteResponse.setOutputBuffer(outputBuffer);
         this.coyoteRequest.setResponse(coyoteResponse);
     }
@@ -118,28 +121,40 @@ public class Stream extends AbstractStream implements HeaderEmitter {
 
 
     @Override
-    public void incrementWindowSize(int windowSizeIncrement) throws Http2Exception {
+    public synchronized void incrementWindowSize(int windowSizeIncrement) throws Http2Exception {
         // If this is zero then any thread that has been trying to write for
         // this stream will be waiting. Notify that thread it can continue. Use
         // notify all even though only one thread is waiting to be on the safe
         // side.
-        boolean notify = getWindowSize() == 0;
+        boolean notify = getWindowSize() < 1;
         super.incrementWindowSize(windowSizeIncrement);
-        if (notify) {
-            synchronized (this) {
-                notifyAll();
-            }
+        if (notify && getWindowSize() > 0) {
+            notifyAll();
         }
     }
 
 
-    private int reserveWindowSize(int reservation) {
+    private synchronized int reserveWindowSize(int reservation) throws IOException {
         long windowSize = getWindowSize();
-        if (reservation > windowSize) {
-            return (int) windowSize;
-        } else {
-            return reservation;
+        while (windowSize < 1) {
+            try {
+                wait();
+            } catch (InterruptedException e) {
+                // Possible shutdown / rst or similar. Use an IOException to
+                // signal to the client that further I/O isn't possible for this
+                // Stream.
+                throw new IOException(e);
+            }
+            windowSize = getWindowSize();
         }
+        int allocation;
+        if (windowSize < reservation) {
+            allocation = (int) windowSize;
+        } else {
+            allocation = reservation;
+        }
+        decrementWindowSize(allocation);
+        return allocation;
     }
 
 
@@ -155,10 +170,22 @@ public class Stream extends AbstractStream implements HeaderEmitter {
             coyoteRequest.method().setString(value);
             break;
         }
+        case ":scheme": {
+            coyoteRequest.scheme().setString(value);
+            break;
+        }
         case ":path": {
-            coyoteRequest.requestURI().setString(value);
-            // TODO: This is almost certainly wrong and needs to be decoded
-            coyoteRequest.decodedURI().setString(value);
+            int queryStart = value.indexOf('?');
+            if (queryStart == -1) {
+                coyoteRequest.requestURI().setString(value);
+                coyoteRequest.decodedURI().setString(coyoteRequest.getURLDecoder().convert(value, false));
+            } else {
+                String uri = value.substring(0, queryStart);
+                String query = value.substring(queryStart + 1);
+                coyoteRequest.requestURI().setString(uri);
+                coyoteRequest.decodedURI().setString(coyoteRequest.getURLDecoder().convert(uri, false));
+                coyoteRequest.queryString().setString(coyoteRequest.getURLDecoder().convert(query, true));
+            }
             break;
         }
         case ":authority": {
@@ -246,6 +273,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
 
 
     void sentEndOfStream() {
+        outputBuffer.endOfStreamSent = true;
         state.sentEndOfStream();
     }
 
@@ -255,17 +283,43 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
+    void sendRst() {
+        state.sendReset();
+    }
+
+
+    boolean isActive() {
+        return state.isActive();
+    }
+
+
+    boolean isClosedFinal() {
+        return state.isClosedFinal();
+    }
+
+
+    void closeIfIdle() {
+        state.closeIfIdle();
+    }
+
+
     class StreamOutputBuffer implements OutputBuffer {
 
         private final ByteBuffer buffer = ByteBuffer.allocate(8 * 1024);
         private volatile long written = 0;
-        private volatile boolean finished = false;
+        private volatile boolean closed = false;
+        private volatile boolean endOfStreamSent = false;
+
+        /* The write methods are synchronized to ensure that only one thread at
+         * a time is able to access the buffer. Without this protection, a
+         * client that performed concurrent writes could corrupt the buffer.
+         */
 
         @Override
-        public int doWrite(ByteChunk chunk) throws IOException {
-            if (finished) {
-                // TODO i18n
-                throw new IllegalStateException();
+        public synchronized int doWrite(ByteChunk chunk) throws IOException {
+            if (closed) {
+                throw new IllegalStateException(
+                        sm.getString("stream.closed", getConnectionId(), getIdentifier()));
             }
             int len = chunk.getLength();
             int offset = 0;
@@ -277,64 +331,49 @@ public class Stream extends AbstractStream implements HeaderEmitter {
                 if (len > 0 && !buffer.hasRemaining()) {
                     // Only flush if we have more data to write and the buffer
                     // is full
-                    flush();
+                    flush(true);
                 }
             }
             written += offset;
             return offset;
         }
 
-        public void flush() throws IOException {
+        public synchronized void flush() throws IOException {
+            flush(false);
+        }
+
+        private synchronized void flush(boolean writeInProgress) throws IOException {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("stream.outputBuffer.flush.debug", getConnectionId(), getIdentifier(),
+                        Integer.toString(buffer.position()), Boolean.toString(writeInProgress),
+                        Boolean.toString(closed)));
+            }
             if (!coyoteResponse.isCommitted()) {
                 coyoteResponse.sendHeaders();
             }
             if (buffer.position() == 0) {
+                if (closed && !endOfStreamSent) {
+                    // Handling this special case here is simpler than trying
+                    // to modify the following code to handle it.
+                    handler.writeBody(Stream.this, buffer, 0, true);
+                }
                 // Buffer is empty. Nothing to do.
                 return;
             }
             buffer.flip();
             int left = buffer.remaining();
-            int thisWriteStream;
             while (left > 0) {
-                // Flow control for the Stream
-                do {
-                    thisWriteStream = reserveWindowSize(left);
-                    if (thisWriteStream < 1) {
-                        // Need to block until a WindowUpdate message is
-                        // processed for this stream
-                        synchronized (this) {
-                            try {
-                                wait();
-                            } catch (InterruptedException e) {
-                                // TODO: Possible shutdown?
-                            }
-                        }
-                    }
-                } while (thisWriteStream < 1);
-
-                // Flow control for the connection
-                int thisWrite;
-                do {
-                    thisWrite = handler.reserveWindowSize(Stream.this, thisWriteStream);
-                    if (thisWrite < 1) {
-                        // Need to block until a WindowUpdate message is
-                        // processed for this connection
-                        synchronized (this) {
-                            try {
-                                wait();
-                            } catch (InterruptedException e) {
-                                // TODO: Possible shutdown?
-                            }
-                        }
-                    }
-                } while (thisWrite < 1);
-
-                decrementWindowSize(thisWrite);
-
-                // Do the write
-                handler.writeBody(Stream.this, buffer, thisWrite);
-                left -= thisWrite;
-                buffer.position(buffer.position() + thisWrite);
+                int streamReservation  = reserveWindowSize(left);
+                while (streamReservation > 0) {
+                    int connectionReservation =
+                                handler.reserveWindowSize(Stream.this, streamReservation);
+                    // Do the write
+                    handler.writeBody(Stream.this, buffer, connectionReservation,
+                            !writeInProgress && closed && left == connectionReservation);
+                    streamReservation -= connectionReservation;
+                    left -= connectionReservation;
+                    buffer.position(buffer.position() + connectionReservation);
+                }
             }
             buffer.clear();
         }
@@ -344,12 +383,12 @@ public class Stream extends AbstractStream implements HeaderEmitter {
             return written;
         }
 
-        public void finished() {
-            finished = true;
+        public void close() {
+            closed = true;
         }
 
-        public boolean isFinished() {
-            return finished;
+        public boolean isClosed() {
+            return closed;
         }
 
         /**
@@ -357,7 +396,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
          *         response has no body.
          */
         public boolean hasNoBody() {
-            return ((written == 0) && finished);
+            return ((written == 0) && closed);
         }
     }
 
@@ -398,12 +437,15 @@ public class Stream extends AbstractStream implements HeaderEmitter {
 
             // Ensure that only one thread accesses inBuffer at a time
             synchronized (inBuffer) {
-                while (inBuffer.position() == 0 && !state.isFrameTypePermitted(FrameType.DATA)) {
+                while (inBuffer.position() == 0 && state.isFrameTypePermitted(FrameType.DATA)) {
                     // Need to block until some data is written
                     try {
                         inBuffer.wait();
                     } catch (InterruptedException e) {
-                        // TODO: Possible shutdown?
+                        // Possible shutdown / rst or similar. Use an
+                        // IOException to signal to the client that further I/O
+                        // isn't possible for this Stream.
+                        throw new IOException(e);
                     }
                 }
 
@@ -413,10 +455,10 @@ public class Stream extends AbstractStream implements HeaderEmitter {
                     written = inBuffer.remaining();
                     inBuffer.get(outBuffer, 0, written);
                     inBuffer.clear();
-                } else if (state.isFrameTypePermitted(FrameType.DATA)) {
+                } else if (!state.isFrameTypePermitted(FrameType.DATA)) {
                     return -1;
                 } else {
-                    // TODO Should never happen
+                    // Should never happen
                     throw new IllegalStateException();
                 }
             }

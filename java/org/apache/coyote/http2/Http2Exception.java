@@ -16,29 +16,20 @@
  */
 package org.apache.coyote.http2;
 
-import java.io.IOException;
-
-public class Http2Exception extends IOException {
+public abstract class Http2Exception extends Exception {
 
     private static final long serialVersionUID = 1L;
 
-    private final int streamId;
-    private final ErrorCode errorCode;
+    private final Http2Error error;
 
 
-    public Http2Exception(String msg, int streamId, ErrorCode errorCode) {
+    public Http2Exception(String msg, Http2Error error) {
         super(msg);
-        this.streamId = streamId;
-        this.errorCode = errorCode;
+        this.error = error;
     }
 
 
-    public int getStreamId() {
-        return streamId;
-    }
-
-
-    public ErrorCode getErrorCode() {
-        return errorCode;
+    public Http2Error getError() {
+        return error;
     }
 }

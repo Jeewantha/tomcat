@@ -38,13 +38,11 @@ public class TestHttp2Section_4_1 extends Http2TestBase {
 
     @Test
     public void testUnknownFrameType() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
-
         http2Connect();
         os.write(UNKNOWN_FRAME);
         os.flush();
-        sendSimpleRequest(3);
-        readSimpleResponse();
+        sendSimpleGetRequest(3);
+        readSimpleGetResponse();
         Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
     }
 
@@ -54,15 +52,13 @@ public class TestHttp2Section_4_1 extends Http2TestBase {
 
     @Test
     public void testReservedBitIgnored() throws Exception {
-        hpackEncoder = new HpackEncoder(ConnectionSettings.DEFAULT_HEADER_TABLE_SIZE);
-
         // HTTP2 upgrade
         http2Connect();
 
         // Build the simple request
         byte[] frameHeader = new byte[9];
         ByteBuffer headersPayload = ByteBuffer.allocate(128);
-        buildSimpleRequest(frameHeader, headersPayload, 3);
+        buildSimpleGetRequest(frameHeader, headersPayload, null, 3);
 
         // Tweak the header to set the reserved bit
         frameHeader[5] = (byte) (frameHeader[5] | 0x80);
@@ -70,7 +66,7 @@ public class TestHttp2Section_4_1 extends Http2TestBase {
         // Process the request
         writeFrame(frameHeader, headersPayload);
 
-        readSimpleResponse();
+        readSimpleGetResponse();
         Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
     }
 }

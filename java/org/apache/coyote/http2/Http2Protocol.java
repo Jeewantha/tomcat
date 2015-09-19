@@ -29,14 +29,26 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
 
 public class Http2Protocol implements UpgradeProtocol {
 
+    static final long DEFAULT_READ_TIMEOUT = 10000;
+    static final long DEFAULT_KEEP_ALIVE_TIMEOUT = 30000;
+    static final long DEFAULT_WRITE_TIMEOUT = 10000;
+    // The HTTP/2 specification recommends a minimum default of 100
+    static final long DEFAULT_MAX_CONCURRENT_STREAMS = 200;
+    // This default is defined by the HTTP/2 specification
+    static final int DEFAULT_INITIAL_WINDOW_SIZE = (1 << 16) - 1;
+
     private static final String HTTP_UPGRADE_NAME = "h2c";
     private static final String ALPN_NAME = "h2";
     private static final byte[] ALPN_IDENTIFIER = ALPN_NAME.getBytes(StandardCharsets.UTF_8);
 
     // All timeouts in milliseconds
-    private long readTimeout = 10000;
-    private long keepAliveTimeout = 30000;
-    private long writeTimeout = 10000;
+    private long readTimeout = DEFAULT_READ_TIMEOUT;
+    private long keepAliveTimeout = DEFAULT_KEEP_ALIVE_TIMEOUT;
+    private long writeTimeout = DEFAULT_WRITE_TIMEOUT;
+    private long maxConcurrentStreams = DEFAULT_MAX_CONCURRENT_STREAMS;
+    // If a lower initial value is required, set it here but DO NOT change the
+    // default defined above.
+    private int initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE;
 
     @Override
     public String getHttpUpgradeName(boolean isSecure) {
@@ -73,6 +85,8 @@ public class Http2Protocol implements UpgradeProtocol {
         result.setReadTimeout(getReadTimeout());
         result.setKeepAliveTimeout(getKeepAliveTimeout());
         result.setWriteTimeout(getWriteTimeout());
+        result.setMaxConcurrentStreams(getMaxConcurrentStreams());
+        result.setInitialWindowSize(getInitialWindowSize());
 
         return result;
     }
@@ -127,5 +141,25 @@ public class Http2Protocol implements UpgradeProtocol {
 
     public void setWriteTimeout(long writeTimeout) {
         this.writeTimeout = writeTimeout;
+    }
+
+
+    public long getMaxConcurrentStreams() {
+        return maxConcurrentStreams;
+    }
+
+
+    public void setMaxConcurrentStreams(long maxConcurrentStreams) {
+        this.maxConcurrentStreams = maxConcurrentStreams;
+    }
+
+
+    public int getInitialWindowSize() {
+        return initialWindowSize;
+    }
+
+
+    public void setInitialWindowSize(int initialWindowSize) {
+        this.initialWindowSize = initialWindowSize;
     }
 }

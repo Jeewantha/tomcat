@@ -100,7 +100,7 @@ public class Http11Processor extends AbstractProcessor {
     /**
      * Keep-alive.
      */
-    protected boolean keepAlive = true;
+    protected volatile boolean keepAlive = true;
 
 
     /**
@@ -290,6 +290,10 @@ public class Http11Processor extends AbstractProcessor {
 
     /**
      * Set compression level.
+     *
+     * @param compression One of <code>on</code>, <code>force</code>,
+     *                    <code>off</code> or the minimum compression size in
+     *                    bytes which implies <code>on</code>
      */
     public void setCompression(String compression) {
         if (compression.equals("on")) {
@@ -312,6 +316,9 @@ public class Http11Processor extends AbstractProcessor {
 
     /**
      * Set Minimum size to trigger compression.
+     *
+     * @param compressionMinSize The minimum content length required for
+     *                           compression in bytes
      */
     public void setCompressionMinSize(int compressionMinSize) {
         this.compressionMinSize = compressionMinSize;
@@ -320,9 +327,11 @@ public class Http11Processor extends AbstractProcessor {
 
     /**
      * Set no compression user agent pattern. Regular expression as supported
-     * by {@link Pattern}.
+     * by {@link Pattern}. e.g.: <code>gorilla|desesplorer|tigrus</code>.
      *
-     * ie: "gorilla|desesplorer|tigrus"
+     * @param noCompressionUserAgents The regular expression for user agent
+     *                                strings for which compression should not
+     *                                be applied
      */
     public void setNoCompressionUserAgents(String noCompressionUserAgents) {
         if (noCompressionUserAgents == null || noCompressionUserAgents.length() == 0) {
@@ -1133,9 +1142,9 @@ public class Http11Processor extends AbstractProcessor {
             if (getErrorState().isError()) {
                 response.setStatus(500);
             }
-            request.updateCounters();
 
             if (!isAsync() || getErrorState().isError()) {
+                request.updateCounters();
                 if (getErrorState().isIoAllowed()) {
                     inputBuffer.nextRequest();
                     outputBuffer.nextRequest();
@@ -1557,7 +1566,9 @@ public class Http11Processor extends AbstractProcessor {
 
         // If we know that the request is bad this early, add the
         // Connection: close header.
-        keepAlive = keepAlive && !statusDropsConnection(statusCode);
+        if (keepAlive && statusDropsConnection(statusCode)) {
+            keepAlive = false;
+        }
         if (!keepAlive) {
             // Avoid adding the close header twice
             if (!connectionClosePresent) {
@@ -1714,9 +1725,7 @@ public class Http11Processor extends AbstractProcessor {
             }
         } else if (status == SocketStatus.OPEN_READ && request.getReadListener() != null) {
             try {
-                if (inputBuffer.available() > 0) {
-                    asyncStateMachine.asyncOperation();
-                }
+                asyncStateMachine.asyncOperation();
             } catch (IllegalStateException x) {
                 // ISE - Request/Response not in correct state for async read
                 if (log.isDebugEnabled()) {
@@ -1744,10 +1753,12 @@ public class Http11Processor extends AbstractProcessor {
         rp.setStage(org.apache.coyote.Constants.STAGE_ENDED);
 
         if (getErrorState().isError()) {
+            request.updateCounters();
             return SocketState.CLOSED;
         } else if (isAsync()) {
             return SocketState.LONG;
         } else {
+            request.updateCounters();
             if (!keepAlive) {
                 return SocketState.CLOSED;
             } else {
@@ -1885,6 +1896,12 @@ public class Http11Processor extends AbstractProcessor {
     @Override
     public ByteBuffer getLeftoverInput() {
         return inputBuffer.getLeftover();
+    }
+
+
+    @Override
+    public void pause() {
+        // NOOP for HTTP
     }
 
 }

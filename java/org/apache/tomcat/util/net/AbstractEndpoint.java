@@ -94,6 +94,15 @@ public abstract class AbstractEndpoint<S> {
 
 
         /**
+         * Inform the handler that the endpoint has stopped accepting any new
+         * connections. Typically, the endpoint will be stopped shortly
+         * afterwards but it is possible that the endpoint will be resumed so
+         * the handler should not assume that a stop will follow.
+         */
+        public void pause();
+
+
+        /**
          * Recycle resources associated with the handler.
          */
         public void recycle();
@@ -242,6 +251,9 @@ public abstract class AbstractEndpoint<S> {
         }
         sslHostConfig.setConfigType(getSslConfigType());
     }
+    public SSLHostConfig[] findSslHostConfigs() {
+        return sslHostConfigs.values().toArray(new SSLHostConfig[0]);
+    }
     protected abstract SSLHostConfig.Type getSslConfigType();
 
     protected SSLHostConfig getSSLHostConfig(String sniHostName) {
@@ -303,7 +315,7 @@ public abstract class AbstractEndpoint<S> {
     /**
      * Acceptor thread count.
      */
-    protected int acceptorThreadCount = 0;
+    protected int acceptorThreadCount = 1;
 
     public void setAcceptorThreadCount(int acceptorThreadCount) {
         this.acceptorThreadCount = acceptorThreadCount;
@@ -367,7 +379,7 @@ public abstract class AbstractEndpoint<S> {
     private Executor executor = null;
     public void setExecutor(Executor executor) {
         this.executor = executor;
-        this.internalExecutor = (executor==null);
+        this.internalExecutor = (executor == null);
     }
     public Executor getExecutor() { return executor; }
 
@@ -469,11 +481,12 @@ public abstract class AbstractEndpoint<S> {
     }
     public void setMinSpareThreads(int minSpareThreads) {
         this.minSpareThreads = minSpareThreads;
-        if (running && executor!=null) {
+        Executor executor = this.executor;
+        if (running && executor != null) {
             if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
-                ((java.util.concurrent.ThreadPoolExecutor)executor).setCorePoolSize(minSpareThreads);
+                ((java.util.concurrent.ThreadPoolExecutor) executor).setCorePoolSize(minSpareThreads);
             } else if (executor instanceof ResizableExecutor) {
-                ((ResizableExecutor)executor).resizePool(minSpareThreads, maxThreads);
+                ((ResizableExecutor) executor).resizePool(minSpareThreads, maxThreads);
             }
         }
     }
@@ -484,11 +497,12 @@ public abstract class AbstractEndpoint<S> {
     private int maxThreads = 200;
     public void setMaxThreads(int maxThreads) {
         this.maxThreads = maxThreads;
-        if (running && executor!=null) {
+        Executor executor = this.executor;
+        if (running && executor != null) {
             if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
-                ((java.util.concurrent.ThreadPoolExecutor)executor).setMaximumPoolSize(maxThreads);
+                ((java.util.concurrent.ThreadPoolExecutor) executor).setMaximumPoolSize(maxThreads);
             } else if (executor instanceof ResizableExecutor) {
-                ((ResizableExecutor)executor).resizePool(minSpareThreads, maxThreads);
+                ((ResizableExecutor) executor).resizePool(minSpareThreads, maxThreads);
             }
         }
     }
@@ -496,6 +510,7 @@ public abstract class AbstractEndpoint<S> {
         return getMaxThreadsExecutor(running);
     }
     protected int getMaxThreadsExecutor(boolean useExecutor) {
+        Executor executor = this.executor;
         if (useExecutor && executor != null) {
             if (executor instanceof java.util.concurrent.ThreadPoolExecutor) {
                 return ((java.util.concurrent.ThreadPoolExecutor)executor).getMaximumPoolSize();
@@ -563,6 +578,9 @@ public abstract class AbstractEndpoint<S> {
     public void addNegotiatedProtocol(String negotiableProtocol) {
         negotiableProtocols.add(negotiableProtocol);
     }
+    public boolean hasNegotiableProtocols() {
+        return (negotiableProtocols.size() > 0);
+    }
 
     /**
      * Attributes provide a way for configuration to be passed to sub-components
@@ -629,11 +647,12 @@ public abstract class AbstractEndpoint<S> {
      * @return the amount of threads that are managed by the pool
      */
     public int getCurrentThreadCount() {
-        if (executor!=null) {
+        Executor executor = this.executor;
+        if (executor != null) {
             if (executor instanceof ThreadPoolExecutor) {
-                return ((ThreadPoolExecutor)executor).getPoolSize();
+                return ((ThreadPoolExecutor) executor).getPoolSize();
             } else if (executor instanceof ResizableExecutor) {
-                return ((ResizableExecutor)executor).getPoolSize();
+                return ((ResizableExecutor) executor).getPoolSize();
             } else {
                 return -1;
             }
@@ -648,11 +667,12 @@ public abstract class AbstractEndpoint<S> {
      * @return the amount of threads that are in use
      */
     public int getCurrentThreadsBusy() {
-        if (executor!=null) {
+        Executor executor = this.executor;
+        if (executor != null) {
             if (executor instanceof ThreadPoolExecutor) {
-                return ((ThreadPoolExecutor)executor).getActiveCount();
+                return ((ThreadPoolExecutor) executor).getActiveCount();
             } else if (executor instanceof ResizableExecutor) {
-                return ((ResizableExecutor)executor).getActiveCount();
+                return ((ResizableExecutor) executor).getActiveCount();
             } else {
                 return -1;
             }
@@ -679,8 +699,10 @@ public abstract class AbstractEndpoint<S> {
     }
 
     public void shutdownExecutor() {
-        if ( executor!=null && internalExecutor ) {
-            if ( executor instanceof ThreadPoolExecutor ) {
+        Executor executor = this.executor;
+        if (executor != null && internalExecutor) {
+            this.executor = null;
+            if (executor instanceof ThreadPoolExecutor) {
                 //this is our internal one, so we need to shut it down
                 ThreadPoolExecutor tpe = (ThreadPoolExecutor) executor;
                 tpe.shutdownNow();
@@ -698,7 +720,6 @@ public abstract class AbstractEndpoint<S> {
                 TaskQueue queue = (TaskQueue) tpe.getQueue();
                 queue.setParent(null);
             }
-            executor = null;
         }
     }
 
@@ -877,6 +898,7 @@ public abstract class AbstractEndpoint<S> {
         if (running && !paused) {
             paused = true;
             unlockAccept();
+            getHandler().pause();
         }
     }
 
@@ -906,6 +928,8 @@ public abstract class AbstractEndpoint<S> {
     }
 
 
+    protected abstract Handler<S> getHandler();
+
     protected abstract Log getLog();
 
     protected LimitLatch initializeConnectionLatch() {
@@ -934,7 +958,7 @@ public abstract class AbstractEndpoint<S> {
         if (latch!=null) {
             long result = latch.countDown();
             if (result<0) {
-                getLog().warn("Incorrect connection count, multiple socket.close called on the same socket." );
+                getLog().warn(sm.getString("endpoint.warn.incorrectConnectionCount"));
             }
             return result;
         } else return -1;
@@ -975,6 +999,9 @@ public abstract class AbstractEndpoint<S> {
 
     protected final Set<SocketWrapperBase<S>> waitingRequests = Collections
             .newSetFromMap(new ConcurrentHashMap<SocketWrapperBase<S>, Boolean>());
+    public void removeWaitingRequest(SocketWrapperBase<S> socketWrapper) {
+        waitingRequests.remove(socketWrapper);
+    }
 
     /**
      * The async timeout thread.

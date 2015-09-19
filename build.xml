@@ -48,6 +48,8 @@
   <property name="jsp.revision" value="FR" />
   <property name="el.revision" value="FR" />
   <property name="websocket.revision" value="FR" />
+  <!-- MR B but this was first 1.1 release so use FR -->
+  <property name="jaspic.revision" value="FR" />
 
   <!-- Release artifact base names -->
   <property name="final.name"            value="${project}-${version}" />
@@ -69,9 +71,11 @@
   <property name="tomcat.release"        value="${tomcat.output}/release"/>
   <property name="tomcat.src.jars"       value="${tomcat.output}/src-jars"/>
   <property name="test.classes"          value="${tomcat.output}/testclasses"/>
+  <property name="test.run.classes"      value="${tomcat.output}/classes"/>
   <property name="test.temp"             value="${tomcat.output}/test-tmp"/>
-  <property name="test.reports"          value="${tomcat.build}/logs"/>
-  <property name="test.apr.loc"          value="${tomcat.build}/bin/native"/>
+  <property name="test.basedir"          value="${tomcat.build}"/>
+  <property name="test.reports"          value="${test.basedir}/logs"/>
+  <property name="test.apr.loc"          value="${test.basedir}/bin/native"/>
   <!-- base directory for jdbc-pool -->
   <property name="tomcat.jdbc.dir"       value="${basedir}/modules/jdbc-pool"/>
   <!-- build output directory for jdbc-pool -->
@@ -91,6 +95,7 @@
   <property name="jsp-api.jar" value="${tomcat.build}/lib/jsp-api.jar"/>
   <property name="el-api.jar" value="${tomcat.build}/lib/el-api.jar"/>
   <property name="websocket-api.jar" value="${tomcat.build}/lib/websocket-api.jar"/>
+  <property name="jaspic-api.jar" value="${tomcat.build}/lib/jaspic-api.jar"/>
   <property name="tomcat-websocket.jar" value="${tomcat.build}/lib/tomcat-websocket.jar"/>
   <property name="catalina.jar" value="${tomcat.build}/lib/catalina.jar"/>
   <property name="catalina-tribes.jar" value="${tomcat.build}/lib/catalina-tribes.jar"/>
@@ -116,6 +121,7 @@
   <property name="jsp-api-src.jar" value="${tomcat.src.jars}/jsp-api-src.jar"/>
   <property name="el-api-src.jar" value="${tomcat.src.jars}/el-api-src.jar"/>
   <property name="websocket-api-src.jar" value="${tomcat.src.jars}/websocket-api-src.jar"/>
+  <property name="jaspic-api-src.jar" value="${tomcat.src.jars}/jaspic-api-src.jar"/>
   <property name="tomcat-websocket-src.jar" value="${tomcat.src.jars}/tomcat-websocket-src.jar"/>
   <property name="catalina-src.jar" value="${tomcat.src.jars}/catalina-src.jar"/>
   <property name="catalina-tribes-src.jar" value="${tomcat.src.jars}/catalina-tribes-src.jar"/>
@@ -179,11 +185,8 @@
   <property name="test.jvmarg.egd" value="" />
 
   <!-- Location of OpenSSL binary (file name, not directory) -->
+  <!-- The OpenSSL tests cases be disabled by specifing an invalid path here -->
   <property name="test.openssl.path" value="" />
-
-  <!-- Accepted version of OpenSSL. The output of "openssl version"
-       must start with "OpenSSL " plus value of this property. -->
-  <property name="test.openssl.version" value="1.1.0" />
 
   <!-- Include .gitignore in src distributions. -->
   <!-- .git and .gitignore are in defaultexcludes since Ant 1.8.2 -->
@@ -198,11 +201,11 @@
   </path>
 
   <path id="tomcat.classpath">
-    <pathelement location="${tomcat.classes}"/>
+    <pathelement path="${test.run.classes}"/>
   </path>
 
   <path id="tomcat.test.classpath">
-    <pathelement location="${tomcat.build}/webapps/examples/WEB-INF/classes"/>
+    <pathelement location="${test.basedir}/webapps/examples/WEB-INF/classes"/>
     <pathelement location="${test.classes}"/>
     <pathelement location="${junit.jar}"/>
     <pathelement location="${hamcrest.jar}"/>
@@ -318,6 +321,10 @@
     <include name="javax/websocket/**" />
   </patternset>
 
+  <patternset id="files.jaspic-api">
+    <include name="javax/security/auth/message/**" />
+  </patternset>
+
   <patternset id="files.tomcat-websocket">
     <include name="org/apache/tomcat/websocket/**" />
   </patternset>
@@ -349,6 +356,7 @@
   <patternset id="files.tomcat-util">
     <include name="org/apache/tomcat/util/buf/**" />
     <include name="org/apache/tomcat/util/codec/**" />
+    <include name="org/apache/tomcat/util/compat/**" />
     <include name="org/apache/tomcat/util/file/**" />
     <include name="org/apache/tomcat/util/res/**" />
     <include name="org/apache/tomcat/util/security/**" />
@@ -434,6 +442,7 @@
     <patternset refid="files.bootstrap" />
     <patternset refid="files.catalina" />
     <patternset refid="files.servlet-api" />
+    <patternset refid="files.jaspic-api" />
     <patternset refid="files.tomcat-api" />
     <!-- These pattern sets conflict so include files directly
       <patternset refid="files.tomcat-coyote" />
@@ -531,8 +540,12 @@
     description="Uses Checkstyle tool to perform style check for the source code">
     <!-- Required so we can cache checkstyle results -->
     <mkdir dir="${tomcat.output}/res/checkstyle"/>
+    <available property="checkstyletask.properties" resource="checkstyletask.properties"
+       classpath="${checkstyle.jar}" value="checkstyletask.properties"/>
+    <available property="checkstyletask.properties" resource="com/puppycrawl/tools/checkstyle/ant/checkstyle-ant-task.properties"
+       classpath="${checkstyle.jar}" value="com/puppycrawl/tools/checkstyle/ant/checkstyle-ant-task.properties"/>
 
-    <taskdef resource="checkstyletask.properties"
+    <taskdef resource="${checkstyletask.properties}"
              classpath="${checkstyle.jar}" />
     <checkstyle config="res/checkstyle/checkstyle.xml">
       <fileset dir="." >
@@ -675,6 +688,7 @@
     <filter token="jsp.revision" value="${jsp.revision}"/>
     <filter token="el.revision" value="${el.revision}"/>
     <filter token="websocket.revision" value="${websocket.revision}"/>
+    <filter token="jaspic.revision" value="${jaspic.revision}"/>
 
     <mkdir dir="${tomcat.manifests}" />
     <copy todir="${tomcat.manifests}" overwrite="yes" filtering="yes"
@@ -717,6 +731,12 @@
       filesDir="${tomcat.classes}"
       filesId="files.websocket-api"
       manifest="${tomcat.manifests}/websocket-api.jar.manifest" />
+
+    <!-- JASPIC 1.1 Implementation JAR File -->
+    <jarIt jarfile="${jaspic-api.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.jaspic-api"
+      manifest="${tomcat.manifests}/jaspic-api.jar.manifest" />
 
     <!-- WebSocket 1.1 implementation JAR File -->
     <jarIt jarfile="${tomcat-websocket.jar}"
@@ -1412,7 +1432,8 @@
       <junit printsummary="yes" fork="yes" dir="." showoutput="yes"
         errorproperty="test.result.error"
         failureproperty="test.result.failure"
-        haltonfailure="${test.haltonfailure}" >
+        haltonfailure="${test.haltonfailure}"
+        threads="${test.threads}" >
 
         <jvmarg value="${test.jvmarg.egd}"/>
         <jvmarg value="-Djava.library.path=${test.apr.loc}"/>
@@ -1423,12 +1444,12 @@
         <classpath refid="tomcat.test.run.classpath" />
 
         <sysproperty key="tomcat.test.temp" value="${test.temp}" />
+        <sysproperty key="tomcat.test.basedir" value="${test.basedir}" />
         <sysproperty key="tomcat.test.tomcatbuild" value="${tomcat.build}" />
         <sysproperty key="tomcat.test.protocol" value="@{protocol}" />
         <sysproperty key="tomcat.test.accesslog" value="${test.accesslog}" />
         <sysproperty key="tomcat.test.reports" value="${test.reports}" />
         <sysproperty key="tomcat.test.openssl.path" value="${test.openssl.path}" />
-        <sysproperty key="tomcat.test.openssl.version" value="${test.openssl.version}" />
         <sysproperty key="tomcat.test.relaxTiming" value="${test.relaxTiming}" />
         <!-- File for Cobertura to write coverage results to -->
         <sysproperty key="net.sourceforge.cobertura.datafile" file="${cobertura.datafile}" />
@@ -1462,15 +1483,39 @@
     </sequential>
   </macrodef>
 
-  <target name="cobertura-disabled" unless="${test.cobertura}">
+  <target name="cobertura-init">
+    <condition property="cobertura.enabled" value="true">
+      <and>
+        <istrue value="${test.cobertura}"/>
+        <equals arg1="1" arg2="${test.threads}"/>
+      </and>
+    </condition>
+    <condition property="cobertura.disabled" value="true">
+        <and>
+          <istrue value="${test.cobertura}"/>
+          <not>
+            <equals arg1="1" arg2="${test.threads}"/>
+          </not>
+        </and>
+    </condition>
+  </target>
+
+  <target name="cobertura-disabled" unless="${cobertura.enabled}"
+          depends="cobertura-init">
     <!-- Define classpath used to run tests when Cobertura is turned off. -->
     <path id="tomcat.test.run.classpath">
       <path refid="tomcat.test.classpath" />
     </path>
   </target>
 
-  <target name="cobertura-instrument" depends="compile,download-cobertura,cobertura-disabled"
-          if="${test.cobertura}"
+  <target name="cobertura-disabled-log" if="${cobertura.disabled}"
+          depends="cobertura-init">
+    <echo message="Code coverage disabled because test.threads is greater than 1"/>
+  </target>
+
+  <target name="cobertura-instrument"
+          depends="compile,download-cobertura,cobertura-disabled,cobertura-disabled-log"
+          if="${cobertura.enabled}"
           description="Adds Cobertura instrumentation to the compiled bytecode">
 
     <path id="cobertura.classpath">
@@ -1513,7 +1558,7 @@
     </path>
   </target>
 
-  <target name="cobertura-report" if="${test.cobertura}"
+  <target name="cobertura-report" if="${cobertura.enabled}"
           depends="test-nio,test-nio2,test-apr"
           description="Creates report from gathered Cobertura results">
 
@@ -1993,6 +2038,7 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
         <include name="jsp-api.jar"/>
         <include name="jasper.jar"/>
         <include name="jasper-el.jar"/>
+        <include name="jaspic-api.jar"/>
         <include name="servlet-api.jar"/>
         <include name="websocket-api.jar"/>
         <include name="tomcat-websocket.jar"/>
@@ -2017,6 +2063,7 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
           <exclude name="org/apache/tomcat/util/buf" />
           <exclude name="org/apache/tomcat/util/codec" />
           <exclude name="org/apache/tomcat/util/collections" />
+          <exclude name="org/apache/tomcat/util/compat" />
           <exclude name="org/apache/tomcat/util/descriptor" />
           <exclude name="org/apache/tomcat/util/file" />
           <exclude name="org/apache/tomcat/util/http" />
@@ -2617,6 +2664,14 @@ skip.installer property in build.properties" />
     <jarIt jarfile="${tomcat-websocket-src.jar}"
       filesDir="java"
       filesId="files.tomcat-websocket" />
+
+    <!-- JASPIC 1.1 Implementation JAR File -->
+    <jarIt jarfile="${jaspic-api-src.jar}"
+      filesDir="java"
+      filesId="files.jaspic-api"
+      manifest="${tomcat.manifests}/jaspic-api.jar.manifest"
+      notice="${tomcat.manifests}/jaspic-api.jar.notice"
+      license="${tomcat.manifests}/jaspic-api.jar.license" />
 
     <!-- Bootstrap JAR File -->
     <jarIt jarfile="${bootstrap-src.jar}"

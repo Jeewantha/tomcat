@@ -140,7 +140,7 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     }
 
 
-    private String compressableMimeType = "text/html,text/xml,text/plain,text/css";
+    private String compressableMimeType = "text/html,text/xml,text/plain,text/css,text/javascript,application/javascript";
     private String[] compressableMimeTypes = null;
     public String getCompressableMimeType() { return compressableMimeType; }
     public void setCompressableMimeType(String valueS) {
@@ -297,6 +297,10 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public void addUpgradeProtocol(UpgradeProtocol upgradeProtocol) {
         upgradeProtocols.add(upgradeProtocol);
     }
+    @Override
+    public UpgradeProtocol[] findUpgradeProtocols() {
+        return upgradeProtocols.toArray(new UpgradeProtocol[0]);
+    }
 
     /**
      * The protocols that are available via internal Tomcat support for access
@@ -391,6 +395,10 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
         getEndpoint().addSslHostConfig(sslHostConfig);
     }
 
+    @Override
+    public SSLHostConfig[] findSslHostConfigs() {
+        return getEndpoint().findSslHostConfigs();
+    }
 
     // ----------------------------------------------- HTTPS specific properties
     // -------------------------------------------- Handled via an SSLHostConfig
@@ -571,12 +579,6 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public void setSessionTimeout(int sessionTimeout){
         registerDefaultSSLHostConfig();
         defaultSSLHostConfig.setSessionTimeout(sessionTimeout);
-    }
-
-
-    public void setSSLCertificateChainFile(String certificateChainFile) {
-        registerDefaultSSLHostConfig();
-        defaultSSLHostConfig.setCertificateChainFile(certificateChainFile);
     }
 
 

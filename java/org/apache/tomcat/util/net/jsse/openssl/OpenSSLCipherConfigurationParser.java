@@ -374,6 +374,17 @@ public class OpenSSLCipherConfigurationParser {
             }
             aliases.put(cipher.name(), Collections.singletonList(cipher));
 
+            for (String openSSlAltName : cipher.getOpenSSLAltNames()) {
+                if (aliases.containsKey(openSSlAltName)) {
+                    aliases.get(openSSlAltName).add(cipher);
+                } else {
+                    List<Cipher> list = new ArrayList<>();
+                    list.add(cipher);
+                    aliases.put(openSSlAltName, list);
+                }
+
+            }
+
             jsseToOpenSSL.put(cipher.name(), cipher.getOpenSSLAlias());
             Set<String> jsseNames = cipher.getJsseNames();
             for (String jsseName : jsseNames) {
@@ -467,18 +478,20 @@ public class OpenSSLCipherConfigurationParser {
         addListAlias(kGOST, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.GOST)));
         addListAlias(GOST94, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.GOST94)));
         addListAlias(GOST89MAC, filterByMessageDigest(allCiphers, Collections.singleton(MessageDigest.GOST89MAC)));
-        addListAlias(PSK, filter(allCiphers, null, Collections.singleton(KeyExchange.PSK), Collections.singleton(Authentication.PSK), null, null, null));
+        addListAlias(PSK, filter(allCiphers, null, new HashSet<>(Arrays.asList(KeyExchange.PSK, KeyExchange.RSAPSK, KeyExchange.DHEPSK, KeyExchange.ECDHEPSK)), Collections.singleton(Authentication.PSK), null, null, null));
         addListAlias(KRB5, filter(allCiphers, null, Collections.singleton(KeyExchange.KRB5), Collections.singleton(Authentication.KRB5), null, null, null));
         addListAlias(aSRP, filterByAuthentication(allCiphers, Collections.singleton(Authentication.SRP)));
         addListAlias(kSRP, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.SRP)));
         addListAlias(SRP, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.SRP)));
         initialized = true;
         // Despite what the OpenSSL docs say, DEFAULT also excludes SSLv2
-        addListAlias(DEFAULT, parse("ALL:!eNULL:!aNULL:!SSLv2"));
+        addListAlias(DEFAULT, parse("ALL:!EXPORT:!eNULL:!aNULL:!SSLv2"));
         // COMPLEMENTOFDEFAULT is also not exactly as defined by the docs
         Set<Cipher> complementOfDefault = filterByKeyExchange(all, new HashSet<>(Arrays.asList(KeyExchange.EDH,KeyExchange.EECDH)));
         complementOfDefault = filterByAuthentication(complementOfDefault, Collections.singleton(Authentication.aNULL));
         complementOfDefault.removeAll(aliases.get(eNULL));
+        complementOfDefault.addAll(aliases.get(Constants.SSL_PROTO_SSLv2));
+        complementOfDefault.addAll(aliases.get(EXPORT));
         addListAlias(COMPLEMENTOFDEFAULT, complementOfDefault);
     }
 
@@ -629,7 +642,7 @@ public class OpenSSLCipherConfigurationParser {
         return result;
     }
 
-    static LinkedHashSet<Cipher> parse(String expression) {
+    public static LinkedHashSet<Cipher> parse(String expression) {
         if (!initialized) {
             init();
         }
@@ -676,7 +689,7 @@ public class OpenSSLCipherConfigurationParser {
         return defaultSort(ciphers);
     }
 
-    static List<String> convertForJSSE(Collection<Cipher> ciphers) {
+    public static List<String> convertForJSSE(Collection<Cipher> ciphers) {
         List<String> result = new ArrayList<>(ciphers.size());
         for (Cipher cipher : ciphers) {
             result.addAll(cipher.getJsseNames());

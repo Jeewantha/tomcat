@@ -16,13 +16,26 @@
  */
 package org.apache.tomcat.util.net;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSessionContext;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+
 import org.apache.tomcat.util.net.SSLHostConfig.Type;
+import org.apache.tomcat.util.net.jsse.openssl.Cipher;
+import org.apache.tomcat.util.net.openssl.OpenSSLImplementation;
 
 public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
+
+    private static final Log log = LogFactory.getLog(AbstractJsseEndpoint.class);
 
     private String sslImplementationName = null;
     private int sniParseLimit = 64 * 1024;
@@ -57,7 +70,11 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
 
     @Override
     protected Type getSslConfigType() {
-        return SSLHostConfig.Type.JSSE;
+        if (OpenSSLImplementation.IMPLEMENTATION_NAME.equals(sslImplementationName)) {
+            return SSLHostConfig.Type.OPENSSL;
+        } else {
+            return SSLHostConfig.Type.JSSE;
+        }
     }
 
 
@@ -66,25 +83,31 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
             sslImplementation = SSLImplementation.getInstance(getSslImplementationName());
 
             for (SSLHostConfig sslHostConfig : sslHostConfigs.values()) {
-                SSLUtil sslUtil = sslImplementation.getSSLUtil(sslHostConfig);
+                for (SSLHostConfigCertificate certificate : sslHostConfig.getCertificates(true)) {
+                    SSLUtil sslUtil = sslImplementation.getSSLUtil(sslHostConfig, certificate);
 
-                SSLContext sslContext = sslUtil.createSSLContext();
-                sslContext.init(sslUtil.getKeyManagers(), sslUtil.getTrustManagers(), null);
+                    SSLContext sslContext = sslUtil.createSSLContext(negotiableProtocols);
+                    sslContext.init(sslUtil.getKeyManagers(), sslUtil.getTrustManagers(), null);
 
-                SSLSessionContext sessionContext = sslContext.getServerSessionContext();
-                if (sessionContext != null) {
-                    sslUtil.configureSessionContext(sessionContext);
+                    SSLSessionContext sessionContext = sslContext.getServerSessionContext();
+                    if (sessionContext != null) {
+                        sslUtil.configureSessionContext(sessionContext);
+                    }
+                    SSLContextWrapper sslContextWrapper = new SSLContextWrapper(sslContext, sslUtil);
+                    certificate.setSslContextWrapper(sslContextWrapper);
                 }
-                SSLContextWrapper sslContextWrapper = new SSLContextWrapper(sslContext, sslUtil);
-                sslHostConfig.setSslContext(sslContextWrapper);
             }
+
         }
     }
 
 
-    protected SSLEngine createSSLEngine(String sniHostName) {
+    protected SSLEngine createSSLEngine(String sniHostName, List<Cipher> clientRequestedCiphers) {
         SSLHostConfig sslHostConfig = getSSLHostConfig(sniHostName);
-        SSLContextWrapper sslContextWrapper = (SSLContextWrapper) sslHostConfig.getSslContext();
+
+        SSLHostConfigCertificate certificate = selectCertificate(sslHostConfig, clientRequestedCiphers);
+
+        SSLContextWrapper sslContextWrapper = certificate.getSslContextWrapper();
         if (sslContextWrapper == null) {
             throw new IllegalStateException(
                     sm.getString("endpoint.jsse.noSslContext", sniHostName));
@@ -117,15 +140,52 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
     }
 
 
+    private SSLHostConfigCertificate selectCertificate(
+            SSLHostConfig sslHostConfig, List<Cipher> clientCiphers) {
+
+        Set<SSLHostConfigCertificate> certificates = sslHostConfig.getCertificates(true);
+        if (certificates.size() == 1) {
+            return certificates.iterator().next();
+        }
+
+        LinkedHashSet<Cipher> serverCiphers = sslHostConfig.getCipherList();
+
+        List<Cipher> candidateCiphers = new ArrayList<>();
+        if (sslHostConfig.getHonorCipherOrder()) {
+            candidateCiphers.addAll(serverCiphers);
+            candidateCiphers.retainAll(clientCiphers);
+        } else {
+            candidateCiphers.addAll(clientCiphers);
+            candidateCiphers.retainAll(serverCiphers);
+        }
+
+        Iterator<Cipher> candidateIter = candidateCiphers.iterator();
+        while (candidateIter.hasNext()) {
+            Cipher candidate = candidateIter.next();
+            for (SSLHostConfigCertificate certificate : certificates) {
+                if (certificate.getType().isCompatibleWith(candidate.getAu())) {
+                    return certificate;
+                }
+            }
+        }
+
+        // No matches. Just return the first certificate. The handshake will
+        // then fail due to no matching ciphers.
+        return certificates.iterator().next();
+    }
+
+
     @Override
     public void unbind() throws Exception {
         for (SSLHostConfig sslHostConfig : sslHostConfigs.values()) {
-            sslHostConfig.setSslContext(null);
+            for (SSLHostConfigCertificate certificate : sslHostConfig.getCertificates(true)) {
+                certificate.setSslContextWrapper(null);
+            }
         }
     }
 
 
-    private static class SSLContextWrapper {
+    static class SSLContextWrapper {
 
         private final SSLContext sslContext;
         private final String[] enabledCiphers;

@@ -83,7 +83,6 @@ public class AsyncFileHandler extends FileHandler {
     public void close() {
         if (closed) return;
         closed = true;
-        // TODO Auto-generated method stub
         super.close();
     }
 
@@ -91,7 +90,6 @@ public class AsyncFileHandler extends FileHandler {
     protected void open() {
         if(!closed) return;
         closed = false;
-        // TODO Auto-generated method stub
         super.open();
     }
 
@@ -100,6 +98,11 @@ public class AsyncFileHandler extends FileHandler {
     public void publish(LogRecord record) {
         if (!isLoggable(record)) {
             return;
+        }
+        if (record != null) {
+            // fill source entries, before we hand the record over to another
+            // thread with another class loader
+            record.getSourceMethodName();
         }
         LogEntry entry = new LogEntry(record,this);
         boolean added = false;
