@@ -64,10 +64,8 @@ import org.apache.tomcat.util.res.StringManager;
  * <br>
  * Note:
  * <ul>
- * <li>Unless Tomcat is configured with an ECC certificate, FireFox (tested with
- *     v37.0.2) needs to be configured with
- *     network.http.spdy.enforce-tls-profile=false in order for FireFox to be
- *     able to connect.</li>
+ * <li>Tomcat needs to be configured with honorCipherOrder="false" otherwise
+ *     Tomcat will prefer a cipher suite that is blacklisted by HTTP/2.</li>
  * <li>You will need to nest an &lt;UpgradeProtocol
  *     className="org.apache.coyote.http2.Http2Protocol" /&gt; element inside
  *     a TLS enabled Connector element in server.xml to enable HTTP/2 support.
@@ -271,7 +269,9 @@ public class Http2UpgradeHandler extends AbstractStream implements InternalHttpU
             switch(status) {
             case OPEN_READ:
                 try {
-
+                    // There is data to read so use the read timeout while
+                    // reading frames.
+                   socketWrapper.setReadTimeout(getReadTimeout());
                     while (true) {
                         try {
                             if (!parser.readFrame(false)) {
@@ -283,8 +283,11 @@ public class Http2UpgradeHandler extends AbstractStream implements InternalHttpU
                             closeStream(se);
                         }
                     }
+                    // No more frames to read so switch to the keep-alive
+                    // timeout.
+                    socketWrapper.setReadTimeout(getKeepAliveTimeout());
                 } catch (Http2Exception ce) {
-                    // Really ConnectionError
+                    // Really ConnectionException
                     if (log.isDebugEnabled()) {
                         log.debug(sm.getString("upgradeHandler.connectionError"), ce);
                     }

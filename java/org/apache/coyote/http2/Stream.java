@@ -222,16 +222,11 @@ public class Stream extends AbstractStream implements HeaderEmitter {
     }
 
 
-    void flushData() {
+    void flushData() throws IOException {
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("stream.write", getConnectionId(), getIdentifier()));
         }
-        try {
-            outputBuffer.flush();
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
+        outputBuffer.flush();
     }
 
 
@@ -302,6 +297,10 @@ public class Stream extends AbstractStream implements HeaderEmitter {
         state.closeIfIdle();
     }
 
+
+    boolean isInputFinished() {
+        return !state.isFrameTypePermitted(FrameType.DATA);
+    }
 
     class StreamOutputBuffer implements OutputBuffer {
 
@@ -433,11 +432,11 @@ public class Stream extends AbstractStream implements HeaderEmitter {
 
             ensureBuffersExist();
 
-            int written = 0;
+            int written = -1;
 
             // Ensure that only one thread accesses inBuffer at a time
             synchronized (inBuffer) {
-                while (inBuffer.position() == 0 && state.isFrameTypePermitted(FrameType.DATA)) {
+                while (inBuffer.position() == 0 && !isInputFinished()) {
                     // Need to block until some data is written
                     try {
                         inBuffer.wait();
@@ -455,7 +454,7 @@ public class Stream extends AbstractStream implements HeaderEmitter {
                     written = inBuffer.remaining();
                     inBuffer.get(outBuffer, 0, written);
                     inBuffer.clear();
-                } else if (!state.isFrameTypePermitted(FrameType.DATA)) {
+                } else if (isInputFinished()) {
                     return -1;
                 } else {
                     // Should never happen
