@@ -35,6 +35,7 @@ public class UpgradeServletInputStream extends ServletInputStream {
     private static final StringManager sm =
             StringManager.getManager(UpgradeServletInputStream.class);
 
+    private final UpgradeProcessorBase processor;
     private final SocketWrapperBase<?> socketWrapper;
 
     private volatile boolean closed = false;
@@ -42,10 +43,11 @@ public class UpgradeServletInputStream extends ServletInputStream {
     // Start in blocking-mode
     private volatile Boolean ready = Boolean.TRUE;
     private volatile ReadListener listener = null;
-    private volatile ClassLoader applicationLoader = null;
 
 
-    public UpgradeServletInputStream(SocketWrapperBase<?> socketWrapper) {
+    public UpgradeServletInputStream(UpgradeProcessorBase processor,
+            SocketWrapperBase<?> socketWrapper) {
+        this.processor = processor;
         this.socketWrapper = socketWrapper;
     }
 
@@ -99,15 +101,15 @@ public class UpgradeServletInputStream extends ServletInputStream {
             throw new IllegalStateException(sm.getString("upgrade.sis.read.closed"));
         }
 
+        this.listener = listener;
+
         // Container is responsible for first call to onDataAvailable().
         if (ContainerThreadMarker.isContainerThread()) {
-            socketWrapper.addDispatch(DispatchType.NON_BLOCKING_READ);
+            processor.addDispatch(DispatchType.NON_BLOCKING_READ);
         } else {
             socketWrapper.registerReadInterest();
         }
 
-        this.listener = listener;
-        this.applicationLoader = Thread.currentThread().getContextClassLoader();
         // Switching to non-blocking. Don't know if data is available.
         ready = null;
     }
@@ -201,14 +203,16 @@ public class UpgradeServletInputStream extends ServletInputStream {
 
 
     final void onDataAvailable() {
-        if (listener == null) {
-            return;
+        try {
+            if (listener == null || !socketWrapper.isReadyForRead()) {
+                return;
+            }
+        } catch (IOException e) {
+            onError(e);
         }
         ready = Boolean.TRUE;
-        Thread thread = Thread.currentThread();
-        ClassLoader originalClassLoader = thread.getContextClassLoader();
+        ClassLoader oldCL = processor.getUpgradeToken().getContextBind().bind(false, null);
         try {
-            thread.setContextClassLoader(applicationLoader);
             if (!eof) {
                 listener.onDataAvailable();
             }
@@ -219,7 +223,7 @@ public class UpgradeServletInputStream extends ServletInputStream {
             ExceptionUtils.handleThrowable(t);
             onError(t);
         } finally {
-            thread.setContextClassLoader(originalClassLoader);
+            processor.getUpgradeToken().getContextBind().unbind(false, oldCL);
         }
     }
 
@@ -228,16 +232,14 @@ public class UpgradeServletInputStream extends ServletInputStream {
         if (listener == null) {
             return;
         }
-        Thread thread = Thread.currentThread();
-        ClassLoader originalClassLoader = thread.getContextClassLoader();
+        ClassLoader oldCL = processor.getUpgradeToken().getContextBind().bind(false, null);
         try {
-            thread.setContextClassLoader(applicationLoader);
             listener.onError(t);
         } catch (Throwable t2) {
             ExceptionUtils.handleThrowable(t2);
             log.warn(sm.getString("upgrade.sis.onErrorFail"), t2);
         } finally {
-            thread.setContextClassLoader(originalClassLoader);
+            processor.getUpgradeToken().getContextBind().unbind(false, oldCL);
         }
         try {
             close();

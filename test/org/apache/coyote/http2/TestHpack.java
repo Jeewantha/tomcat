@@ -32,7 +32,7 @@ public class TestHpack {
         headers.setValue(":status").setString("200");
         headers.setValue("header2").setString("value2");
         ByteBuffer output = ByteBuffer.allocate(512);
-        HpackEncoder encoder = new HpackEncoder(1024);
+        HpackEncoder encoder = new HpackEncoder();
         encoder.encode(headers, output);
         output.flip();
         // Size is supposed to be 33 without huffman, or 27 with it
@@ -52,7 +52,7 @@ public class TestHpack {
         headers.setValue(":status").setString("200");
         headers.setValue("header2").setString("value2");
         ByteBuffer output = ByteBuffer.allocate(512);
-        HpackEncoder encoder = new HpackEncoder(1024);
+        HpackEncoder encoder = new HpackEncoder();
         encoder.encode(headers, output);
         output.flip();
         MimeHeaders headers2 = new MimeHeaders();
@@ -76,11 +76,71 @@ public class TestHpack {
             this.headers = headers;
         }
         @Override
-        public void emitHeader(String name, String value, boolean neverIndex) {
+        public void emitHeader(String name, String value) {
             headers.setValue(name).setString(value);
+        }
+        @Override
+        public void setHeaderException(StreamException streamException) {
+            // NO-OP
+        }
+        @Override
+        public void validateHeaders() throws StreamException {
+            // NO-OP
         }
     }
 
-    // TODO: Write more complete tests
+    @Test
+    public void testHeaderValueBug60451() throws HpackException {
+        doTestHeaderValueBug60451("fooébar");
+    }
 
+    @Test
+    public void testHeaderValueFullRange() {
+        for (int i = 0; i < 256; i++) {
+            // Skip the control characters except VTAB
+            if (i == 9 || i > 31 && i < 127 || i > 127) {
+                try {
+                    doTestHeaderValueBug60451("foo" + Character.toString((char) i)  + "bar");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Assert.fail(e.getMessage() + "[" + i + "]");
+                }
+            }
+        }
+    }
+
+    @Test(expected=HpackException.class)
+    public void testExcessiveStringLiteralPadding() throws Exception {
+        MimeHeaders headers = new MimeHeaders();
+        headers.setValue("X-test").setString("foobar");
+        ByteBuffer output = ByteBuffer.allocate(512);
+        HpackEncoder encoder = new HpackEncoder();
+        encoder.encode(headers, output);
+        // Hack the output buffer to extend the EOS marker for the header value
+        // by another byte
+        output.array()[7] = (byte) -122;
+        output.put((byte) -1);
+        output.flip();
+        MimeHeaders headers2 = new MimeHeaders();
+        HpackDecoder decoder = new HpackDecoder();
+        decoder.setHeaderEmitter(new HeadersListener(headers2));
+        decoder.decode(output);
+    }
+
+
+    private void doTestHeaderValueBug60451(String filename) throws HpackException {
+        String headerName = "Content-Disposition";
+        String headerValue = "attachment;filename=\"" + filename + "\"";
+        MimeHeaders headers = new MimeHeaders();
+        headers.setValue(headerName).setString(headerValue);
+        ByteBuffer output = ByteBuffer.allocate(512);
+        HpackEncoder encoder = new HpackEncoder();
+        encoder.encode(headers, output);
+        output.flip();
+        MimeHeaders headers2 = new MimeHeaders();
+        HpackDecoder decoder = new HpackDecoder();
+        decoder.setHeaderEmitter(new HeadersListener(headers2));
+        decoder.decode(output);
+        Assert.assertEquals(headerValue, headers2.getHeader(headerName));
+    }
 }

@@ -21,7 +21,7 @@ import java.io.IOException;
 
 /**
  * A <b>Manager</b> manages the pool of Sessions that are associated with a
- * particular Container.  Different Manager implementations may support
+ * particular Context. Different Manager implementations may support
  * value-added features such as the persistent storage of session data,
  * as well as migrating sessions for distributable web applications.
  * <p>
@@ -50,48 +50,15 @@ public interface Manager {
 
 
     /**
-     * Set the Container with which this Manager is associated.
+     * Set the Context with which this Manager is associated. The Context must
+     * be set to a non-null value before the Manager is first used. Multiple
+     * calls to this method before first use are permitted. Once the Manager has
+     * been used, this method may not be used to change the Context (including
+     * setting a {@code null} value) that the Manager is associated with.
      *
      * @param context The newly associated Context
      */
     public void setContext(Context context);
-
-
-    /**
-     * Is this Manager marked as using distributable sessions?
-     *
-     * @return {@code true} if this manager is marked as distributable otherwise
-     *         {@code false}
-     */
-    public boolean getDistributable();
-
-
-    /**
-     * Configure whether this manager uses distributable sessions. If this flag
-     * is set, all user data objects added to sessions associated with this
-     * manager must implement Serializable.
-     *
-     * @param distributable The new distributable flag
-     */
-    public void setDistributable(boolean distributable);
-
-
-    /**
-     * Get the default time in seconds before a session managed by this manager
-     * will be considered inactive.
-     *
-     * @return The default maximum inactive interval in seconds
-     */
-    public int getMaxInactiveInterval();
-
-
-    /**
-     * Set the default maximum inactive interval (in seconds)
-     * for Sessions created by this Manager.
-     *
-     * @param interval The new default value
-     */
-    public void setMaxInactiveInterval(int interval);
 
 
     /**
@@ -370,4 +337,87 @@ public interface Manager {
      * a method that executes periodic tasks, such as expiring sessions etc.
      */
     public void backgroundProcess();
+
+
+    /**
+     * Would the Manager distribute the given session attribute? Manager
+     * implementations may provide additional configuration options to control
+     * which attributes are distributable.
+     *
+     * @param name  The attribute name
+     * @param value The attribute value
+     *
+     * @return {@code true} if the Manager would distribute the given attribute
+     *         otherwise {@code false}
+     */
+    public boolean willAttributeDistribute(String name, Object value);
+
+
+    /**
+     * When an attribute that is already present in the session is added again
+     * under the same name and the attribute implements {@link
+     * javax.servlet.http.HttpSessionBindingListener}, should
+     * {@link javax.servlet.http.HttpSessionBindingListener#valueUnbound(javax.servlet.http.HttpSessionBindingEvent)}
+     * be called followed by
+     * {@link javax.servlet.http.HttpSessionBindingListener#valueBound(javax.servlet.http.HttpSessionBindingEvent)}?
+     * <p>
+     * The default value is {@code false}.
+     *
+     * @return {@code true} if the listener will be notified, {@code false} if
+     *         it will not
+     */
+    public default boolean getNotifyBindingListenerOnUnchangedValue() {
+        return false;
+    }
+
+
+    /**
+     * Configure if
+     * {@link javax.servlet.http.HttpSessionBindingListener#valueUnbound(javax.servlet.http.HttpSessionBindingEvent)}
+     * be called followed by
+     * {@link javax.servlet.http.HttpSessionBindingListener#valueBound(javax.servlet.http.HttpSessionBindingEvent)}
+     * when an attribute that is already present in the session is added again
+     * under the same name and the attribute implements {@link
+     * javax.servlet.http.HttpSessionBindingListener}.
+     *
+     * @param notifyBindingListenerOnUnchangedValue {@code true} the listener
+     *                                              will be called, {@code
+     *                                              false} it will not
+     */
+    public void setNotifyBindingListenerOnUnchangedValue(
+            boolean notifyBindingListenerOnUnchangedValue);
+
+
+    /**
+     * When an attribute that is already present in the session is added again
+     * under the same name and a {@link
+     * javax.servlet.http.HttpSessionAttributeListener} is configured for the
+     * session should
+     * {@link javax.servlet.http.HttpSessionAttributeListener#attributeReplaced(javax.servlet.http.HttpSessionBindingEvent)}
+     * be called?
+     * <p>
+     * The default value is {@code true}.
+     *
+     * @return {@code true} if the listener will be notified, {@code false} if
+     *         it will not
+     */
+    public default boolean getNotifyAttributeListenerOnUnchangedValue() {
+        return true;
+    }
+
+
+    /**
+     * Configure if
+     * {@link javax.servlet.http.HttpSessionAttributeListener#attributeReplaced(javax.servlet.http.HttpSessionBindingEvent)}
+     * when an attribute that is already present in the session is added again
+     * under the same name and a {@link
+     * javax.servlet.http.HttpSessionAttributeListener} is configured for the
+     * session.
+     *
+     * @param notifyAttributeListenerOnUnchangedValue {@code true} the listener
+     *                                                will be called, {@code
+     *                                                false} it will not
+     */
+    public void setNotifyAttributeListenerOnUnchangedValue(
+            boolean notifyAttributeListenerOnUnchangedValue);
 }

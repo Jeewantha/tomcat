@@ -77,7 +77,27 @@ public final class AstIdentifier extends SimpleNode {
 
         // EL Resolvers
         ctx.setPropertyResolved(false);
-        Object result = ctx.getELResolver().getValue(ctx, null, this.image);
+        Object result;
+        /* Putting the Boolean into the ELContext is part of a performance
+         * optimisation for ScopedAttributeELResolver. When looking up "foo",
+         * the resolver can't differentiate between ${ foo } and ${ foo.bar }.
+         * This is important because the expensive class lookup only needs to
+         * be performed in the later case. This flag tells the resolver if the
+         * lookup can be skipped.
+         */
+        if (parent instanceof AstValue) {
+            ctx.putContext(this.getClass(), Boolean.FALSE);
+        } else {
+            ctx.putContext(this.getClass(), Boolean.TRUE);
+        }
+        try {
+            result = ctx.getELResolver().getValue(ctx, null, this.image);
+        } finally {
+            // Always reset the flag to false so the optimisation is not applied
+            // inappropriately
+            ctx.putContext(this.getClass(), Boolean.FALSE);
+        }
+
         if (ctx.isPropertyResolved()) {
             return result;
         }
@@ -205,14 +225,9 @@ public final class AstIdentifier extends SimpleNode {
         if (obj instanceof MethodExpression) {
             return (MethodExpression) obj;
         } else if (obj == null) {
-            throw new MethodNotFoundException("Identity '" + this.image
-                    + "' was null and was unable to invoke");
+            throw new MethodNotFoundException(MessageFactory.get("error.identifier.noMethod", this.image));
         } else {
-            throw new ELException(
-                    "Identity '"
-                            + this.image
-                            + "' does not reference a MethodExpression instance, returned type: "
-                            + obj.getClass().getName());
+            throw new ELException(MessageFactory.get("error.identifier.notMethodExpression", this.image, obj.getClass().getName()));
         }
     }
 }

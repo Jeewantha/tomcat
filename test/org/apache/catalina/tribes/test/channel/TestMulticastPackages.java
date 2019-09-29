@@ -22,9 +22,8 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static org.junit.Assert.assertEquals;
-
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -35,7 +34,7 @@ import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
-import org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor;
+import org.apache.catalina.tribes.group.interceptors.MessageDispatchInterceptor;
 import org.apache.catalina.tribes.group.interceptors.ThroughputInterceptor;
 import org.apache.catalina.tribes.io.XByteBuffer;
 import org.apache.catalina.tribes.transport.AbstractSender;
@@ -54,9 +53,9 @@ public class TestMulticastPackages {
     @Before
     public void setUp() throws Exception {
         channel1 = new GroupChannel();
-        channel1.addInterceptor(new MessageDispatch15Interceptor());
+        channel1.addInterceptor(new MessageDispatchInterceptor());
         channel2 = new GroupChannel();
-        channel2.addInterceptor(new MessageDispatch15Interceptor());
+        channel2.addInterceptor(new MessageDispatchInterceptor());
         ThroughputInterceptor tint = new ThroughputInterceptor();
         tint.setInterval(500);
         ThroughputInterceptor tint2 = new ThroughputInterceptor();
@@ -91,7 +90,7 @@ public class TestMulticastPackages {
         channel1.send(new Member[] {channel2.getLocalMember(false)}, Data.createRandomData(1024),Channel.SEND_OPTIONS_MULTICAST);
         Thread.sleep(500);
         System.err.println("Finished Single package NO_ACK ["+listener1.count+"]");
-        assertEquals("Checking success messages.",1,listener1.count.get());
+        Assert.assertEquals("Checking success messages.",1,listener1.count.get());
     }
 
 
@@ -127,7 +126,6 @@ public class TestMulticastPackages {
                         System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
                     }catch ( Exception x ) {
                         x.printStackTrace();
-                        return;
                     }
                 }
             };
@@ -141,7 +139,7 @@ public class TestMulticastPackages {
         System.out.println("Sent "+counter.get()+ " messages. Received "+listener1.count+" Highest msg received:"+listener1.maxIdx);
         System.out.print("Missing messages:");
         printMissingMsgs(listener1.nrs,counter.get());
-        assertEquals("Checking success messages.",msgCount*threadCount,listener1.count.get());
+        Assert.assertEquals("Checking success messages.",msgCount*threadCount,listener1.count.get());
     }
 
     @Test
@@ -152,7 +150,7 @@ public class TestMulticastPackages {
         long start = System.currentTimeMillis();
         while ( (System.currentTimeMillis()-start)<5000 && msgCount!=listener1.count.get()) Thread.sleep(500);
         System.err.println("Finished ASYNC");
-        assertEquals("Checking success messages.",msgCount,listener1.count.get());
+        Assert.assertEquals("Checking success messages.",msgCount,listener1.count.get());
     }
 
     @Test
@@ -161,7 +159,7 @@ public class TestMulticastPackages {
         for (int i=0; i<msgCount; i++) channel1.send(new Member[] {channel2.getLocalMember(false)},Data.createRandomData(1024),Channel.SEND_OPTIONS_USE_ACK|Channel.SEND_OPTIONS_MULTICAST);
         Thread.sleep(250);
         System.err.println("Finished ACK");
-        assertEquals("Checking success messages.",msgCount,listener1.count.get());
+        Assert.assertEquals("Checking success messages.",msgCount,listener1.count.get());
     }
 
     @Test
@@ -170,7 +168,7 @@ public class TestMulticastPackages {
         for (int i=0; i<msgCount; i++) channel1.send(new Member[] {channel2.getLocalMember(false)},Data.createRandomData(1024),Channel.SEND_OPTIONS_SYNCHRONIZED_ACK|Channel.SEND_OPTIONS_USE_ACK|Channel.SEND_OPTIONS_MULTICAST);
         Thread.sleep(250);
         System.err.println("Finished SYNC_ACK");
-        assertEquals("Checking success messages.",msgCount,listener1.count.get());
+        Assert.assertEquals("Checking success messages.",msgCount,listener1.count.get());
     }
 
     public static class Listener implements ChannelListener {
@@ -214,7 +212,7 @@ public class TestMulticastPackages {
         public byte[] data;
         public byte key;
         public boolean hasNr = false;
-        public static Random r = new Random();
+        public static final Random r = new Random();
         public static Data createRandomData() {
             return createRandomData(ChannelReceiver.MAX_UDP_SIZE);
         }

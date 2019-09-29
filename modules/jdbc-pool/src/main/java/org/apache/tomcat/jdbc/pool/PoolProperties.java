@@ -37,7 +37,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
     public static final int DEFAULT_MAX_ACTIVE = 100;
 
-    protected static AtomicInteger poolCounter = new AtomicInteger(0);
+    protected static final AtomicInteger poolCounter = new AtomicInteger(0);
     private volatile Properties dbProperties = new Properties();
     private volatile String url = null;
     private volatile String driverClassName = null;
@@ -54,7 +54,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     private volatile String validationQuery;
     private volatile int validationQueryTimeout = -1;
     private volatile String validatorClassName;
-    private volatile Validator validator;
+    private transient volatile Validator validator;
     private volatile boolean testOnBorrow = false;
     private volatile boolean testOnReturn = false;
     private volatile boolean testWhileIdle = false;
@@ -68,7 +68,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     private volatile String name = "Tomcat Connection Pool["+(poolCounter.addAndGet(1))+"-"+System.identityHashCode(PoolProperties.class)+"]";
     private volatile String password;
     private volatile String username;
-    private volatile long validationInterval = 30000;
+    private volatile long validationInterval = 3000;
     private volatile boolean jmxEnabled = true;
     private volatile String initSQL;
     private volatile boolean testOnConnect =false;
@@ -89,6 +89,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     private volatile boolean logValidationErrors = false;
     private volatile boolean propagateInterruptState = false;
     private volatile boolean ignoreExceptionOnPreLoad = false;
+    private volatile boolean useStatementFacade = true;
 
     /**
      * {@inheritDoc}
@@ -474,8 +475,8 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
                 //always add the trap interceptor to the mix
                 definitions[0] = new InterceptorDefinition(TrapException.class);
                 for (int i=0; i<interceptorValues.length; i++) {
-                    int propIndex = interceptorValues[i].indexOf("(");
-                    int endIndex = interceptorValues[i].indexOf(")");
+                    int propIndex = interceptorValues[i].indexOf('(');
+                    int endIndex = interceptorValues[i].indexOf(')');
                     if (propIndex<0 || endIndex<0 || endIndex <= propIndex) {
                         definitions[i+1] = new InterceptorDefinition(interceptorValues[i].trim());
                     } else {
@@ -484,7 +485,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
                         String propsAsString = interceptorValues[i].substring(propIndex+1, endIndex);
                         String[] props = propsAsString.split(",");
                         for (int j=0; j<props.length; j++) {
-                            int pidx = props[j].indexOf("=");
+                            int pidx = props[j].indexOf('=');
                             String propName = props[j].substring(0,pidx).trim();
                             String propValue = props[j].substring(pidx+1).trim();
                             definitions[i+1].addProperty(new InterceptorProperty(propName,propValue));
@@ -772,16 +773,16 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
                 PoolProperties.class.getClassLoader(),
                 Thread.currentThread().getContextClassLoader()
             );
-            validator = validatorClass.newInstance();
+            validator = validatorClass.getConstructor().newInstance();
         } catch (ClassNotFoundException e) {
             log.warn("The class "+className+" cannot be found.", e);
         } catch (ClassCastException e) {
             log.warn("The class "+className+" does not implement the Validator interface.", e);
-        } catch (InstantiationException e) {
-            log.warn("An object of class "+className+" cannot be instantiated. Make sure that "+
-                     "it includes an implicit or explicit no-arg constructor.", e);
         } catch (IllegalAccessException e) {
             log.warn("The class "+className+" or its no-arg constructor are inaccessible.", e);
+        } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException e) {
+            log.warn("An object of class "+className+" cannot be instantiated. Make sure that "+
+                     "it includes an implicit or explicit no-arg constructor.", e);
         }
     }
 
@@ -918,8 +919,9 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         boolean timer = getTimeBetweenEvictionRunsMillis()>0;
         boolean result = timer && (isRemoveAbandoned() && getRemoveAbandonedTimeout()>0);
         result = result || (timer && getSuspectTimeout()>0);
-        result = result || (timer && isTestWhileIdle() && getValidationQuery()!=null);
+        result = result || (timer && isTestWhileIdle());
         result = result || (timer && getMinEvictableIdleTimeMillis()>0);
+        result = result || (timer && getMaxAge()>0);
         return result;
     }
 
@@ -957,7 +959,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         @SuppressWarnings("unchecked")
         public Class<? extends JdbcInterceptor> getInterceptorClass() throws ClassNotFoundException {
             if (clazz==null) {
-                if (getClassName().indexOf(".")<0) {
+                if (getClassName().indexOf('.')<0) {
                     if (log.isDebugEnabled()) {
                         log.debug("Loading interceptor class:"+PoolConfiguration.PKG_PREFIX+getClassName());
                     }
@@ -1299,6 +1301,22 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     @Override
     public void setIgnoreExceptionOnPreLoad(boolean ignoreExceptionOnPreLoad) {
         this.ignoreExceptionOnPreLoad = ignoreExceptionOnPreLoad;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean getUseStatementFacade() {
+        return useStatementFacade;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setUseStatementFacade(boolean useStatementFacade) {
+        this.useStatementFacade = useStatementFacade;
     }
 
     @Override

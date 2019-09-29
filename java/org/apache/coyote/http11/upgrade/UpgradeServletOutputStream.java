@@ -35,6 +35,7 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
     private static final StringManager sm =
             StringManager.getManager(UpgradeServletOutputStream.class);
 
+    private final UpgradeProcessorBase processor;
     private final SocketWrapperBase<?> socketWrapper;
 
     // Used to ensure that isReady() and onWritePossible() have a consistent
@@ -58,10 +59,11 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
     // Guarded by registeredLock
     private boolean registered = false;
 
-    private volatile ClassLoader applicationLoader = null;
 
 
-    public UpgradeServletOutputStream(SocketWrapperBase<?> socketWrapper) {
+    public UpgradeServletOutputStream(UpgradeProcessorBase processor,
+            SocketWrapperBase<?> socketWrapper) {
+        this.processor = processor;
         this.socketWrapper = socketWrapper;
     }
 
@@ -110,19 +112,18 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
         if (closed) {
             throw new IllegalStateException(sm.getString("upgrade.sos.write.closed"));
         }
+        this.listener = listener;
         // Container is responsible for first call to onWritePossible().
         synchronized (registeredLock) {
             registered = true;
             // Container is responsible for first call to onDataAvailable().
             if (ContainerThreadMarker.isContainerThread()) {
-                socketWrapper.addDispatch(DispatchType.NON_BLOCKING_WRITE);
+                processor.addDispatch(DispatchType.NON_BLOCKING_WRITE);
             } else {
                 socketWrapper.registerWriteInterest();
             }
         }
 
-        this.listener = listener;
-        this.applicationLoader = Thread.currentThread().getContextClassLoader();
     }
 
 
@@ -244,16 +245,14 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
         }
 
         if (fire) {
-            Thread thread = Thread.currentThread();
-            ClassLoader originalClassLoader = thread.getContextClassLoader();
+            ClassLoader oldCL = processor.getUpgradeToken().getContextBind().bind(false, null);
             try {
-                thread.setContextClassLoader(applicationLoader);
                 listener.onWritePossible();
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
                 onError(t);
             } finally {
-                thread.setContextClassLoader(originalClassLoader);
+                processor.getUpgradeToken().getContextBind().unbind(false, oldCL);
             }
         }
     }
@@ -263,16 +262,14 @@ public class UpgradeServletOutputStream extends ServletOutputStream {
         if (listener == null) {
             return;
         }
-        Thread thread = Thread.currentThread();
-        ClassLoader originalClassLoader = thread.getContextClassLoader();
+        ClassLoader oldCL = processor.getUpgradeToken().getContextBind().bind(false, null);
         try {
-            thread.setContextClassLoader(applicationLoader);
             listener.onError(t);
         } catch (Throwable t2) {
             ExceptionUtils.handleThrowable(t2);
             log.warn(sm.getString("upgrade.sos.onErrorFail"), t2);
         } finally {
-            thread.setContextClassLoader(originalClassLoader);
+            processor.getUpgradeToken().getContextBind().unbind(false, oldCL);
         }
         try {
             close();

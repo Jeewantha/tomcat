@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -117,7 +117,7 @@
              writeable="false"/>
 
     <attribute    name="maxWait"
-           description="The time to wait in milliseconds before a SQLException is thrown when a connection is requested"
+           description="The time to wait in milliseconds before an SQLException is thrown when a connection is requested"
                   type="java.lang.Integer"
              writeable="false"/>
 
@@ -214,7 +214,7 @@
              writeable="false"/>
 
     <attribute    name="initSQL"
-           description="A SQL executed once per connection, when it is established"
+           description="An SQL executed once per connection, when it is established"
                   type="java.lang.String"
              writeable="false"/>
 
@@ -330,6 +330,47 @@
                     is="true"
              writeable="false"/>
 
+    <attribute    name="useStatementFacade"
+           description="If true, connection pool is configured to wrap statements."
+                  type="java.lang.Boolean"
+                    is="false"
+             writeable="false"/>
+
+    <attribute    name="borrowedCount"
+           description="The total number of connections borrowed from this pool"
+                  type="java.lang.Long"
+             writeable="false"/>
+
+    <attribute    name="createdCount"
+           description="The total number of connections created by this pool"
+                  type="java.lang.Long"
+             writeable="false"/>
+
+    <attribute    name="returnedCount"
+           description="The total number of connections returned to this pool"
+                  type="java.lang.Long"
+             writeable="false"/>
+
+    <attribute    name="releasedCount"
+           description="The total number of connections released from this pool"
+                  type="java.lang.Long"
+             writeable="false"/>
+
+    <attribute    name="reconnectedCount"
+           description="The total number of connections reconnected by this pool."
+                  type="java.lang.Long"
+             writeable="false"/>
+
+    <attribute    name="removeAbandonedCount"
+           description="The total number of connections released by remove abandoned."
+                  type="java.lang.Long"
+             writeable="false"/>
+
+    <attribute    name="releasedIdleCount"
+           description="The total number of connections released by eviction."
+                  type="java.lang.Long"
+             writeable="false"/>
+
     <operation    name="checkIdle"
                   description="forces a check of idle connections"
                   impact="ACTION"
@@ -352,6 +393,11 @@
 
     <operation    name="purgeOnReturn"
                   description="Purges connections when they are returned from the pool"
+                  impact="ACTION"
+                  returnType="void" />
+
+    <operation    name="resetStats"
+                  description="reset the statistics of this pool."
                   impact="ACTION"
                   returnType="void" />
 

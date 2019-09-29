@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
  Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -76,17 +76,24 @@
       <disallow pkg="javax.ejb"/>
       <disallow pkg="javax.persistence"/>
       <disallow pkg="javax.servlet"/>
-      <disallow pkg="org.apache.catalina"/>
+      <disallow pkg="org\.apache\.catalina(?!\.tribes).*" regex="true"/>
       <disallow pkg="org.apache.coyote"/>
       <disallow pkg="org.apache.naming"/>
-      <disallow pkg="org.apache.tomcat"/>
+      <disallow pkg="org\.apache\.tomcat(?!\.util\.json).*" regex="true"/>
       <allow pkg="org.apache.catalina.tribes"/>
+      <subpackage name="membership">
+        <subpackage name="cloud">
+          <allow class="org.apache.tomcat.util.net.jsse.PEMFile"/>
+          <allow class="org.apache.tomcat.util.json.JSONParser"/>
+        </subpackage>
+      </subpackage>
     </subpackage>
   </subpackage>
   <subpackage name="coyote">
     <allow pkg="javax.servlet"/>
     <allow pkg="org.apache.coyote"/>
     <allow pkg="org.apache.juli"/>
+    <allow pkg="org.apache.tomcat"/>
     <allow pkg="org.apache.tomcat.jni"/>
     <allow pkg="org.apache.tomcat.util"/>
   </subpackage>
@@ -132,6 +139,9 @@
       <subpackage name="dbcp2">
         <allow pkg="org.apache.tomcat.dbcp.dbcp2"/>
         <allow pkg="org.apache.tomcat.dbcp.pool2"/>
+        <subpackage name="managed">
+          <allow pkg="javax.transaction"/>
+        </subpackage>
       </subpackage>
       <subpackage name="pool2">
         <subpackage name="impl">
@@ -160,6 +170,7 @@
     <subpackage name="websocket">
       <allow pkg="javax.websocket"/>
       <allow pkg="org.apache.juli"/>
+      <allow pkg="org.apache.tomcat"/>
       <allow pkg="org.apache.tomcat.util"/>
       <!-- Ideally want to remove this -->
       <allow pkg="org.apache.tomcat.websocket.pojo"/>

@@ -46,7 +46,7 @@ public interface ServletRequest {
      * requests made using HTTPS, the attribute
      * <code>javax.servlet.request.X509Certificate</code> can be used to
      * retrieve information on the certificate of the client. Attributes can
-     * also be set programatically using {@link ServletRequest#setAttribute}.
+     * also be set programmatically using {@link ServletRequest#setAttribute}.
      * This allows information to be embedded into a request before a
      * {@link RequestDispatcher} call.
      * <p>
@@ -76,8 +76,15 @@ public interface ServletRequest {
 
     /**
      * Returns the name of the character encoding used in the body of this
-     * request. This method returns <code>null</code> if the request does not
-     * specify a character encoding
+     * request. This method returns <code>null</code> if the no character
+     * encoding has been specified. The following priority order is used to
+     * determine the specified encoding:
+     * <ol>
+     * <li>per request</li>
+     * <li>web application default via the deployment descriptor or
+     *     {@link ServletContext#setRequestCharacterEncoding(String)}</li>
+     * <li>container default via container specific configuration</li>
+     * </ol>
      *
      * @return a <code>String</code> containing the name of the character
      *         encoding, or <code>null</code> if the request does not specify a
@@ -116,6 +123,7 @@ public interface ServletRequest {
      *
      * @return a long integer containing the length of the request body or -1 if
      *         the length is not known
+     * @since Servlet 3.1
      */
     public long getContentLengthLong();
 
@@ -401,8 +409,7 @@ public interface ServletRequest {
      * @deprecated As of Version 2.1 of the Java Servlet API, use
      *             {@link ServletContext#getRealPath} instead.
      */
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public String getRealPath(String path);
 
     /**
@@ -410,7 +417,7 @@ public interface ServletRequest {
      * proxy that sent the request.
      *
      * @return an integer specifying the port number
-     * @since 2.4
+     * @since Servlet 2.4
      */
     public int getRemotePort();
 
@@ -420,7 +427,7 @@ public interface ServletRequest {
      *
      * @return a <code>String</code> containing the host name of the IP on which
      *         the request was received.
-     * @since 2.4
+     * @since Servlet 2.4
      */
     public String getLocalName();
 
@@ -430,7 +437,7 @@ public interface ServletRequest {
      *
      * @return a <code>String</code> containing the IP address on which the
      *         request was received.
-     * @since 2.4
+     * @since Servlet 2.4
      */
     public String getLocalAddr();
 
@@ -439,7 +446,7 @@ public interface ServletRequest {
      * the request was received.
      *
      * @return an integer specifying the port number
-     * @since 2.4
+     * @since Servlet 2.4
      */
     public int getLocalPort();
 
@@ -481,9 +488,14 @@ public interface ServletRequest {
     public boolean isAsyncSupported();
 
     /**
-     * @return TODO
+     * Get the current AsyncContext.
+     *
+     * @return The current AsyncContext
+     *
      * @throws IllegalStateException if the request is not in asynchronous mode
-     * @since Servlet 3.0 TODO SERVLET3 - Add comments
+     *         (i.e. @link #isAsyncStarted() is {@code false})
+     *
+     * @since Servlet 3.0
      */
     public AsyncContext getAsyncContext();
 

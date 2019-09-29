@@ -34,23 +34,23 @@ public final class Library {
 
     private Library() throws Exception {
         boolean loaded = false;
-        String path = System.getProperty("java.library.path");
-        String [] paths = path.split(File.pathSeparator);
         StringBuilder err = new StringBuilder();
+        File binLib = new File(System.getProperty("catalina.home"), "bin");
         for (int i = 0; i < NAMES.length; i++) {
+            File library = new File(binLib, System.mapLibraryName(NAMES[i]));
             try {
-                System.loadLibrary(NAMES[i]);
+                System.load(library.getAbsolutePath());
                 loaded = true;
-            } catch (ThreadDeath | VirtualMachineError t) {
+            } catch (ThreadDeath t) {
+                throw t;
+            } catch (VirtualMachineError t) {
+                // Don't use a Java 7 multiple exception catch so we can keep
+                // the JNI code identical between Tomcat 6/7/8/9
                 throw t;
             } catch (Throwable t) {
-                String name = System.mapLibraryName(NAMES[i]);
-                for (int j = 0; j < paths.length; j++) {
-                    java.io.File fd = new java.io.File(paths[j] , name);
-                    if (fd.exists()) {
-                        // File exists but failed to load
-                        throw t;
-                    }
+                if (library.exists()) {
+                    // File exists but failed to load
+                    throw t;
                 }
                 if (i > 0) {
                     err.append(", ");
@@ -59,6 +59,38 @@ public final class Library {
             }
             if (loaded) {
                 break;
+            }
+        }
+        if (!loaded) {
+            String path = System.getProperty("java.library.path");
+            String [] paths = path.split(File.pathSeparator);
+            for (int i = 0; i < NAMES.length; i++) {
+                try {
+                    System.loadLibrary(NAMES[i]);
+                    loaded = true;
+                } catch (ThreadDeath t) {
+                    throw t;
+                } catch (VirtualMachineError t) {
+                    // Don't use a Java 7 multiple exception catch so we can keep
+                    // the JNI code identical between Tomcat 6/7/8/9
+                    throw t;
+                } catch (Throwable t) {
+                    String name = System.mapLibraryName(NAMES[i]);
+                    for (int j = 0; j < paths.length; j++) {
+                        java.io.File fd = new java.io.File(paths[j] , name);
+                        if (fd.exists()) {
+                            // File exists but failed to load
+                            throw t;
+                        }
+                    }
+                    if (err.length() > 0) {
+                        err.append(", ");
+                    }
+                    err.append(t.getMessage());
+                }
+                if (loaded) {
+                    break;
+                }
             }
         }
         if (!loaded) {
@@ -162,10 +194,13 @@ public final class Library {
      * Setup any APR internal data structures.  This MUST be the first function
      * called for any APR library.
      * @param libraryName the name of the library to load
+     *
+     * @return {@code true} if the native code was initialized successfully
+     *         otherwise {@code false}
+     *
+     * @throws Exception if a problem occurred during initialization
      */
-    public static boolean initialize(String libraryName)
-        throws Exception
-    {
+    public static synchronized boolean initialize(String libraryName) throws Exception {
         if (_instance == null) {
             if (libraryName == null)
                 _instance = new Library();
@@ -219,4 +254,41 @@ public final class Library {
         }
         return initialize();
     }
+
+    /**
+     * Calls System.load(filename). System.load() associates the
+     * loaded library with the class loader of the class that called
+     * the System method. A native library may not be loaded by more
+     * than one class loader, so calling the System method from a class that
+     * was loaded by a Webapp class loader will make it impossible for
+     * other Webapps to load it.
+     *
+     * Using this method will load the native library via a shared class
+     * loader (typically the Common class loader, but may vary in some
+     * configurations), so that it can be loaded by multiple Webapps.
+     *
+     * @param filename - absolute path of the native library
+     */
+    public static void load(String filename){
+        System.load(filename);
+    }
+
+    /**
+     * Calls System.loadLibrary(libname). System.loadLibrary() associates the
+     * loaded library with the class loader of the class that called
+     * the System method. A native library may not be loaded by more
+     * than one class loader, so calling the System method from a class that
+     * was loaded by a Webapp class loader will make it impossible for
+     * other Webapps to load it.
+     *
+     * Using this method will load the native library via a shared class
+     * loader (typically the Common class loader, but may vary in some
+     * configurations), so that it can be loaded by multiple Webapps.
+     *
+     * @param libname - the name of the native library
+     */
+    public static void loadLibrary(String libname){
+        System.loadLibrary(libname);
+    }
+
 }

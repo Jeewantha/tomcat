@@ -41,7 +41,7 @@ import org.xml.sax.SAXException;
 public class JasperInitializer implements ServletContainerInitializer {
 
     private static final String MSG = "org.apache.jasper.servlet.JasperInitializer";
-    private static final Log log = LogFactory.getLog(JasperInitializer.class);
+    private final Log log = LogFactory.getLog(JasperInitializer.class); // must not be static
 
     /**
      * Preload classes required at runtime by a JSP servlet so that
@@ -50,26 +50,6 @@ public class JasperInitializer implements ServletContainerInitializer {
     static {
         JspFactoryImpl factory = new JspFactoryImpl();
         SecurityClassLoad.securityClassLoad(factory.getClass().getClassLoader());
-        if( System.getSecurityManager() != null ) {
-            String basePackage = "org.apache.jasper.";
-            try {
-                factory.getClass().getClassLoader().loadClass( basePackage +
-                        "runtime.JspFactoryImpl$PrivilegedGetPageContext");
-                factory.getClass().getClassLoader().loadClass( basePackage +
-                        "runtime.JspFactoryImpl$PrivilegedReleasePageContext");
-                factory.getClass().getClassLoader().loadClass( basePackage +
-                        "runtime.JspRuntimeLibrary");
-                factory.getClass().getClassLoader().loadClass( basePackage +
-                        "runtime.JspRuntimeLibrary$PrivilegedIntrospectHelper");
-                factory.getClass().getClassLoader().loadClass( basePackage +
-                        "runtime.ServletResponseWrapperInclude");
-                factory.getClass().getClassLoader().loadClass( basePackage +
-                        "servlet.JspServletWrapper");
-            } catch (ClassNotFoundException ex) {
-                throw new IllegalStateException(ex);
-            }
-        }
-
         if (JspFactory.getDefaultFactory() == null) {
             JspFactory.setDefaultFactory(factory);
         }

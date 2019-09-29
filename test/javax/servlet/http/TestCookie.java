@@ -66,7 +66,7 @@ public class TestCookie {
         Assert.assertEquals(0, cookie.getVersion());
     }
 
-    @Test()
+    @Test
     public void defaultImpliesNetscape() {
         // $Foo is allowed by Netscape but not by RFC2109
         Cookie cookie = new Cookie("$Foo", null);
@@ -129,9 +129,9 @@ public class TestCookie {
 
     @Test
     public void strictNamingImpliesRFC2109() {
-        // Not using strict naming here so this should be OK
+        // Needs to be something RFC6265 allows, but strict naming does not.
         @SuppressWarnings("unused")
-        Cookie cookie = new Cookie("@Foo", null);
+        Cookie cookie = new Cookie("$Foo", null);
     }
 
     public static void checkCharInName(CookieNameValidator validator, BitSet allowed) {

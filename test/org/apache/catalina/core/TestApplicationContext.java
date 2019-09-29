@@ -68,7 +68,7 @@ public class TestApplicationContext extends TomcatBaseTest {
 
         ByteChunk res = new ByteChunk();
         int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug53467].jsp", res, null);
+                "/test/bug5nnnn/bug53467%5D.jsp", res, null);
 
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
         Assert.assertTrue(res.toString().contains("<p>OK</p>"));
@@ -189,7 +189,7 @@ public class TestApplicationContext extends TomcatBaseTest {
         ctx.setCrossContext(true);
 
         Tomcat.addServlet(ctx, "Bug57190Servlet", new Bug57190Servlet());
-        ctx.addServletMapping("/", "Bug57190Servlet");
+        ctx.addServletMappingDecoded("/", "Bug57190Servlet");
 
         tomcat.start();
 
@@ -243,6 +243,88 @@ public class TestApplicationContext extends TomcatBaseTest {
         public void lifecycleEvent(LifecycleEvent event) {
             if (Lifecycle.CONFIGURE_START_EVENT.equals(event.getType())) {
                 ((Context) event.getSource()).getServletContext().setInitParameter("id", id);
+            }
+        }
+    }
+
+
+    /*
+     * The expectation is that you can set a context attribute on
+     * ServletContextB from ServletContextA and then access that attribute via
+     * a cross-context dispatch to ServletContextB.
+     */
+    @Test
+    public void testCrossContextSetAttribute() throws Exception {
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx2 = tomcat.addContext("/second", null);
+        GetAttributeServlet getAttributeServlet = new GetAttributeServlet();
+        Tomcat.addServlet(ctx2, "getAttributeServlet", getAttributeServlet);
+        ctx2.addServletMappingDecoded("/test", "getAttributeServlet");
+
+        // No file system docBase required
+        Context ctx1 = tomcat.addContext("/first", null);
+        ctx1.setCrossContext(true);
+        SetAttributeServlet setAttributeServlet = new SetAttributeServlet("/test", "/second");
+        Tomcat.addServlet(ctx1, "setAttributeServlet", setAttributeServlet);
+        ctx1.addServletMappingDecoded("/test", "setAttributeServlet");
+
+        tomcat.start();
+
+        ByteChunk bc = new ByteChunk();
+        int rc = getUrl("http://localhost:" + getPort() + "/first/test", bc, null);
+
+        Assert.assertEquals(200, rc);
+        Assert.assertEquals("01-PASS", bc.toString());
+    }
+
+
+    private static class SetAttributeServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+        private static final String ATTRIBUTE_NAME = "setAttributeTest";
+        private static final String ATTRIBUTE_VALUE = "abcde";
+
+        private final String targetContextPath;
+        private final String targetPath;
+
+        public SetAttributeServlet(String targetPath, String targetContextPath) {
+            this.targetPath = targetPath;
+            this.targetContextPath = targetContextPath;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            ServletContext sc;
+            if (targetContextPath == null) {
+                sc = req.getServletContext();
+            } else {
+                sc = req.getServletContext().getContext(targetContextPath);
+            }
+            sc.setAttribute(ATTRIBUTE_NAME, ATTRIBUTE_VALUE);
+            sc.getRequestDispatcher(targetPath).forward(req, resp);
+        }
+    }
+
+
+    private static class GetAttributeServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            resp.setContentType("text/plain");
+            PrintWriter pw = resp.getWriter();
+            String value = (String) req.getServletContext().getAttribute(
+                    SetAttributeServlet.ATTRIBUTE_NAME);
+            if (SetAttributeServlet.ATTRIBUTE_VALUE.equals(value)) {
+                pw.print("01-PASS");
+            } else {
+                pw.print("01-FAIL");
             }
         }
     }

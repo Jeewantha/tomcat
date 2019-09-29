@@ -65,20 +65,6 @@
         If not specified, the standard value (defined below) will be used.</p>
       </attribute>
 
-      <attribute name="distributable" required="false">
-        <p>Set to <code>true</code> to ask the session manager to enforce
-        the restrictions described in the Servlet Specification on
-        distributable applications (primarily, this would mean that all
-        session attributes must implement <code>java.io.Serializable</code>).
-        Set to <code>false</code> (the default) to not enforce these
-        restrictions.</p>
-
-        <p><strong>NOTE</strong> - The value for this property is inherited
-        automatically based on the presence or absence of the
-        <code>&lt;distributable&gt;</code> element in the web application
-        deployment descriptor (<code>/WEB-INF/web.xml</code>).</p>
-      </attribute>
-
       <attribute name="maxActiveSessions" required="false">
         <p>The maximum number of active sessions that will be created by
         this Manager, or <code>-1</code> (the default) for no limit.</p>
@@ -88,17 +74,22 @@
         will fail with an <code>IllegalStateException</code>.</p>
       </attribute>
 
-      <attribute name="maxInactiveInterval" required="false">
-        <p>The initial maximum time interval, in seconds,
-        between client requests before a session is invalidated. A negative value
-        will result in sessions never timing out. If the attribute is not provided,
-        a default of 1800 seconds (30 minutes) is used.</p>
-
-        <p>This attribute provides the initial value whenever a
-        new session is created, but the interval may be dynamically
-        varied by a servlet via the
-        <code>setMaxInactiveInterval</code> method of the <code>HttpSession</code> object.</p>
+      <attribute name="notifyAttributeListenerOnUnchangedValue" required="false">
+        <p>If an attribute is added to the session and that attribute is already
+        present in the session under the same name will any
+        <code>HttpSessionAttributeListener</code> be notified that the attribute
+        has been replaced. If not specified, the default value of
+        <code>true</code> will be used.</p>
       </attribute>
+
+      <attribute name="notifyBindingListenerOnUnchangedValue" required="false">
+        <p>If an attribute is added to the session, that attribute is already
+        present in the session under the same name and the attribute implements
+        <code>HttpSessionBindingListener</code>, will the listener be notified
+        that the attribute has been unbound and bound again. If not specified,
+        the default value of <code>false</code> will be used.</p>
+      </attribute>
+
     </attributes>
 
   </subsection>
@@ -166,6 +157,39 @@
         string.</p>
       </attribute>
 
+      <attribute name="sessionAttributeNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        distributed. An attribute will only be distributed if its name matches
+        this pattern. If the pattern is zero length or <code>null</code>, all
+        attributes are eligible for distribution. The pattern is anchored so the
+        session attribute name must fully match the pattern. As an example, the
+        value <code>(userName|sessionHistory)</code> will only distribute the
+        two session attributes named <code>userName</code> and
+        <code>sessionHistory</code>. If not specified, the default value of
+        <code>null</code> will be used.</p>
+      </attribute>
+
+      <attribute name="sessionAttributeValueClassNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        distributed. An attribute will only be distributed if the implementation
+        class name of the value matches this pattern. If the pattern is zero
+        length or <code>null</code>, all attributes are eligible for
+        distribution. The pattern is anchored so the fully qualified class name
+        must fully match the pattern. If not specified, the default value of
+        <code>null</code> will be used unless a <code>SecurityManager</code> is
+        enabled in which case the default will be
+        <code>java\\.lang\\.(?:Boolean|Integer|Long|Number|String)</code>.</p>
+      </attribute>
+
+      <attribute name="warnOnSessionAttributeFilterFailure" required="false">
+        <p>If <strong>sessionAttributeNameFilter</strong> or
+        <strong>sessionAttributeValueClassNameFilter</strong> blocks an
+        attribute, should this be logged at <code>WARN</code> level? If
+        <code>WARN</code> level logging is disabled then it will be logged at
+        <code>DEBUG</code>. The default value of this attribute is
+        <code>false</code> unless a <code>SecurityManager</code> is enabled in
+        which case the default will be <code>true</code>.</p>
+      </attribute>
     </attributes>
 
     <h3>Persistent Manager Implementation</h3>
@@ -208,21 +232,21 @@
       </attribute>
 
       <attribute name="maxIdleSwap" required="false">
-        <p>The time interval (in seconds) since the last access to a session
-        before it should be persisted to the session store, and
-        passivated out of the server's memory, or <code>-1</code> to disable
-        this feature.  If this feature is enabled, the time interval specified
-        here should be equal to or longer than the value specified for
-        <code>maxIdleBackup</code>.  By default, this feature is disabled.</p>
+        <p>The maximum time a session may be idle before it is eligible to be
+        swapped to disk due to inactivity. Setting this to <code>-1</code> means
+        sessions should not be swapped out just because of inactivity. If this
+        feature is enabled, the time interval specified here should be equal to
+        or longer than the value specified for <code>maxIdleBackup</code>. By
+        default, this feature is disabled.</p>
       </attribute>
 
       <attribute name="minIdleSwap" required="false">
-        <p>The time interval (in seconds) since the last access to a session
-        before it will be eligible to be persisted to the session store, and
-        passivated out of the server's memory, or <code>-1</code> for this
-        swapping to be available at any time.  If specified, this value should
-        be less than that specified by <code>maxIdleSwap</code>.  By default,
-        this value is set to <code>-1</code>.</p>
+        <p>The minimum time in seconds a session must be idle before it is
+        eligible to be swapped to disk to keep the active session count below
+        maxActiveSessions. Setting to <code>-1</code> means sessions will not be
+        swapped out to keep the active session count down. If specified, this
+        value should be less than that specified by <code>maxIdleSwap</code>.
+        By default, this value is set to <code>-1</code>.</p>
       </attribute>
 
       <attribute name="processExpiresFrequency" required="false">
@@ -254,6 +278,40 @@
         <p>It is the same as described above for the
         <code>org.apache.catalina.session.StandardManager</code> class.
         </p>
+      </attribute>
+
+      <attribute name="sessionAttributeNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        distributed. An attribute will only be distributed if its name matches
+        this pattern. If the pattern is zero length or <code>null</code>, all
+        attributes are eligible for distribution. The pattern is anchored so the
+        session attribute name must fully match the pattern. As an example, the
+        value <code>(userName|sessionHistory)</code> will only distribute the
+        two session attributes named <code>userName</code> and
+        <code>sessionHistory</code>. If not specified, the default value of
+        <code>null</code> will be used.</p>
+      </attribute>
+
+      <attribute name="sessionAttributeValueClassNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        distributed. An attribute will only be distributed if the implementation
+        class name of the value matches this pattern. If the pattern is zero
+        length or <code>null</code>, all attributes are eligible for
+        distribution. The pattern is anchored so the fully qualified class name
+        must fully match the pattern. If not specified, the default value of
+        <code>null</code> will be used unless a <code>SecurityManager</code> is
+        enabled in which case the default will be
+        <code>java\\.lang\\.(?:Boolean|Integer|Long|Number|String)</code>.</p>
+      </attribute>
+
+      <attribute name="warnOnSessionAttributeFilterFailure" required="false">
+        <p>If <strong>sessionAttributeNameFilter</strong> or
+        <strong>sessionAttributeValueClassNameFilter</strong> blocks an
+        attribute, should this be logged at <code>WARN</code> level? If
+        <code>WARN</code> level logging is disabled then it will be logged at
+        <code>DEBUG</code>. The default value of this attribute is
+        <code>false</code> unless a <code>SecurityManager</code> is enabled in
+        which case the default will be <code>true</code>.</p>
       </attribute>
     </attributes>
 
@@ -374,11 +432,17 @@
       <code>driverName</code> will be ignored. Since this code uses prepared
       statements, you might want to configure pooled prepared statements as
       shown in <a href="../jndi-resources-howto.html">the JNDI resources
-      HOW-TO</a>.</p>
+      How-To</a>.</p>
     </attribute>
 
     <attribute name="driverName" required="true">
       <p>Java class name of the JDBC driver to be used.</p>
+    </attribute>
+
+    <attribute name="localDataSource" required="false">
+      <p>This allows the Store to use a DataSource defined for the Context
+      rather than a global DataSource. If not specified, the default is
+      <code>false</code>: use a global DataSource.</p>
     </attribute>
 
     <attribute name="sessionAppCol" required="false">
@@ -481,6 +545,13 @@
     interface.  You MAY cause the Manager to enforce this restriction by
     including the <code>&lt;distributable&gt;</code> element in your web
     application deployment descriptor (<code>/WEB-INF/web.xml</code>).</p>
+
+    <p>The persistence across restarts provided by the
+    <strong>StandardManager</strong> is a simpler implementation than that
+    provided by the <strong>PersistentManager</strong>. If robust, production
+    quality persistence across restarts is required then the
+    <strong>PersistentManager</strong> should be used with an appropriate
+    configuration.</p>
 
   </subsection>
 

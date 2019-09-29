@@ -39,7 +39,7 @@
 
   <p>The <strong>Host</strong> element represents a <em>virtual host</em>,
   which is an association of a network name for a server (such as
-  "www.mycompany.com" with the particular server on which Tomcat is running.
+  "www.mycompany.com") with the particular server on which Tomcat is running.
   For clients to be able to connect to a Tomcat server using its network name,
   this name must be registered in the <em>Domain Name Service</em> (DNS) server
   that manages the Internet domain you belong to - contact your Network
@@ -141,7 +141,7 @@
         and all its child containers. A host will use background processing to
         perform live web application deployment related tasks. If not
         specified, the default value for this attribute is -1, which means
-        the host will rely on the background processing thread of its parent
+        the host will rely on the background processing setting of its parent
         engine.</p>
       </attribute>
 
@@ -192,7 +192,10 @@
         have a name that matches the <code>defaultHost</code> setting for that
         Engine.  See <a href="#Host_Name_Aliases">Host Name Aliases</a> for
         information on how to assign more than one network name to the same
-        virtual host.</p>
+        virtual host. If the name takes the form of <code>*.domainname</code>
+        (e.g. <code>*.apache.org</code>) then it will be treated as a match for
+        any host in that domain unless a host that has an exactly matching name
+        is found.</p>
       </attribute>
 
       <attribute name="startStopThreads" required="false">
@@ -200,12 +203,13 @@
         child <a href="context.html">Context</a> elements in parallel. The same
         thread pool will be used to deploy new
         <a href="context.html">Context</a>s if automatic deployment is being
-        used. The special value of 0 will result in the value of
-        <code>Runtime.getRuntime().availableProcessors()</code> being used.
-        Negative values will result in
-        <code>Runtime.getRuntime().availableProcessors() + value</code> being
-        used unless this is less than 1 in which case 1 thread will be used. If
-        not specified, the default value of 1 will be used.</p>
+        used.
+        As the thread pool is shared at the Server level, if more than one
+        Host specifies this setting, only the maximum value will apply and will
+        be used for all except for the special value 1. If
+        not specified, the default value of 1 will be used. If 1 thread is
+        used then rather than using an <code>ExecutorService</code> the current
+        thread will be used.</p>
       </attribute>
 
       <attribute name="undeployOldVersions" required="false">
@@ -256,7 +260,13 @@
         fail to start in case the descriptor contains necessary configuration
         for secure deployment (such as a RemoteAddrValve) which should not be
         ignored. The flag's value defaults to <code>true</code> unless a
-        security manager is enabled when the default is <code>false</code>.</p>
+        security manager is enabled when the default is <code>false</code>.
+        When running under a security manager this may be enabled on a per web
+        application basis by granting the
+        <code>org.apache.catalina.security.DeployXmlPermission</code> to the web
+        application. The Manager and Host Manager applications are granted this
+        permission by default so that they continue to work when running under a
+        security manager.</p>
       </attribute>
 
       <attribute name="errorReportValveClass" required="false">
@@ -284,6 +294,12 @@
         is not running. Any such change will trigger the deletion of the
         expanded directory and the deployment of the updated WAR file when
         Tomcat next starts.</p>
+        <p>Note: Running with this option set to <code>false</code> will incur
+        a performance penalty. To avoid a significant performance penalty, the
+        web application should be configured such that class scanning for
+        Servlet 3.0+ pluggability features is not required. Users may also wish
+        to consider the <strong>ExtractingRoot</strong>
+        <a href="resources.html">Resources</a> implementation.</p>
       </attribute>
 
       <attribute name="workDir" required="false">
@@ -357,7 +373,7 @@
 <source><![CDATA[<Host name="localhost" ...>
   ...
   <Valve className="org.apache.catalina.valves.AccessLogValve"
-         prefix="localhost_access_log." suffix=".txt"
+         prefix="localhost_access_log" suffix=".txt"
          pattern="common"/>
   ...
 </Host>]]></source>
@@ -475,6 +491,10 @@
     <p>In order for this strategy to be effective, all of the network names
     involved must be registered in your DNS server to resolve to the
     same computer that is running this instance of Catalina.</p>
+
+    <p>Aliases may also use the wildcard form (<code>*.domainname</code>)
+       permitted for the <strong>name</strong> attribute of a
+       <strong>Host</strong>.</p>
 
   </subsection>
 
@@ -606,7 +626,7 @@
   ...
   <Listener className="org.apache.catalina.startup.UserConfig"
             directoryName="public_html"
-            homeBase=c:\Homes"
+            homeBase="c:\Homes"
             userClass="org.apache.catalina.startup.HomesUserDatabase"/>
   ...
 </Host>]]></source>
@@ -632,6 +652,13 @@
 
   </subsection>
 
+  <subsection name="Custom context.xml and web.xml">
+    <p>You can override the default values found in <code>conf/context.xml</code> and
+    <code>conf/web.xml</code> files from <code>$CATALINA_BASE</code> for each virtual host.
+    Tomcat will look for files named <code>context.xml.default</code> and <code>web.xml.default</code>
+    in the directory specified by <code>xmlBase</code> and merge the files into
+    those found in the default ones.</p>
+  </subsection>
 
 </section>
 

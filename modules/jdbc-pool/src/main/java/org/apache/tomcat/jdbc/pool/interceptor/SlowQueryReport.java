@@ -48,7 +48,7 @@ public class SlowQueryReport extends AbstractQueryReport  {
     /**
      * we will be keeping track of query stats on a per pool basis
      */
-    protected static ConcurrentHashMap<String,ConcurrentHashMap<String,QueryStats>> perPoolStats =
+    protected static final ConcurrentHashMap<String,ConcurrentHashMap<String,QueryStats>> perPoolStats =
         new ConcurrentHashMap<>();
     /**
      * the queries that are used for this interceptor.
@@ -104,9 +104,9 @@ public class SlowQueryReport extends AbstractQueryReport  {
             QueryStats qs = this.getQueryStats(sql);
             if (qs != null) {
                 qs.failure(delta, now);
-                if (isLogFailed() && log.isWarnEnabled()) {
-                    log.warn("Failed Query Report SQL="+sql+"; time="+delta+" ms;");
-                }
+            }
+            if (isLogFailed() && log.isWarnEnabled()) {
+                log.warn("Failed Query Report SQL="+sql+"; time="+delta+" ms;");
             }
         }
         return sql;
@@ -148,14 +148,18 @@ public class SlowQueryReport extends AbstractQueryReport  {
 
     @Override
     public void prepareStatement(String sql, long time) {
-        QueryStats qs = getQueryStats(sql);
-        if (qs != null) qs.prepare(time);
+        if (this.maxQueries > 0 ) {
+            QueryStats qs = getQueryStats(sql);
+            if (qs != null) qs.prepare(time);
+        }
     }
 
     @Override
     public void prepareCall(String sql, long time) {
-        QueryStats qs = getQueryStats(sql);
-        if (qs != null) qs.prepare(time);
+        if (this.maxQueries > 0 ) {
+            QueryStats qs = getQueryStats(sql);
+            if (qs != null) qs.prepare(time);
+        }
     }
 
     /**
@@ -211,7 +215,7 @@ public class SlowQueryReport extends AbstractQueryReport  {
 
     /**
      * Sort QueryStats by last invocation time
-     * @param queries
+     * @param queries The queries map
      */
     protected void removeOldest(ConcurrentHashMap<String,QueryStats> queries) {
         ArrayList<QueryStats> list = new ArrayList<>(queries.values());
@@ -471,22 +475,23 @@ public class SlowQueryReport extends AbstractQueryReport  {
         }
     }
 
-    private static class QueryStatsComparator implements Comparator<QueryStats> {
+    /** Compare QueryStats by their lastInvocation value. QueryStats that
+     * have never been updated, have a lastInvocation value of {@code 0}
+     * which should be handled as the newest possible invocation.
+     */
+    // Public for unit tests
+    public static class QueryStatsComparator implements Comparator<QueryStats> {
 
         @Override
         public int compare(QueryStats stats1, QueryStats stats2) {
-            if (stats1.lastInvocation == 0) return 1;
-            if (stats2.lastInvocation == 0) return -1;
-
-            long result = stats1.lastInvocation - stats2.lastInvocation;
-            if (result > 0) {
-                return 1;
-            } else if (result == 0) {
-                return 0;
-            } else {
-                return -1;
-            }
+            return Long.compare(handleZero(stats1.lastInvocation),
+                    handleZero(stats2.lastInvocation));
         }
+
+        private static long handleZero(long value) {
+            return value == 0 ? Long.MAX_VALUE : value;
+        }
+
     }
 
 }

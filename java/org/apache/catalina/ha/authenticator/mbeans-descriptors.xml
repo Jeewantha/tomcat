@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -38,7 +38,7 @@
       type="boolean"/>
     <attribute
       name="cookieDomain"
-      description="(Optiona) Domain to be used by sso cookies"
+      description="(Optional) Domain to be used by sso cookies"
       type="java.lang.String"/>
     <attribute
       name="mapSendOptions"
@@ -53,5 +53,9 @@
       name="terminateOnStartFailure"
       description="Flag for whether to terminate this map that failed to start."
       type="boolean"/>
+    <attribute
+      name="accessTimeout"
+      description="The timeout for a ping message in replication map."
+      type="long"/>
   </mbean>
 </mbeans-descriptors>

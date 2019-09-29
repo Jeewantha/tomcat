@@ -16,10 +16,7 @@
  */
 package org.apache.catalina.webresources;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -28,31 +25,16 @@ import org.apache.juli.logging.LogFactory;
  * Represents a single resource (file or directory) that is located within a
  * JAR.
  */
-public class JarResource extends AbstractArchiveResource {
+public class JarResource extends AbstractSingleArchiveResource {
 
     private static final Log log = LogFactory.getLog(JarResource.class);
 
+
     public JarResource(AbstractArchiveResourceSet archiveResourceSet, String webAppPath,
             String baseUrl, JarEntry jarEntry) {
-        super(archiveResourceSet, webAppPath, "jar:" + baseUrl, jarEntry, baseUrl);
+        super(archiveResourceSet, webAppPath, "jar:" + baseUrl + "!/", jarEntry, baseUrl);
     }
 
-    @Override
-    protected JarInputStreamWrapper getJarInputStreamWrapper() {
-        try {
-            JarFile jarFile = getArchiveResourceSet().openJarFile();
-            // Need to create a new JarEntry so the certificates can be read
-            JarEntry jarEntry = jarFile.getJarEntry(getResource().getName());
-            InputStream is = jarFile.getInputStream(jarEntry);
-            return new JarInputStreamWrapper(jarEntry, is);
-        } catch (IOException e) {
-            if (log.isDebugEnabled()) {
-                log.debug(sm.getString("jarResource.getInputStreamFail",
-                        getResource().getName(), getBaseUrl()), e);
-            }
-            return null;
-        }
-    }
 
     @Override
     protected Log getLog() {

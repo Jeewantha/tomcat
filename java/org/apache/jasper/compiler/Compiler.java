@@ -26,7 +26,6 @@ import java.io.UnsupportedEncodingException;
 import java.net.JarURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -36,7 +35,7 @@ import org.apache.jasper.Options;
 import org.apache.jasper.servlet.JspServletWrapper;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.scan.Jar;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.scan.JarFactory;
 
 /**
@@ -69,6 +68,7 @@ public abstract class Compiler {
 
     protected Node.Nodes pageNodes;
 
+
     // ------------------------------------------------------------ Constructor
 
     public void init(JspCompilationContext ctxt, JspServletWrapper jsw) {
@@ -77,28 +77,35 @@ public abstract class Compiler {
         this.options = ctxt.getOptions();
     }
 
+
     // --------------------------------------------------------- Public Methods
 
-    /**
-     * <p>
-     * Retrieves the parsed nodes of the JSP page, if they are available. May
-     * return null. Used in development mode for generating detailed error
-     * messages. http://bz.apache.org/bugzilla/show_bug.cgi?id=37062.
-     * </p>
-     */
-    public Node.Nodes getPageNodes() {
-        return this.pageNodes;
+    public SmapStratum getSmap(String className) {
+
+        Map<String,SmapStratum> smaps = ctxt.getRuntimeContext().getSmaps();
+        SmapStratum smap = smaps.get(className);
+
+        if (smap == null && !options.isSmapSuppressed()) {
+            // Tomcat was restarted so cached SMAP has been lost. However, it
+            // was written to the class file so it can be recovered.
+            smap = SmapUtil.loadSmap(className, ctxt.getJspLoader());
+            if (smap != null) {
+                smaps.put(className, smap);
+            }
+        }
+
+        return smap;
     }
+
 
     /**
      * Compile the jsp file into equivalent servlet in .java file
      *
-     * @return a smap for the current JSP page, if one is generated, null
-     *         otherwise
+     * @throws Exception Error generating Java source
+     *
+     * @return A map of class names to JSR 045 source maps
      */
-    protected String[] generateJava() throws Exception {
-
-        String[] smapStr = null;
+    protected Map<String,SmapStratum> generateJava() throws Exception {
 
         long t1, t2, t3, t4;
 
@@ -261,7 +268,7 @@ public abstract class Compiler {
                         + " generate=" + (t4 - t3) + " validate=" + (t2 - t1));
             }
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             // Remove the generated .java file
             File file = new File(javaFileName);
             if (file.exists()) {
@@ -274,9 +281,14 @@ public abstract class Compiler {
             throw e;
         }
 
+        Map<String,SmapStratum> smaps = null;
+
         // JSR45 Support
         if (!options.isSmapSuppressed()) {
-            smapStr = SmapUtil.generateSmap(ctxt, pageNodes);
+            smaps = SmapUtil.generateSmap(ctxt, pageNodes);
+            // Add them to the web application wide cache for future lookup in
+            // error handling etc.
+            ctxt.getRuntimeContext().getSmaps().putAll(smaps);
         }
 
         // If any proto type .java and .class files was generated,
@@ -286,7 +298,7 @@ public abstract class Compiler {
         // generate .class again from the new .java file just generated.
         tfp.removeProtoTypeFiles(ctxt.getClassFileName());
 
-        return smapStr;
+        return smaps;
     }
 
     private ServletWriter setupContextWriter(String javaFileName)
@@ -310,13 +322,24 @@ public abstract class Compiler {
     }
 
     /**
-     * Compile the servlet from .java file to .class file
+     * Servlet compilation. This compiles the generated sources into
+     * Servlets.
+     *
+     * @param smaps The source maps for the class(es) generated from the source
+     *              file
+     *
+     * @throws FileNotFoundException Source files not found
+     * @throws JasperException Compilation error
+     * @throws Exception Some other error
      */
-    protected abstract void generateClass(String[] smap)
+    protected abstract void generateClass(Map<String,SmapStratum> smaps)
             throws FileNotFoundException, JasperException, Exception;
 
     /**
-     * Compile the jsp file from the current engine context
+     * Compile the jsp file from the current engine context.
+     * @throws FileNotFoundException Source files not found
+     * @throws JasperException Compilation error
+     * @throws Exception Some other error
      */
     public void compile() throws FileNotFoundException, JasperException,
             Exception {
@@ -330,6 +353,9 @@ public abstract class Compiler {
      * @param compileClass
      *            If true, generate both .java and .class file If false,
      *            generate only .java file
+     * @throws FileNotFoundException Source files not found
+     * @throws JasperException Compilation error
+     * @throws Exception Some other error
      */
     public void compile(boolean compileClass) throws FileNotFoundException,
             JasperException, Exception {
@@ -345,6 +371,9 @@ public abstract class Compiler {
      *            generate only .java file
      * @param jspcMode
      *            true if invoked from JspC, false otherwise
+     * @throws FileNotFoundException Source files not found
+     * @throws JasperException Compilation error
+     * @throws Exception Some other error
      */
     public void compile(boolean compileClass, boolean jspcMode)
             throws FileNotFoundException, JasperException, Exception {
@@ -353,23 +382,25 @@ public abstract class Compiler {
         }
 
         try {
-            String[] smap = generateJava();
+            Map<String,SmapStratum> smaps = generateJava();
             File javaFile = new File(ctxt.getServletJavaFileName());
             Long jspLastModified = ctxt.getLastModified(ctxt.getJspFile());
-            javaFile.setLastModified(jspLastModified.longValue());
+            if (!javaFile.setLastModified(jspLastModified.longValue())) {
+                throw new JasperException(Localizer.getMessage("jsp.error.setLastModified", javaFile));
+            }
             if (compileClass) {
-                generateClass(smap);
+                generateClass(smaps);
                 // Fix for bugzilla 41606
                 // Set JspServletWrapper.servletClassLastModifiedTime after successful compile
-                String targetFileName = ctxt.getClassFileName();
-                if (targetFileName != null) {
-                    File targetFile = new File(targetFileName);
-                    if (targetFile.exists()) {
-                        targetFile.setLastModified(jspLastModified.longValue());
-                        if (jsw != null) {
-                            jsw.setServletClassLastModifiedTime(
-                                    jspLastModified.longValue());
-                        }
+                File targetFile = new File(ctxt.getClassFileName());
+                if (targetFile.exists()) {
+                    if (!targetFile.setLastModified(jspLastModified.longValue())) {
+                        throw new JasperException(
+                                Localizer.getMessage("jsp.error.setLastModified", targetFile));
+                    }
+                    if (jsw != null) {
+                        jsw.setServletClassLastModifiedTime(
+                                jspLastModified.longValue());
                     }
                 }
             }
@@ -384,14 +415,7 @@ public abstract class Compiler {
             tfp = null;
             errDispatcher = null;
             pageInfo = null;
-
-            // Only get rid of the pageNodes if in production.
-            // In development mode, they are used for detailed
-            // error messages.
-            // http://bz.apache.org/bugzilla/show_bug.cgi?id=37062
-            if (!this.options.getDevelopment()) {
-                pageNodes = null;
-            }
+            pageNodes = null;
 
             if (ctxt.getWriter() != null) {
                 ctxt.getWriter().close();
@@ -403,6 +427,8 @@ public abstract class Compiler {
     /**
      * This is a protected method intended to be overridden by subclasses of
      * Compiler. This is used by the compile method to do all the compilation.
+     * @return <code>true</code> if the source generation and compilation
+     *  should occur
      */
     public boolean isOutDated() {
         return isOutDated(true);
@@ -417,6 +443,8 @@ public abstract class Compiler {
      * @param checkClass
      *            If true, check against .class file, if false, check against
      *            .java file.
+     * @return <code>true</code> if the source generation and compilation
+     *  should occur
      */
     public boolean isOutDated(boolean checkClass) {
 
@@ -474,9 +502,7 @@ public abstract class Compiler {
             return false;
         }
 
-        Iterator<Entry<String,Long>> it = depends.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String,Long> include = it.next();
+        for (Entry<String, Long> include : depends.entrySet()) {
             try {
                 String key = include.getKey();
                 URL includeUrl;
@@ -523,14 +549,14 @@ public abstract class Compiler {
     }
 
     /**
-     * Gets the error dispatcher.
+     * @return the error dispatcher.
      */
     public ErrorDispatcher getErrorDispatcher() {
         return errDispatcher;
     }
 
     /**
-     * Gets the info about the page under compilation
+     * @return the info about the page under compilation
      */
     public PageInfo getPageInfo() {
         return pageInfo;
@@ -547,17 +573,14 @@ public abstract class Compiler {
         removeGeneratedClassFiles();
 
         try {
-            String javaFileName = ctxt.getServletJavaFileName();
-            if (javaFileName != null) {
-                File javaFile = new File(javaFileName);
-                if (log.isDebugEnabled())
-                    log.debug("Deleting " + javaFile);
-                if (javaFile.exists()) {
-                    if (!javaFile.delete()) {
-                        log.warn(Localizer.getMessage(
-                                "jsp.warning.compiler.javafile.delete.fail",
-                                javaFile.getAbsolutePath()));
-                    }
+            File javaFile = new File(ctxt.getServletJavaFileName());
+            if (log.isDebugEnabled())
+                log.debug("Deleting " + javaFile);
+            if (javaFile.exists()) {
+                if (!javaFile.delete()) {
+                    log.warn(Localizer.getMessage(
+                            "jsp.warning.compiler.javafile.delete.fail",
+                            javaFile.getAbsolutePath()));
                 }
             }
         } catch (Exception e) {
@@ -569,17 +592,14 @@ public abstract class Compiler {
 
     public void removeGeneratedClassFiles() {
         try {
-            String classFileName = ctxt.getClassFileName();
-            if (classFileName != null) {
-                File classFile = new File(classFileName);
-                if (log.isDebugEnabled())
-                    log.debug("Deleting " + classFile);
-                if (classFile.exists()) {
-                    if (!classFile.delete()) {
-                        log.warn(Localizer.getMessage(
-                                "jsp.warning.compiler.classfile.delete.fail",
-                                classFile.getAbsolutePath()));
-                    }
+            File classFile = new File(ctxt.getClassFileName());
+            if (log.isDebugEnabled())
+                log.debug("Deleting " + classFile);
+            if (classFile.exists()) {
+                if (!classFile.delete()) {
+                    log.warn(Localizer.getMessage(
+                            "jsp.warning.compiler.classfile.delete.fail",
+                            classFile.getAbsolutePath()));
                 }
             }
         } catch (Exception e) {

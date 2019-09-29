@@ -33,7 +33,7 @@ import java.lang.annotation.Target;
  * @since Servlet 3.0
  */
 @Inherited
-@Target({ElementType.TYPE})
+@Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface ServletSecurity {
@@ -81,7 +81,7 @@ public @interface ServletSecurity {
     HttpConstraint value() default @HttpConstraint;
 
     /**
-     * An array of HttpMethodContraint objects to which the security constraint
+     * An array of HttpMethodConstraint objects to which the security constraint
      * will be applied
      *
      * @return array of http method constraint

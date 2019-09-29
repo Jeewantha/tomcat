@@ -25,7 +25,7 @@
     <properties>
         <author email="craigmcc@apache.org">Craig R. McClanahan</author>
         <author email="yoavs@apache.org">Yoav Shapira</author>
-        <title>Class Loader HOW-TO</title>
+        <title>Class Loader How-To</title>
     </properties>
 
 <body>
@@ -107,7 +107,7 @@ loaders as it is initialized:</p>
         <em>$CATALINA_HOME/bin</em>. It is useful in certain logging
         configurations</p></li>
     <li><p><em>$CATALINA_HOME/bin/commons-daemon.jar</em> &#8212; The classes
-        from <a href="http://commons.apache.org/daemon/">Apache Commons
+        from <a href="https://commons.apache.org/daemon/">Apache Commons
         Daemon</a> project.
         This JAR file is not present in the <code>CLASSPATH</code> built by
         <code>catalina.bat</code>|<code>.sh</code> scripts, but is referenced
@@ -143,12 +143,12 @@ loaders as it is initialized:</p>
     <li><em>jasper.jar</em> &#8212; Tomcat Jasper JSP Compiler and Runtime.</li>
     <li><em>jasper-el.jar</em> &#8212; Tomcat Jasper EL implementation.</li>
     <li><em>jsp-api.jar</em> &#8212; JSP 2.3 API.</li>
-    <li><em>servlet-api.jar</em> &#8212; Servlet 3.1 API.</li>
+    <li><em>servlet-api.jar</em> &#8212; Servlet 4.0 API.</li>
     <li><em>tomcat-api.jar</em> &#8212; Several interfaces defined by Tomcat.</li>
     <li><em>tomcat-coyote.jar</em> &#8212; Tomcat connectors and utility classes.</li>
     <li><em>tomcat-dbcp.jar</em> &#8212; Database connection pool
-        implementation based on package-renamed copy of Apache Commons Pool
-        and Apache Commons DBCP.</li>
+        implementation based on package-renamed copy of Apache Commons Pool 2
+        and Apache Commons DBCP 2.</li>
     <li><em>tomcat-i18n-**.jar</em> &#8212; Optional JARs containing resource bundles
         for other languages. As default bundles are also included in each
         individual JAR, they can be safely removed if no internationalization
@@ -231,6 +231,21 @@ implementation.  For more information, see:
 http://docs.oracle.com/javase/1.5.0/docs/guide/standards/index.html</a>. For
 Java 9+, use the upgradeable modules feature.</p>
 
+<p>Tomcat utilizes the endorsed mechanism by including the system property setting
+<code>-Djava.endorsed.dirs=$JAVA_ENDORSED_DIRS</code> in the
+command line that starts the container. The default value of this option is
+<em>$CATALINA_HOME/endorsed</em>. This <em>endorsed</em> directory is not
+created by default. Note that the endorsed feature is no longer supported
+with Java 9 and the above system property will only be set if either the
+directory <em>$CATALINA_HOME/endorsed</em> exists, or the variable
+<code>JAVA_ENDORSED_DIRS</code> has been set.
+</p>
+
+<p>Note that overriding any JRE component carries risk. If the overriding
+component does not provide a 100% compatible API (e.g. the API provided by
+Xerces is not 100% compatible with the XML API provided by the JRE) then there
+is a risk that Tomcat and/or the deployed application will experience errors.</p>
+
 </section>
 
 
@@ -238,11 +253,39 @@ Java 9+, use the upgradeable modules feature.</p>
 
 <p>When running under a security manager the locations from which classes
 are permitted to be loaded will also depend on the contents of your policy
-file. See <a href="security-manager-howto.html">Security Manager HOW-TO</a>
+file. See <a href="security-manager-howto.html">Security Manager How-To</a>
 for further information.</p>
 
 </section>
 
+<section name="Advanced configuration">
+
+<p>A more complex class loader hierarchy may also be configured. See the diagram
+below. By default, the <strong>Server</strong> and <strong>Shared</strong>
+class loaders are not defined and the simplifed hierarchy shown above is used.
+This more complex hierarchy may be use by defining values for the
+<code>server.loader</code> and/or <code>shared.loader</code> properties in
+<code>conf/catalina.properties</code>.</p>
+
+<source>
+  Bootstrap
+      |
+    System
+      |
+    Common
+     /  \
+Server  Shared
+         /  \
+   Webapp1  Webapp2 ...</source>
+
+<p>The <strong>Server</strong> class loader is only visible to Tomcat internals
+and is completely invisible to web applications.</p>
+
+<p>The <strong>Shared</strong> class loader is visible to all web applications
+and may be used to shared code across all web applications. However, any updates
+to this shared code will require a Tomcat restart.</p>
+
+</section>
 
 </body>
 

@@ -86,13 +86,11 @@ public class DeltaRequest implements Externalizable {
     }
 
     public void removeAttribute(String name) {
-        int action = ACTION_REMOVE;
-        addAction(TYPE_ATTRIBUTE,action,name,null);
+        addAction(TYPE_ATTRIBUTE, ACTION_REMOVE, name, null);
     }
 
     public void setMaxInactiveInterval(int interval) {
-        int action = ACTION_SET;
-        addAction(TYPE_MAXINTERVAL,action,NAME_MAXINTERVAL,Integer.valueOf(interval));
+        addAction(TYPE_MAXINTERVAL, ACTION_SET, NAME_MAXINTERVAL, Integer.valueOf(interval));
     }
 
     /**
@@ -300,7 +298,7 @@ public class DeltaRequest implements Externalizable {
      * @see DeltaRequest#writeExternal(java.io.ObjectOutput)
      *
      * @return serialized delta request
-     * @throws IOException
+     * @throws IOException IO error serializing
      */
     protected byte[] serialize() throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();

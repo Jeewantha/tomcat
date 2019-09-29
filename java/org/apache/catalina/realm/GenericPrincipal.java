@@ -201,7 +201,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      *         role, otherwise <code>false</code>
      */
     public boolean hasRole(String role) {
-        if ("*".equals(role)) {// Special 2.4 role meaning everyone
+        if ("*".equals(role)) { // Special 2.4 role meaning everyone
             return true;
         }
         if (role == null) {
@@ -228,19 +228,13 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
     }
 
 
-    /**
-     * Calls logout, if necessary, on any associated JAASLoginContext. May in
-     * the future be extended to cover other logout requirements.
-     *
-     * @throws Exception If something goes wrong with the logout. Uses Exception
-     *                   to allow for future expansion of this method to cover
-     *                   other logout mechanisms that might throw a different
-     *                   exception to LoginContext
-     */
     @Override
     public void logout() throws Exception {
         if (loginContext != null) {
             loginContext.logout();
+        }
+        if (gssCredential != null) {
+            gssCredential.dispose();
         }
     }
 

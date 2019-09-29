@@ -28,7 +28,12 @@
     <attribute
       name="channelSendOptions"
       description="This sets channel behaviour on sent messages."
-      type="int"/>
+      type="java.lang.String"/>
+    <attribute
+      name="channelSendOptionsName"
+      description="channelSendOptions name."
+      writeable="false"
+      type="java.lang.String"/>
     <attribute
       name="channelStartOptions"
       description="This sets channel start behaviour."
@@ -39,7 +44,7 @@
       type="java.lang.String"/>
     <attribute
       name="heartbeatBackgroundEnabled"
-      description="enable that container background thread call channel heartbeat, default is that channel mangage heartbeat itself."
+      description="enable that container background thread call channel heartbeat, default is that channel manage heartbeat itself."
       is="true"
       type="boolean"/>
     <attribute

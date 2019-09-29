@@ -99,7 +99,7 @@
 <section name="CORS Filter">
   <subsection name="Introduction">
     <p>This filter is an implementation of W3C's CORS (Cross-Origin Resource
-    Sharing) <a href="http://www.w3.org/TR/cors/">specification</a>, which is a
+    Sharing) <a href="https://www.w3.org/TR/cors/">specification</a>, which is a
     mechanism that enables cross-origin requests.</p>
     <p>The filter works by adding required <code>Access-Control-*</code> headers
     to HttpServletResponse object. The filter also protects against HTTP
@@ -116,6 +116,15 @@
   <filter-name>CorsFilter</filter-name>
   <url-pattern>/*</url-pattern>
 </filter-mapping>]]></source>
+    <p>The above configuration enables the filter but does not relax the
+    cross-origin policy. As a minimum, you will need to add a
+    <strong>cors.allowed.origins</strong> initialisation parameter as described
+    below to enable cross-origin requests. Depending on your requirements, you
+    may need to provide additional configuration.</p>
+    <p>An instance of this filter can only implement one policy. If you want to
+    apply different policies (e.g. different allowed origins) to different URLs
+    or sets of URLs within your web application you will need to configure a
+    separate instance of this filter for each policy you wish to configure.</p>
   </subsection>
   <subsection name="Filter Class Name">
     <p>The filter class name for the CORS Filter is
@@ -125,12 +134,12 @@
     <p>The CORS Filter supports following initialisation parameters:</p>
     <attributes>
       <attribute name="cors.allowed.origins" required="false">
-        <p>A list of <a href="http://tools.ietf.org/html/rfc6454">origins</a>
+        <p>A list of <a href="https://tools.ietf.org/html/rfc6454">origins</a>
         that are allowed to access the resource. A <code>*</code> can be
         specified to enable access to resource from any origin. Otherwise, a
         whitelist of comma separated origins can be provided. Eg: <code>
-        http://www.w3.org, https://www.apache.org</code>.
-        <strong>Defaults:</strong> <code>*</code> (Any origin is allowed to
+        https://www.w3.org, https://www.apache.org</code>.
+        <strong>Defaults:</strong> The empty String. (No origin is allowed to
         access the resource).</p>
       </attribute>
       <attribute name="cors.allowed.methods" required="false">
@@ -171,7 +180,7 @@
         <code>Access-Control-Allow-Credentials</code> header in a pre-flight
         response. It helps browser determine whether or not an actual request
         can be made using credentials. <strong>Defaults:</strong>
-        <code>true</code></p>
+        <code>false</code></p>
       </attribute>
       <attribute name="cors.request.decorate" required="false">
         <p>A flag to control if CORS specific attributes should be added to
@@ -186,7 +195,7 @@
   <filter-class>org.apache.catalina.filters.CorsFilter</filter-class>
   <init-param>
     <param-name>cors.allowed.origins</param-name>
-    <param-value>*</param-value>
+    <param-value>https://www.apache.org</param-value>
   </init-param>
   <init-param>
     <param-name>cors.allowed.methods</param-name>
@@ -310,13 +319,168 @@
 
 </section>
 
+<section name="CSRF Prevention Filter for REST APIs">
+
+  <subsection name="Introduction">
+
+    <p>This filter provides basic CSRF protection for REST APIs. The CSRF
+    protection is applied only for modifying HTTP requests (different from GET,
+    HEAD, OPTIONS) to protected resources. It is based on a custom header
+    <code>X-CSRF-Token</code> that provides a valid nonce.</p>
+
+    <p>CSRF protection mechanism for REST APIs consists of the following steps:
+      <ul>
+        <li>Client asks for a valid nonce. This is performed with a
+            non-modifying "Fetch" request to protected resource.</li>
+        <li>Server responds with a valid nonce mapped to the current user
+            session.</li>
+        <li>Client provides this nonce in the subsequent modifying requests in
+            the frame of the same user session.</li>
+        <li>Server rejects all modifying requests to protected resources that
+            do not contain a valid nonce.</li>
+      </ul>
+    </p>
+
+  </subsection>
+
+  <subsection name="Basic configuration sample">
+
+    <p>On the server side</p>
+
+    <ul>
+      <li>All CSRF protected REST APIs should be protected with an authentication
+          mechanism.</li>
+      <li>Protect modifying REST APIs with this filter.</li>
+      <li>Provide at least one non-modifying operation.</li>
+    </ul>
+      <source><![CDATA[<filter>
+  <filter-name>RestCSRF</filter-name>
+  <filter-class>org.apache.catalina.filters.RestCsrfPreventionFilter</filter-class>
+</filter>
+<filter-mapping>
+  <filter-name>RestCSRF</filter-name>
+  <!-- Modifying operations -->
+  <url-pattern>/resources/removeResource</url-pattern>
+  <url-pattern>/resources/addResource</url-pattern>
+  <!-- Non-modifying operations -->
+  <url-pattern>/resources/listResources</url-pattern>
+</filter-mapping>]]></source>
+
+    <p>On the client side</p>
+
+    <ul>
+      <li>Make a non-modifying "Fetch" request in order to obtain a valid nonce.
+          This can be done with sending additional header
+          <code>X-CSRF-Token: Fetch</code></li>
+      <li>Cache the returned session id and nonce in order to provide them in
+          the subsequent modifying requests to protected resources.</li>
+      <li>Modifying requests can be denied and header
+          <code>X-CSRF-Token: Required</code> will be returned in case of
+          invalid or missing nonce, expired session or in case the session
+          id is changed by the server.</li>
+    </ul>
+      <source><![CDATA[Client Request:
+GET /rest/resources/listResources HTTP/1.1
+X-CSRF-Token: Fetch
+Authorization: Basic ...
+Host: localhost:8080
+...
+
+Server Response:
+HTTP/1.1 200 OK
+Set-Cookie: JSESSIONID=...; Path=/rest; HttpOnly
+X-CSRF-Token: ...
+...
+
+Client Request:
+POST /rest/resources/addResource HTTP/1.1
+Cookie: JSESSIONID=...
+X-CSRF-Token: ...
+Authorization: Basic ...
+Host: localhost:8080
+...
+
+Server Response:
+HTTP/1.1 200 OK
+...]]></source>
+
+  </subsection>
+
+  <subsection name="RestCsrfPreventionFilter and HttpServletRequest parameters">
+
+    <p>When the client is not able to insert custom headers in its calls to
+       REST APIs there is additional capability to configure URLs for which a
+       valid nonce will be accepted as a request parameter.</p>
+
+    <p>Note: If there is a <code>X-CSRF-Token</code> header, it will be taken
+       with preference over any parameter with the same name in the request.
+       Request parameters cannot be used to fetch new nonce, only header can be
+       used to request a new nonce.</p>
+
+    <source><![CDATA[<filter>
+  <filter-name>RestCSRF</filter-name>
+  <filter-class>org.apache.catalina.filters.RestCsrfPreventionFilter</filter-class>
+  <init-param>
+    <param-name>pathsAcceptingParams</param-name>
+    <param-value>/resources/removeResource,/resources/addResource</param-value>
+  </init-param>
+</filter>
+<filter-mapping>
+  <filter-name>RestCSRF</filter-name>
+  <url-pattern>/resources/*</url-pattern>
+</filter-mapping>]]></source>
+
+  </subsection>
+
+  <subsection name="Filter Class Name">
+
+    <p>The filter class name for the CSRF Prevention Filter for REST APIs is
+    <strong><code>org.apache.catalina.filters.RestCsrfPreventionFilter</code>
+    </strong>.</p>
+
+  </subsection>
+
+  <subsection name="Initialisation parameters">
+
+    <p>The CSRF Prevention Filter for REST APIs supports the following
+    initialisation parameters:</p>
+
+    <attributes>
+
+      <attribute name="denyStatus" required="false">
+        <p>HTTP response status code that is used when rejecting denied
+        request. The default value is <code>403</code>.</p>
+      </attribute>
+
+      <attribute name="pathsAcceptingParams" required="false">
+        <p>A comma separated list of URLs that can accept nonces via request
+        parameter <code>X-CSRF-Token</code>. For use cases when a nonce information cannot
+        be provided via header, one can provide it via request parameters. If
+        there is a <code>X-CSRF-Token</code> header, it will be taken with preference over
+        any parameter with the same name in the request. Request parameters
+        cannot be used to fetch new nonce, only header can be used to request a
+        new nonce.</p>
+      </attribute>
+
+      <attribute name="randomClass" required="false">
+        <p>The name of the class to use to generate nonces. The class must be an
+        instance of <code>java.util.Random</code>. If not set, the default value
+        of <code>java.security.SecureRandom</code> will be used.</p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
+</section>
+
 <section name="Expires Filter">
 
   <subsection name="Introduction">
 
     <p>
     ExpiresFilter is a Java Servlet API port of <a
-    href="http://httpd.apache.org/docs/2.2/mod/mod_expires.html">Apache
+    href="https://httpd.apache.org/docs/2.2/mod/mod_expires.html">Apache
     mod_expires</a>.
     This filter controls the setting of the <code>Expires</code> HTTP header and the
     <code>max-age</code> directive of the <code>Cache-Control</code> HTTP header in
@@ -333,9 +497,9 @@
     </p>
     <p>
     To modify <code>Cache-Control</code> directives other than <code>max-age</code> (see
-    <a href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9" >RFC
+    <a href="https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9" >RFC
     2616 section 14.9</a>), you can use other servlet filters or <a
-    href="http://httpd.apache.org/docs/2.2/mod/mod_headers.html" >Apache Httpd
+    href="https://httpd.apache.org/docs/2.2/mod/mod_headers.html" >Apache Httpd
     mod_headers</a> module.
     </p>
 
@@ -727,7 +891,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
         <p>Will an HTTP Strict Transport Security (HSTS) header
         (<code>Strict-Transport-Security</code>) be set on the response for
         secure requests. Any HSTS header already present will be replaced. See
-        <a href="http://tools.ietf.org/html/rfc6797">RFC 6797</a> for further
+        <a href="https://tools.ietf.org/html/rfc6797">RFC 6797</a> for further
         details of HSTS. If not specified, the default value of
         <code>true</code> will be used.</p>
       </attribute>
@@ -742,6 +906,13 @@ FINE: Request "/docs/config/manager.html" with response status "200"
         <p>Should the includeSubDomains parameter be included in the HSTS
         header. If not specified, the default value of <code>false</code> will
         be used.</p>
+      </attribute>
+
+      <attribute name="hstsPreload" required="false">
+        <p>Should the preload parameter be included in the HSTS header. If not
+        specified, the default value of <code>false</code> will be used. See
+        <a href="https://hstspreload.org/">https://hstspreload.org</a> for
+        important information about this parameter.</p>
       </attribute>
 
       <attribute name="antiClickJackingEnabled" required="false">
@@ -759,7 +930,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
       </attribute>
 
       <attribute name="antiClickJackingUri" required="false">
-        <p>IF ALLOW-FROM is used for <strong>antiClickJackingOption</strong>,
+        <p>If ALLOW-FROM is used for <strong>antiClickJackingOption</strong>,
         what URI should be allowed? If not specified, the default value of an
         empty string will be used.</p>
       </attribute>
@@ -769,6 +940,14 @@ FINE: Request "/docs/config/manager.html" with response status "200"
         (<code>X-Content-Type-Options</code>) be set on every response. If
         already present, the header will be replaced. If not specified, the
         default value of <code>true</code> will be used.</p>
+      </attribute>
+
+      <attribute name="xssProtectionEnabled" required="false">
+        <p>Should the header that enables the browser's cross-site scripting
+        filter protection (<code>X-XSS-Protection: 1; mode=block</code>)
+        be set on every response. If already present, the header
+        will be replaced. If not specified, the default value of
+        <code>true</code> will be used.</p>
       </attribute>
 
     </attributes>
@@ -930,13 +1109,115 @@ FINE: Request "/docs/config/manager.html" with response status "200"
 
 </section>
 
+<section name="Remote CIDR Filter">
+
+  <subsection name="Introduction">
+
+    <p>The <strong>Remote CIDR Filter</strong> allows you to compare the
+      IP address of the client that submitted this request against one or more
+      netmasks following the CIDR notation, and either allow the request to
+      continue or refuse to process the request from this client. IPv4 and
+      IPv6 are both fully supported.
+    </p>
+
+    <p>This filter mimicks Apache httpd's <code>Order</code>,
+      <code>Allow from</code> and <code>Deny from</code> directives,
+      with the following limitations:
+    </p>
+
+    <ul>
+      <li><code>Order</code> will always be <code>allow, deny</code>;</li>
+      <li>dotted quad notations for netmasks are not supported (that is, you
+        cannot write <code>192.168.1.0/255.255.255.0</code>, you must write
+        <code>192.168.1.0/24</code>;
+      </li>
+      <li>shortcuts, like <code>10.10.</code>, which is equivalent to
+        <code>10.10.0.0/16</code>, are not supported;
+      </li>
+      <li>as the filter name says, this is a CIDR only filter,
+        therefore subdomain notations like <code>.mydomain.com</code> are not
+        supported either.
+      </li>
+    </ul>
+
+    <p>Some more features of this filter are:
+    </p>
+
+    <ul>
+      <li>if you omit the CIDR prefix, this filter becomes a single IP
+      filter;</li>
+      <li>unlike the <a href="#Remote_Host_Filter">Remote Host Filter</a>,
+      it can handle IPv6 addresses in condensed form (<code>::1</code>,
+      <code>fe80::/71</code>, etc).</li>
+    </ul>
+
+  </subsection>
+
+  <subsection name="Filter Class Name">
+
+    <p>The filter class name for the Remote Address Filter is
+      <strong><code>org.apache.catalina.filters.RemoteCIDRFilter</code>
+      </strong>.</p>
+
+  </subsection>
+
+  <subsection name="Initialisation parameters">
+
+    <p>The <strong>Remote CIDR Filter</strong> supports the following
+      initialisation parameters:</p>
+
+    <attributes>
+
+      <attribute name="allow" required="false">
+        <p>A comma-separated list of IPv4 or IPv6 netmasks or addresses
+          that the remote client&apos;s IP address is matched against.
+          If this attribute is specified, the remote address MUST match
+          for this request to be accepted. If this attribute is not specified,
+          all requests will be accepted UNLESS the remote IP is matched by a
+          netmask in the <code>deny</code> attribute.
+        </p>
+      </attribute>
+
+      <attribute name="deny" required="false">
+        <p>A comma-separated list of IPv4 or IPv6 netmasks or addresses
+          that the remote client&apos;s IP address is matched against.
+          If this attribute is specified, the remote address MUST NOT match
+          for this request to be accepted. If this attribute is not specified,
+          request acceptance is governed solely by the <code>accept</code>
+          attribute.
+        </p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
+  <subsection name="Example">
+    <p>To allow access only for the clients connecting from localhost:</p>
+    <pre>
+      &lt;filter>
+      &lt;filter-name>Remote CIDR Filter&lt;/filter-name>
+      &lt;filter-class>org.apache.catalina.filters.RemoteCIDRFilter&lt;/filter-class>
+      &lt;init-param>
+      &lt;param-name>allow&lt;/param-name>
+      &lt;param-value>127.0.0.0/8, ::1&lt;/param-value>
+      &lt;/init-param>
+      &lt;/filter>
+      &lt;filter-mapping>
+      &lt;filter-name>Remote CIDR Filter&lt;/filter-name>
+      &lt;url-pattern>/*&lt;/url-pattern>
+      &lt;/filter-mapping>
+    </pre>
+  </subsection>
+
+</section>
 
 <section name="Remote IP Filter">
 
   <subsection name="Introduction">
 
     <p>Tomcat port of
-    <a href="http://httpd.apache.org/docs/trunk/mod/mod_remoteip.html">mod_remoteip</a>,
+    <a href="https://httpd.apache.org/docs/trunk/mod/mod_remoteip.html">mod_remoteip</a>,
     this filter replaces the apparent client remote IP address and hostname for
     the request with the IP address list presented by a proxy or a load balancer
     via a request headers (e.g. &quot;X-Forwarded-For&quot;).</p>
@@ -1282,7 +1563,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
         Internal proxies that appear in the <strong>remoteIpHeader</strong> will
         be trusted and will not appear in the <strong>proxiesHeader</strong>
         value. If not specified the default value of <code>
-        10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}
+        10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1
         </code> will be used.</p>
       </attribute>
 
@@ -1313,6 +1594,12 @@ FINE: Request "/docs/config/manager.html" with response status "200"
       <attribute name="protocolHeader" required="false">
         <p>Name of the HTTP Header read by this valve that holds the protocol
         used by the client to connect to the proxy. If not specified, the
+        default of <code>X-Forwarded-Proto</code> is used.</p>
+      </attribute>
+
+      <attribute name="hostHeader" required="false">
+        <p>Name of the HTTP Header read by this valve that holds the host
+        used by the client to connect to the proxy. If not specified, the
         default of <code>null</code> is used.</p>
       </attribute>
 
@@ -1342,6 +1629,13 @@ FINE: Request "/docs/config/manager.html" with response status "200"
         specified, the default of <code>443</code> is used.</p>
       </attribute>
 
+      <attribute name="changeLocalName" required="false">
+        <p>If <code>true</code>, the value returned by
+        <code>ServletRequest.getLocalName()</code> and
+        <code>ServletRequest.getServerName()</code> is modified by the this
+        filter. If not specified, the default of <code>false</code> is used.</p>
+      </attribute>
+
       <attribute name="changeLocalPort" required="false">
         <p>If <code>true</code>, the value returned by
         <code>ServletRequest.getLocalPort()</code> and
@@ -1366,7 +1660,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
     Filter, it is recommended that the
     <code>org.apache.catalina.filter.RequestDumperFilter</code> logger is
     directed to a dedicated file and that the
-    <code>org.apache.juli.VerbatimFormmater</code> is used.</p>
+    <code>org.apache.juli.VerbatimFormatter</code> is used.</p>
 
     <p><strong>WARNING: Using this filter has side-effects.</strong>  The
     output from this filter includes any parameters included with the request.
@@ -1415,6 +1709,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
 1request-dumper.org.apache.juli.FileHandler.level = INFO
 1request-dumper.org.apache.juli.FileHandler.directory = ${catalina.base}/logs
 1request-dumper.org.apache.juli.FileHandler.prefix = request-dumper.
+1request-dumper.org.apache.juli.FileHandler.encoding = UTF-8
 1request-dumper.org.apache.juli.FileHandler.formatter = org.apache.juli.VerbatimFormatter
 org.apache.catalina.filters.RequestDumperFilter.level = INFO
 org.apache.catalina.filters.RequestDumperFilter.handlers = \
@@ -1422,6 +1717,46 @@ org.apache.catalina.filters.RequestDumperFilter.handlers = \
   </subsection>
 </section>
 
+<section name="Session Initializer Filter">
+
+  <subsection name="Introduction">
+    <p>The Session Initializer Filter initializes the <code>javax.servlet.http.HttpSession</code>
+    before the Request is processed.  This is required for JSR-356 compliant WebSocket implementations,
+    if the <code>HttpSession</code> is needed during the HandShake phase.</p>
+
+    <p>The Java API for WebSocket does not mandate that an <code>HttpSession</code> would
+    be initialized upon request, and thus <code>javax.servlet.http.HttpServletRequest</code>'s
+    <code>getSession()</code> returns <code>null</code> if the <code>HttpSession</code> was not
+    initialized in advance.</p>
+
+    <p>This filter solves that problem by initializing the HttpSession for any <code>HttpServletRequest</code>
+    that matches its <code>url-pattern</code>.</p>
+  </subsection>
+
+  <subsection name="Filter Class Name">
+    <p>The filter class name for the Session Initializer Filter is
+    <strong><code>org.apache.catalina.filters.SessionInitializerFilter</code></strong>.</p>
+  </subsection>
+
+  <subsection name="Initialisation parameters">
+    <p>The Session Initializer Filter does not support any initialization parameters.</p>
+  </subsection>
+
+  <subsection name="Sample Configuration">
+    <p>The following entries in the Web Application Deployment Descriptor, <strong>web.xml</strong>,
+    would enable the Session Initializer Filter for requests that match the given URL pattern
+    (in this example, "/ws/*").</p>
+
+    <source><![CDATA[<filter>
+    <filter-name>SessionInitializer</filter-name>
+    <filter-class>org.apache.catalina.filters.SessionInitializerFilter</filter-class>
+</filter>
+<filter-mapping>
+    <filter-name>SessionInitializer</filter-name>
+    <url-pattern>/ws/*</url-pattern>
+</filter-mapping>]]></source>
+    </subsection>
+</section>
 
 <section name="Set Character Encoding Filter">
 

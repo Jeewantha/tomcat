@@ -16,15 +16,22 @@
  */
 package org.apache.catalina.connector;
 
+import java.io.File;
 import java.net.SocketTimeoutException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import javax.servlet.Servlet;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Wrapper;
+import org.apache.catalina.servlets.DefaultServlet;
+import org.apache.catalina.servlets.WebdavServlet;
 import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
@@ -43,7 +50,7 @@ public class TestConnector extends TomcatBaseTest {
         Wrapper w =
             Tomcat.addServlet(root, "tester", new TesterServlet());
         w.setAsyncSupported(true);
-        root.addServletMapping("/", "tester");
+        root.addServletMappingDecoded("/", "tester");
 
         Connector connector = tomcat.getConnector();
 
@@ -52,8 +59,8 @@ public class TestConnector extends TomcatBaseTest {
         ByteChunk bc = new ByteChunk();
         int rc = getUrl("http://localhost:" + getPort() + "/", bc, null, null);
 
-        assertEquals(200, rc);
-        assertEquals("OK", bc.toString());
+        Assert.assertEquals(200, rc);
+        Assert.assertEquals("OK", bc.toString());
 
         rc = -1;
         bc.recycle();
@@ -68,7 +75,7 @@ public class TestConnector extends TomcatBaseTest {
             // Make sure the test passes if we do
             rc = 503;
         }
-        assertEquals(503, rc);
+        Assert.assertEquals(503, rc);
     }
 
 
@@ -89,7 +96,125 @@ public class TestConnector extends TomcatBaseTest {
         int localPort1 = connector1.getLocalPort();
         int localPort2 = connector2.getLocalPort();
 
-        assertTrue(localPort1 > 0);
-        assertTrue(localPort2 > 0);
+        Assert.assertTrue(localPort1 > 0);
+        Assert.assertTrue(localPort2 > 0);
+    }
+
+
+    @Test(expected=LifecycleException.class)
+    public void testInvalidProtocolThrows() throws Exception {
+        doTestInvalidProtocol(true);
+    }
+
+
+    @Test
+    public void testInvalidProtocolNoThrows() throws Exception {
+        doTestInvalidProtocol(false);
+    }
+
+
+    private void doTestInvalidProtocol(boolean throwOnFailure) throws Exception {
+        Connector c = new Connector("foo.Bar");
+        c.setThrowOnFailure(throwOnFailure);
+
+        c.start();
+    }
+
+
+    @Test(expected=LifecycleException.class)
+    public void testDuplicatePortThrows() throws Exception {
+        doTestDuplicatePort(true);
+    }
+
+
+    @Test
+    public void testDuplicatePortNoThrows() throws Exception {
+        doTestDuplicatePort(false);
+    }
+
+
+    private void doTestDuplicatePort(boolean throwOnFailure) throws Exception {
+        Connector c1 = new Connector();
+        c1.setThrowOnFailure(throwOnFailure);
+        c1.setPort(0);
+        c1.start();
+
+        Connector c2 = new Connector();
+        c2.setThrowOnFailure(throwOnFailure);
+        c2.setPort(c1.getLocalPort());
+
+        c2.start();
+    }
+
+
+    @Test
+    public void testTraceAllowedDefault() throws Exception {
+        doTestTrace(new DefaultServlet(), true);
+    }
+
+
+    @Test
+    public void testTraceNotAllowedDefault() throws Exception {
+        doTestTrace(new DefaultServlet(), false);
+    }
+
+
+    @Test
+    public void testTraceAllowedWebDav() throws Exception {
+        doTestTrace(new WebdavServlet(), true);
+    }
+
+
+    @Test
+    public void testTraceNotAllowedWebDav() throws Exception {
+        doTestTrace(new WebdavServlet(), false);
+    }
+
+
+    @Test
+    public void testTraceAllowedCustom() throws Exception {
+        doTestTrace(new TesterServlet(), true);
+    }
+
+
+    @Test
+    public void testTraceNotAllowedCustom() throws Exception {
+        doTestTrace(new TesterServlet(), false);
+    }
+
+
+    private void doTestTrace(Servlet servlet, boolean allowTrace) throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        File appDir = new File("test/webapp");
+        Context root = tomcat.addContext("", appDir.getAbsolutePath());
+        Tomcat.addServlet(root, "default", servlet);
+        root.addServletMappingDecoded("/", "default");
+
+        Connector connector = tomcat.getConnector();
+        connector.setAllowTrace(allowTrace);
+
+        tomcat.start();
+
+        ByteChunk bc = new ByteChunk();
+        Map<String,List<String>> respHeaders = new HashMap<>();
+        int rc = methodUrl("http://localhost:" + getPort() + "/index.html",
+                bc, 30000, null, respHeaders, "OPTIONS");
+
+        Assert.assertEquals(200, rc);
+
+        boolean foundTrace = false;
+        for (String header : respHeaders.get("Allow")) {
+            if (header.contains("TRACE")) {
+                foundTrace = true;
+                break;
+            }
+        }
+
+        if (allowTrace) {
+            Assert.assertTrue(foundTrace);
+        } else {
+            Assert.assertFalse(foundTrace);
+        }
     }
 }

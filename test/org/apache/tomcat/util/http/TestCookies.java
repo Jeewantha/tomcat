@@ -384,8 +384,8 @@ public class TestCookies {
 
     @Test
     public void rfc2109Version0Rfc6265() {
-        // Neither RFC2109 nor RFc6265 allow version 0
-        test(true, "$Version=0;foo=bar");
+        // RFC6265 will parse explicit version 0 using RFC2109
+        test(true, "$Version=0;foo=bar", FOO);
     }
 
     @Test
@@ -469,6 +469,33 @@ public class TestCookies {
         A.setVersion(1);
         test(true, "$Version=1;x\tx=yyy,foo=bar;a=b", FOO, A);
     }
+
+    @Test
+    public void testBug60788Rfc6265() {
+        doTestBug60788(true);
+    }
+
+    @Test
+    public void testBug60788Rfc2109() {
+        doTestBug60788(false);
+    }
+
+    private void doTestBug60788(boolean useRfc6265) {
+        Cookie expected = new Cookie("userId", "foo");
+        expected.setVersion(1);
+        if (useRfc6265) {
+            expected.setDomain("\"www.example.org\"");
+            expected.setPath("\"/\"");
+        } else {
+            // The legacy processor removes the quotes for domain and path
+            expected.setDomain("www.example.org");
+            expected.setPath("/");
+        }
+
+        test(useRfc6265, "$Version=\"1\"; userId=\"foo\";$Path=\"/\";$Domain=\"www.example.org\"",
+                expected);
+    }
+
 
     private void test(boolean useRfc6265, String header, Cookie... expected) {
         MimeHeaders mimeHeaders = new MimeHeaders();

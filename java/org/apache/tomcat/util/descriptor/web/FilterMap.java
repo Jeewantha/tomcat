@@ -18,6 +18,7 @@ package org.apache.tomcat.util.descriptor.web;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 import javax.servlet.DispatcherType;
@@ -32,7 +33,7 @@ import org.apache.tomcat.util.buf.UDecoder;
  *
  * @author Craig R. McClanahan
  */
-public class FilterMap implements Serializable {
+public class FilterMap extends XmlEncodingBase implements Serializable {
 
 
     // ------------------------------------------------------------- Properties
@@ -60,7 +61,7 @@ public class FilterMap implements Serializable {
     private String filterName = null;
 
     public String getFilterName() {
-        return (this.filterName);
+        return this.filterName;
     }
 
     public void setFilterName(String filterName) {
@@ -77,7 +78,7 @@ public class FilterMap implements Serializable {
         if (matchAllServletNames) {
             return new String[] {};
         } else {
-            return (this.servletNames);
+            return this.servletNames;
         }
     }
 
@@ -122,11 +123,14 @@ public class FilterMap implements Serializable {
         if (matchAllUrlPatterns) {
             return new String[] {};
         } else {
-            return (this.urlPatterns);
+            return this.urlPatterns;
         }
     }
 
     public void addURLPattern(String urlPattern) {
+        addURLPatternDecoded(UDecoder.URLDecode(urlPattern, getCharset()));
+    }
+    public void addURLPatternDecoded(String urlPattern) {
         if ("*".equals(urlPattern)) {
             this.matchAllUrlPatterns = true;
         } else {
@@ -138,9 +142,10 @@ public class FilterMap implements Serializable {
     }
 
     /**
-     *
      * This method will be used to set the current state of the FilterMap
      * representing the state of when filters should be applied.
+     * @param dispatcherString the dispatcher type which should
+     *  match this filter
      */
     public void setDispatcher(String dispatcherString) {
         String dispatcher = dispatcherString.toUpperCase(Locale.ENGLISH);
@@ -172,20 +177,20 @@ public class FilterMap implements Serializable {
     }
 
     public String[] getDispatcherNames() {
-        ArrayList<String> result = new ArrayList<>();
-        if ((dispatcherMapping & FORWARD) > 0) {
+        List<String> result = new ArrayList<>();
+        if ((dispatcherMapping & FORWARD) != 0) {
             result.add(DispatcherType.FORWARD.name());
         }
-        if ((dispatcherMapping & INCLUDE) > 0) {
+        if ((dispatcherMapping & INCLUDE) != 0) {
             result.add(DispatcherType.INCLUDE.name());
         }
-        if ((dispatcherMapping & REQUEST) > 0) {
+        if ((dispatcherMapping & REQUEST) != 0) {
             result.add(DispatcherType.REQUEST.name());
         }
-        if ((dispatcherMapping & ERROR) > 0) {
+        if ((dispatcherMapping & ERROR) != 0) {
             result.add(DispatcherType.ERROR.name());
         }
-        if ((dispatcherMapping & ASYNC) > 0) {
+        if ((dispatcherMapping & ASYNC) != 0) {
             result.add(DispatcherType.ASYNC.name());
         }
         return result.toArray(new String[result.size()]);
@@ -199,7 +204,6 @@ public class FilterMap implements Serializable {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("FilterMap[");
         sb.append("filterName=");
         sb.append(this.filterName);
@@ -212,8 +216,7 @@ public class FilterMap implements Serializable {
             sb.append(urlPatterns[i]);
         }
         sb.append("]");
-        return (sb.toString());
-
+        return sb.toString();
     }
 
 

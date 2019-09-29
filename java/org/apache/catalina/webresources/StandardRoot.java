@@ -44,6 +44,8 @@ import org.apache.catalina.WebResourceSet;
 import org.apache.catalina.util.LifecycleMBeanBase;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.buf.UriUtil;
+import org.apache.tomcat.util.compat.JreCompat;
 import org.apache.tomcat.util.http.RequestUtil;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -62,8 +64,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot {
 
     private static final Log log = LogFactory.getLog(StandardRoot.class);
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(StandardRoot.class);
 
     private Context context;
     private boolean allowLinking = false;
@@ -142,7 +143,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         path = validate(path);
 
         // Set because we don't want duplicates
-        HashSet<String> result = new HashSet<>();
+        Set<String> result = new HashSet<>();
         for (List<WebResourceSet> list : allResources) {
             for (WebResourceSet webResourceSet : list) {
                 if (!webResourceSet.getClassLoaderOnly()) {
@@ -238,7 +239,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
      * can be normalized without stepping outside of the root.
      *
      * @param path
-     * @return  the normlized path
+     * @return  the normalized path
      */
     private String validate(String path) {
         if (!getState().isAvailable()) {
@@ -344,7 +345,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         return listResources(path, true);
     }
 
-    private WebResource[] listResources(String path, boolean validate) {
+    protected WebResource[] listResources(String path, boolean validate) {
         if (validate) {
             path = validate(path);
         }
@@ -362,7 +363,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     }
 
     // TODO: Should the createWebResourceSet() methods be removed to some
-    //       utility class for fiel system based resource sets?
+    //       utility class for file system based resource sets?
 
     @Override
     public void createWebResourceSet(ResourceSetType type, String webAppMount,
@@ -473,6 +474,10 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public void setAllowLinking(boolean allowLinking) {
+        if (this.allowLinking != allowLinking && cachingAllowed) {
+            // If allow linking changes, invalidate the cache.
+            cache.clear();
+        }
         this.allowLinking = allowLinking;
     }
 
@@ -560,18 +565,21 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         this.context = context;
     }
 
-    /*
+    /**
      * Class loader resources are handled by treating JARs in WEB-INF/lib as
      * resource JARs (without the internal META-INF/resources/ prefix) mounted
-     * at WEB-INF/claasses (rather than the web app root). This enables reuse
+     * at WEB-INF/classes (rather than the web app root). This enables reuse
      * of the resource handling plumbing.
      *
      * These resources are marked as class loader only so they are only used in
      * the methods that are explicitly defined to return class loader resources.
      * This prevents calls to getResource("/WEB-INF/classes") returning from one
      * or more of the JAR files.
+     *
+     * @throws LifecycleException If an error occurs that should stop the web
+     *                            application from starting
      */
-    private void processWebInfLib() {
+    protected void processWebInfLib() throws LifecycleException {
         WebResource[] possibleJars = listResources("/WEB-INF/lib", false);
 
         for (WebResource possibleJar : possibleJars) {
@@ -583,7 +591,8 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     }
 
     /**
-     * For unit testing
+     * For unit testing.
+     * @param main The main resources
      */
     protected final void setMainResources(WebResourceSet main) {
         this.main = main;
@@ -637,6 +646,18 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         return result;
     }
 
+
+
+    /*
+     * Returns true if and only if all the resources for this web application
+     * are provided via a packed WAR file. It is used to optimise cache
+     * validation in this case on the basis that the WAR file will not change.
+     */
+    protected boolean isPackedWarFile() {
+        return main instanceof WarResourceSet && preResources.isEmpty() && postResources.isEmpty();
+    }
+
+
     // ----------------------------------------------------------- JMX Lifecycle
     @Override
     protected String getDomainInternal() {
@@ -674,9 +695,11 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     }
 
     protected void registerURLStreamHandlerFactory() {
-        // Ensure support for jar:war:file:/ URLs will be available (required
-        // for resource JARs in packed WAR files).
-        TomcatURLStreamHandlerFactory.register();
+        if (!JreCompat.isGraalAvailable()) {
+            // Ensure support for jar:war:file:/ URLs will be available (required
+            // for resource JARs in packed WAR files).
+            TomcatURLStreamHandlerFactory.register();
+        }
     }
 
     @Override
@@ -688,8 +711,11 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         mainResources.add(main);
 
         for (List<WebResourceSet> list : allResources) {
-            for (WebResourceSet webResourceSet : list) {
-                webResourceSet.start();
+            // Skip class resources since they are started below
+            if (list != classResources) {
+                for (WebResourceSet webResourceSet : list) {
+                    webResourceSet.start();
+                }
             }
         }
 
@@ -720,7 +746,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
             if (f.isDirectory()) {
                 mainResourceSet = new DirResourceSet(this, "/", f.getAbsolutePath(), "/");
             } else if(f.isFile() && docBase.endsWith(".war")) {
-                mainResourceSet = new JarResourceSet(this, "/", f.getAbsolutePath(), "/");
+                mainResourceSet = new WarResourceSet(this, "/", f.getAbsolutePath());
             } else {
                 throw new IllegalArgumentException(
                         sm.getString("standardRoot.startInvalidMain",
@@ -793,9 +819,14 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         BaseLocation(URL url) {
             File f = null;
 
-            if ("jar".equals(url.getProtocol())) {
+            if ("jar".equals(url.getProtocol()) || "war".equals(url.getProtocol())) {
                 String jarUrl = url.toString();
-                int endOfFileUrl = jarUrl.indexOf("!/");
+                int endOfFileUrl = -1;
+                if ("jar".equals(url.getProtocol())) {
+                    endOfFileUrl = jarUrl.indexOf("!/");
+                } else {
+                    endOfFileUrl = jarUrl.indexOf(UriUtil.getWarSeparator());
+                }
                 String fileUrl = jarUrl.substring(4, endOfFileUrl);
                 try {
                     f = new File(new URL(fileUrl).toURI());

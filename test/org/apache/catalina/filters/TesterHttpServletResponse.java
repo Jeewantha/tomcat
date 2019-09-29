@@ -22,8 +22,11 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletResponse;
@@ -200,7 +203,7 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     @Override
     public Collection<String> getHeaderNames() { return null; }
     @Override
-    public Collection<String> getHeaders(String name) { return null; }
+    public Collection<String> getHeaders(String name) { return Collections.emptyList(); }
     public String getMessage() { return null; }
     public void reset(@SuppressWarnings("unused") int status,
             @SuppressWarnings("unused") String message) {/* NOOP */}
@@ -247,4 +250,8 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     public void setStatus(int status, String message) {/* NOOP */}
     @Override
     public void setContentLengthLong(long length) {/* NOOP */}
+    @Override
+    public void setTrailerFields(Supplier<Map<String, String>> supplier) { /* NOOP */ }
+    @Override
+    public Supplier<Map<String, String>> getTrailerFields() { return null; }
 }

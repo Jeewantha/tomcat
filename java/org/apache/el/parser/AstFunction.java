@@ -163,13 +163,18 @@ public final class AstFunction extends SimpleNode {
         Object result = null;
         int inputParameterCount = parameters.jjtGetNumChildren();
         int methodParameterCount = paramTypes.length;
-        if (inputParameterCount > 0) {
+        if (inputParameterCount == 0 && methodParameterCount == 1 && m.isVarArgs()) {
+            params = new Object[] { null };
+        } else if (inputParameterCount > 0) {
             params = new Object[methodParameterCount];
             try {
                 for (int i = 0; i < methodParameterCount; i++) {
                     if (m.isVarArgs() && i == methodParameterCount - 1) {
                         if (inputParameterCount < methodParameterCount) {
-                            params[i] = null;
+                            params[i] = new Object[] { null };
+                        } else if (inputParameterCount == methodParameterCount &&
+                                paramTypes[i].isArray()) {
+                            params[i] = parameters.jjtGetChild(i).getValue(ctx);
                         } else {
                             Object[] varargs =
                                     new Object[inputParameterCount - methodParameterCount + 1];
@@ -178,11 +183,12 @@ public final class AstFunction extends SimpleNode {
                                 varargs[j-i] = parameters.jjtGetChild(j).getValue(ctx);
                                 varargs[j-i] = coerceToType(ctx, varargs[j-i], target);
                             }
+                            params[i] = varargs;
                         }
                     } else {
                         params[i] = parameters.jjtGetChild(i).getValue(ctx);
-                        params[i] = coerceToType(ctx, params[i], paramTypes[i]);
                     }
+                    params[i] = coerceToType(ctx, params[i], paramTypes[i]);
                 }
             } catch (ELException ele) {
                 throw new ELException(MessageFactory.get("error.function", this

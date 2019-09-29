@@ -19,7 +19,9 @@ package javax.servlet.http;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Enumeration;
+import java.util.Map;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
@@ -170,6 +172,31 @@ public interface HttpServletRequest extends ServletRequest {
      */
     public int getIntHeader(String name);
 
+    public default HttpServletMapping getHttpServletMapping() {
+        return new HttpServletMapping() {
+
+            @Override
+            public String getMatchValue() {
+                return "";
+            }
+
+            @Override
+            public String getPattern() {
+                return "";
+            }
+
+            @Override
+            public String getServletName() {
+                return "";
+            }
+
+            @Override
+            public MappingMatch getMappingMatch() {
+                return null;
+            }
+        };
+    }
+
     /**
      * Returns the name of the HTTP method with which this request was made, for
      * example, GET, POST, or PUT. Same as the value of the CGI variable
@@ -213,6 +240,24 @@ public interface HttpServletRequest extends ServletRequest {
      *         information
      */
     public String getPathTranslated();
+
+    /**
+     * Obtain a builder for generating push requests. {@link PushBuilder}
+     * documents how this request will be used as the basis for a push request.
+     * Each call to this method will return a new instance, independent of any
+     * previous instance obtained.
+     *
+     * @return A builder that can be used to generate push requests based on
+     *         this request or {@code null} if push is not supported. Note that
+     *         even if a PushBuilder instance is returned, by the time that
+     *         {@link PushBuilder#push()} is called, it may no longer be valid
+     *         to push a request and the push request will be ignored.
+     *
+     * @since Servlet 4.0
+     */
+    public default PushBuilder newPushBuilder() {
+        return null;
+    }
 
     /**
      * Returns the portion of the request URI that indicates the context of the
@@ -289,8 +334,9 @@ public interface HttpServletRequest extends ServletRequest {
      * Returns the part of this request's URL from the protocol name up to the
      * query string in the first line of the HTTP request. The web container
      * does not decode this String. For example:
-     * <table summary="Examples of Returned Values">
-     * <tr align=left>
+     * <table>
+     * <caption>Examples of Returned Values</caption>
+     * <tr>
      * <th>First line of HTTP request</th>
      * <th>Returned Value</th>
      * <tr>
@@ -307,7 +353,7 @@ public interface HttpServletRequest extends ServletRequest {
      * <td>/xyz
      * </table>
      * <p>
-     * To reconstruct an URL with a scheme and host, use
+     * To reconstruct a URL with a scheme and host, use
      * {@link #getRequestURL}.
      *
      * @return a <code>String</code> containing the part of the URL from the
@@ -427,8 +473,7 @@ public interface HttpServletRequest extends ServletRequest {
      * @deprecated As of Version 2.1 of the Java Servlet API, use
      *             {@link #isRequestedSessionIdFromURL} instead.
      */
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public boolean isRequestedSessionIdFromUrl();
 
     /**
@@ -533,4 +578,36 @@ public interface HttpServletRequest extends ServletRequest {
      */
     public <T extends HttpUpgradeHandler> T upgrade(
             Class<T> httpUpgradeHandlerClass) throws java.io.IOException, ServletException;
+
+    /**
+     * Obtain a Map of the trailer fields that is not backed by the request
+     * object.
+     *
+     * @return A Map of the received trailer fields with all keys lower case
+     *         or an empty Map if no trailers are present
+     *
+     * @since Servlet 4.0
+     */
+    public default Map<String,String> getTrailerFields() {
+        return Collections.emptyMap();
+    }
+
+    /**
+     * Are trailer fields ready to be read (there may still be no trailers to
+     * read). This method always returns {@code true} if the underlying protocol
+     * does not support trailer fields. Otherwise, {@code true} is returned once
+     * all of the following are true:
+     * <ul>
+     * <li>The application has ready all the request data and an EOF has been
+     *     received or the content-length is zero</li>
+     * <li>All trailer fields, if any, have been received</li>
+     * </ul>
+     *
+     * @return {@code true} if trailers are ready to be read
+     *
+     * @since Servlet 4.0
+     */
+    public default boolean isTrailerFieldsReady() {
+        return false;
+    }
 }

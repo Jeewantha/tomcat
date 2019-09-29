@@ -91,25 +91,53 @@ file affects all web applications. See
 <p>There are several servlet init parameters which can be used to
 configure the behaviour of the CGI servlet.</p>
 <ul>
+<li><strong>cgiMethods</strong> - Comma separated list of HTTP methods. Requests
+using one of these methods will be passed to the CGI script for the script to
+generate the response. The default value is <code>GET,POST</code>. Use
+<code>*</code> for the script to handle all requests regardless of method.
+Unless over-ridden by the configuration of this parameter, requests using HEAD,
+OPTIONS or TRACE will have handled by the superclass.</li>
 <li><strong>cgiPathPrefix</strong> - The CGI search path will start at
 the web application root directory + File.separator + this prefix.
 By default there is no value, which results in the web application root
 directory being used as the search path. The recommended value is
 <code>WEB-INF/cgi</code></li>
-<li><strong>debug</strong> - Debugging detail level for messages logged
-by this servlet. Useful values range from 0 to 5 where 0 means no logging and 5
-means maximum logging. Values of 10 or more mean maximum logging plus debug info
-added to the HTTP response. If an error occurs and debug is 10 or more the
-standard error page mechanism will be disabled and a response body with debug
-information will be produced. Note that any value of 10 or more has the same
-effect as a value of 10. Default is <code>0</code>.</li>
-<li><strong>executable</strong> - The of the executable to be used to
+<li><strong>cmdLineArgumentsDecoded</strong> - If command line argumemnts
+are enabled (via <strong>enableCmdLineArguments</strong>) and Tomcat is running
+on Windows then each individual decoded command line argument must match this
+pattern else the request will be rejected. This is to protect against known
+issues passing command line arguments from Java to Windows. These issues can
+lead to remote code execution. For more information on these issues see
+<a href="https://codewhitesec.blogspot.com/2016/02/java-and-command-line-injections-in-windows.html">Markus
+Wulftange&apos;s blog</a> and this archived
+<a href="https://web.archive.org/web/20161228144344/https://blogs.msdn.microsoft.com/twistylittlepassagesallalike/2011/04/23/everyone-quotes-command-line-arguments-the-wrong-way/">blog
+by Daniel Colascione</a>.</li>
+<li><strong>cmdLineArgumentsEncoded</strong> - If command line argumemnts
+are enabled (via <strong>enableCmdLineArguments</strong>) individual encoded
+command line argument must match this pattern else the request will be rejected.
+The default matches the allowed values defined by RFC3875 and is
+<code>[a-zA-Z0-9\Q%;/?:@&amp;,$-_.!~*'()\E]+</code></li>
+<li><strong>enableCmdLineArguments</strong> - Are command line arguments
+generated from the query string as per section 4.4 of 3875 RFC? The default is
+<code>false</code>.</li>
+<li><strong>environment-variable-</strong> - An environment to be set for the
+execution environment of the CGI script. The name of variable is taken from the
+parameter name. To configure an environment variable named FOO, configure a
+parameter named environment-variable-FOO. The parameter value is used as the
+environment variable value. The default is no environment variables.</li>
+<li><strong>executable</strong> - The name of the executable to be used to
 run the script. You may explicitly set this parameter to be an empty string
 if your script is itself executable (e.g. an exe file). Default is
 <code>perl</code>.</li>
 <li><strong>executable-arg-1</strong>, <strong>executable-arg-2</strong>,
 and so on - additional arguments for the executable. These precede the
 CGI script name. By default there are no additional arguments.</li>
+<li><strong>envHttpHeaders</strong> - A regular expression used to select the
+HTTP headers passed to the CGI process as environment variables. Note that
+headers are converted to upper case before matching and that the entire header
+name must match the pattern. Default is
+<code>ACCEPT[-0-9A-Z]*|CACHE-CONTROL|COOKIE|HOST|IF-[-0-9A-Z]*|REFERER|USER-AGENT</code>
+</li>
 <li><strong>parameterEncoding</strong> - Name of the parameter encoding
 to be used with the CGI servlet. Default is
 <code>System.getProperty("file.encoding","UTF-8")</code>. That is the system
@@ -122,6 +150,16 @@ the reading of stderr to complete before terminating the CGI process. Default
 is <code>2000</code>.</li>
 </ul>
 
+<p>The CGI script executed depends on the configuration of the CGI Servlet and
+how the request is mapped to the CGI Servlet. The CGI search path starts at the
+web application root directory + File.separator + cgiPathPrefix. The
+<strong>pathInfo</strong> is then searched unless it is <code>null</code> - in
+which case the <strong>servletPath</strong> is searched.</p>
+
+<p>The search starts with the first path segment and expands one path segment
+at a time until no path segments are left (resulting in a 404) or a script is
+found. Any remaining path segments are passed to the script in the
+<strong>PATH_INFO</strong> environment variable.</p>
 
 </section>
 

@@ -130,6 +130,7 @@ public class NioReplicationTask extends AbstractRxTask {
      * updated to remove OP_READ.  This will cause the selector
      * to ignore read-readiness for this channel while the
      * worker thread is servicing it.
+     * @param key The key to process
      */
     public synchronized void serviceChannel (SelectionKey key) {
         if ( log.isTraceEnabled() ) log.trace("About to service key:"+key);
@@ -147,6 +148,9 @@ public class NioReplicationTask extends AbstractRxTask {
      * interest in OP_READ.  When this method completes it
      * re-enables OP_READ and calls wakeup() on the selector
      * so the selector will resume watching this channel.
+     * @param key The key to process
+     * @param reader The reader
+     * @throws Exception IO error
      */
     protected void drainChannel (final SelectionKey key, ObjectReader reader) throws Exception {
         reader.access();
@@ -196,7 +200,7 @@ public class NioReplicationTask extends AbstractRxTask {
             /**
              * Use send ack here if you want to ack the request to the remote
              * server before completing the request
-             * This is considered an asynchronized request
+             * This is considered an asynchronous request
              */
             if (ChannelData.sendAckAsync(msgs[i].getOptions())) sendAck(key,(WritableByteChannel)channel,Constants.ACK_COMMAND,saddr);
             try {
@@ -228,7 +232,6 @@ public class NioReplicationTask extends AbstractRxTask {
 
         if (count < 0) {
             remoteEof(key);
-            return;
         }
     }
 
@@ -292,10 +295,12 @@ public class NioReplicationTask extends AbstractRxTask {
 
 
     /**
-     * send a reply-acknowledgement (6,2,3), sends it doing a busy write, the ACK is so small
-     * that it should always go to the buffer
-     * @param key
-     * @param channel
+     * Send a reply-acknowledgement (6,2,3), sends it doing a busy write, the ACK is so small
+     * that it should always go to the buffer.
+     * @param key The key to use
+     * @param channel The channel
+     * @param command The command to write
+     * @param udpaddr Target address
      */
     protected void sendAck(SelectionKey key, WritableByteChannel channel, byte[] command, SocketAddress udpaddr) {
         try {

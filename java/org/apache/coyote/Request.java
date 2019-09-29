@@ -17,17 +17,21 @@
 package org.apache.coyote;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.ReadListener;
 
-import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.buf.UDecoder;
 import org.apache.tomcat.util.http.MimeHeaders;
 import org.apache.tomcat.util.http.Parameters;
 import org.apache.tomcat.util.http.ServerCookies;
+import org.apache.tomcat.util.net.ApplicationBufferHandler;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -59,10 +63,9 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public final class Request {
 
-    private static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(Request.class);
 
-    // Expected maximum typica number of cookies per request.
+    // Expected maximum typical number of cookies per request.
     private static final int INITIAL_COOKIE_SIZE = 4;
 
     // ----------------------------------------------------------- Constructors
@@ -96,6 +99,13 @@ public final class Request {
     private final MessageBytes localAddrMB = MessageBytes.newInstance();
 
     private final MimeHeaders headers = new MimeHeaders();
+    private final Map<String,String> trailerFields = new HashMap<>();
+
+
+    /**
+     * Path parameters
+     */
+    private final Map<String,String> pathParameters = new HashMap<>();
 
     /**
      * Notes.
@@ -120,7 +130,15 @@ public final class Request {
      */
     private long contentLength = -1;
     private MessageBytes contentTypeMB = null;
-    private String charEncoding = null;
+    private Charset charset = null;
+    // Retain the original, user specified character encoding so it can be
+    // returned even if it is invalid
+    private String characterEncoding = null;
+
+    /**
+     * Is there an expectation ?
+     */
+    private boolean expectation = false;
 
     private final ServerCookies serverCookies = new ServerCookies(INITIAL_COOKIE_SIZE);
     private final Parameters parameters = new Parameters();
@@ -142,7 +160,7 @@ public final class Request {
 
     private boolean sendfile = true;
 
-    protected volatile ReadListener listener;
+    volatile ReadListener listener;
 
     public ReadListener getReadListener() {
         return listener;
@@ -183,12 +201,24 @@ public final class Request {
     }
 
 
+    public boolean isTrailerFieldsReady() {
+        AtomicBoolean result = new AtomicBoolean(false);
+        action(ActionCode.IS_TRAILER_FIELDS_READY, result);
+        return result.get();
+    }
+
+
+    public Map<String,String> getTrailerFields() {
+        return trailerFields;
+    }
+
+
     public UDecoder getURLDecoder() {
         return urlDecoder;
     }
 
-    // -------------------- Request data --------------------
 
+    // -------------------- Request data --------------------
 
     public MessageBytes scheme() {
         return schemeMB;
@@ -215,11 +245,11 @@ public final class Request {
     }
 
     /**
-     * Return the buffer holding the server name, if
-     * any. Use isNull() to check if there is no value
-     * set.
-     * This is the "virtual host", derived from the
-     * Host: header.
+     * Get the "virtual host", derived from the Host: header associated with
+     * this request.
+     *
+     * @return The buffer holding the server name, if any. Use isNull() to check
+     *         if there is no value set.
      */
     public MessageBytes serverName() {
         return serverNameMB;
@@ -265,26 +295,50 @@ public final class Request {
         this.localPort = port;
     }
 
+
     // -------------------- encoding/type --------------------
+
+    /**
+     * Get the character encoding used for this request.
+     *
+     * @return The value set via {@link #setCharset(Charset)} or if no
+     *         call has been made to that method try to obtain if from the
+     *         content type.
+     */
+    public String getCharacterEncoding() {
+        if (characterEncoding == null) {
+            characterEncoding = getCharsetFromContentType(getContentType());
+        }
+
+        return characterEncoding;
+    }
 
 
     /**
      * Get the character encoding used for this request.
+     *
+     * @return The value set via {@link #setCharset(Charset)} or if no
+     *         call has been made to that method try to obtain if from the
+     *         content type.
+     *
+     * @throws UnsupportedEncodingException If the user agent has specified an
+     *         invalid character encoding
      */
-    public String getCharacterEncoding() {
+    public Charset getCharset() throws UnsupportedEncodingException {
+        if (charset == null) {
+            getCharacterEncoding();
+            if (characterEncoding != null) {
+                charset = B2CConverter.getCharset(characterEncoding);
+            }
+         }
 
-        if (charEncoding != null) {
-            return charEncoding;
-        }
-
-        charEncoding = getCharsetFromContentType(getContentType());
-        return charEncoding;
-
+        return charset;
     }
 
 
-    public void setCharacterEncoding(String enc) {
-        this.charEncoding = enc;
+    public void setCharset(Charset charset) {
+        this.charset = charset;
+        this.characterEncoding = charset.name();
     }
 
 
@@ -344,6 +398,17 @@ public final class Request {
         return headers.getHeader(name);
     }
 
+
+    public void setExpectation(boolean expectation) {
+        this.expectation = expectation;
+    }
+
+
+    public boolean hasExpectation() {
+        return expectation;
+    }
+
+
     // -------------------- Associated response --------------------
 
     public Response getResponse() {
@@ -381,6 +446,15 @@ public final class Request {
 
     public Parameters getParameters() {
         return parameters;
+    }
+
+
+    public void addPathParameter(String name, String value) {
+        pathParameters.put(name, value);
+    }
+
+    public String getPathParameter(String name) {
+        return pathParameters.get(name);
     }
 
 
@@ -437,6 +511,13 @@ public final class Request {
         return result.get();
     }
 
+    public boolean getSupportsRelativeRedirects() {
+        if (protocol().equals("") || protocol().equals("HTTP/1.0")) {
+            return false;
+        }
+        return true;
+    }
+
 
     // -------------------- Input Buffer --------------------
 
@@ -451,16 +532,23 @@ public final class Request {
 
 
     /**
-     * Read data from the input buffer and put it into a byte chunk.
+     * Read data from the input buffer and put it into ApplicationBufferHandler.
      *
-     * The buffer is owned by the protocol implementation - it will be reused on the next read.
-     * The Adapter must either process the data in place or copy it to a separate buffer if it needs
-     * to hold it. In most cases this is done during byte-&gt;char conversions or via InputStream. Unlike
-     * InputStream, this interface allows the app to process data in place, without copy.
+     * The buffer is owned by the protocol implementation - it will be reused on
+     * the next read. The Adapter must either process the data in place or copy
+     * it to a separate buffer if it needs to hold it. In most cases this is
+     * done during byte-&gt;char conversions or via InputStream. Unlike
+     * InputStream, this interface allows the app to process data in place,
+     * without copy.
      *
+     * @param handler The destination to which to copy the data
+     *
+     * @return The number of bytes copied
+     *
+     * @throws IOException If an I/O error occurs during the copy
      */
-    public int doRead(ByteChunk chunk) throws IOException {
-        int n = inputBuffer.doRead(chunk);
+    public int doRead(ApplicationBufferHandler handler) throws IOException {
+        int n = inputBuffer.doRead(handler);
         if (n > 0) {
             bytesRead+=n;
         }
@@ -492,10 +580,6 @@ public final class Request {
      * be faster than ThreadLocal for very frequent operations.
      *
      *  Example use:
-     *   Jk:
-     *     HandlerRequest.HOSTBUFFER = 10 CharChunk, buffer for Host decoding
-     *     WorkerEnv: SSL_CERT_NOTE=16 - MessageBytes containing the cert
-     *
      *   Catalina CoyoteAdapter:
      *      ADAPTER_NOTES = 1 - stores the HttpServletRequest object ( req/res)
      *
@@ -504,6 +588,9 @@ public final class Request {
      *   for connector use.
      *
      *   17-31 range is not allocated or used.
+     *
+     * @param pos Index to use to store the note
+     * @param value The value to store at that index
      */
     public final void setNote(int pos, Object value) {
         notes[pos] = value;
@@ -523,18 +610,25 @@ public final class Request {
 
         contentLength = -1;
         contentTypeMB = null;
-        charEncoding = null;
+        charset = null;
+        characterEncoding = null;
+        expectation = false;
         headers.recycle();
+        trailerFields.clear();
         serverNameMB.recycle();
         serverPort=-1;
+        localAddrMB.recycle();
         localNameMB.recycle();
         localPort = -1;
+        remoteAddrMB.recycle();
+        remoteHostMB.recycle();
         remotePort = -1;
         available = 0;
         sendfile = true;
 
         serverCookies.recycle();
         parameters.recycle();
+        pathParameters.clear();
 
         uriMB.recycle();
         decodedUriMB.recycle();
@@ -582,11 +676,11 @@ public final class Request {
     private static String getCharsetFromContentType(String contentType) {
 
         if (contentType == null) {
-            return (null);
+            return null;
         }
         int start = contentType.indexOf("charset=");
         if (start < 0) {
-            return (null);
+            return null;
         }
         String encoding = contentType.substring(start + 8);
         int end = encoding.indexOf(';');
@@ -598,8 +692,7 @@ public final class Request {
             && (encoding.endsWith("\""))) {
             encoding = encoding.substring(1, encoding.length() - 1);
         }
-        return (encoding.trim());
 
+        return encoding.trim();
     }
-
 }

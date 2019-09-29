@@ -27,6 +27,7 @@ import java.io.Writer;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.CompletionHandler;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.SocketFactory;
@@ -42,14 +43,14 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import static org.apache.catalina.startup.SimpleHttpClient.CRLF;
-
 import org.apache.catalina.Context;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SSLSupport;
-import org.apache.tomcat.util.net.SocketStatus;
+import org.apache.tomcat.util.net.SocketEvent;
 import org.apache.tomcat.util.net.SocketWrapperBase;
+import org.apache.tomcat.util.net.SocketWrapperBase.BlockingMode;
 import org.apache.tomcat.util.net.SocketWrapperBase.CompletionState;
 
 public class TestUpgradeInternalHandler extends TomcatBaseTest {
@@ -59,8 +60,8 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
     @Test
     public void testUpgradeInternal() throws Exception {
         Assume.assumeTrue(
-                "Only supported on NIO 2",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Nio2"));
+                "Only supported on NIO X",
+                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Nio"));
 
         UpgradeConnection uc = doUpgrade(EchoAsync.class);
         PrintWriter pw = new PrintWriter(uc.getWriter());
@@ -79,19 +80,21 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         Assert.assertEquals(MESSAGE, response);
 
         uc.shutdownInput();
+        pw.close();
     }
 
     private UpgradeConnection doUpgrade(
             Class<? extends HttpUpgradeHandler> upgradeHandlerClass) throws Exception {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
+        tomcat.getConnector().setProperty("useAsyncIO", "true");
 
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
 
         UpgradeServlet servlet = new UpgradeServlet(upgradeHandlerClass);
         Tomcat.addServlet(ctx, "servlet", servlet);
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -158,8 +161,9 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
                 throw new IllegalArgumentException(ioe);
             }
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-            Writer writer = new OutputStreamWriter(os);
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+            Writer writer = new OutputStreamWriter(os, StandardCharsets.UTF_8);
 
             this.writer = writer;
             this.reader = reader;
@@ -192,8 +196,8 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
             // Arbitrarily located in the init, could be in the initial read event, asynchronous, etc.
             // Note: the completion check used will not call the completion handler if the IO completed inline and without error.
             // Using a completion check that always calls complete would be easier here since the action is the same even with inline completion.
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
-            CompletionState state = wrapper.read(false, 10, TimeUnit.SECONDS, null, SocketWrapperBase.READ_DATA, new CompletionHandler<Long, Void>() {
+            final ByteBuffer buffer = ByteBuffer.allocate(1024);
+            CompletionState state = wrapper.read(BlockingMode.NON_BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.READ_DATA, new CompletionHandler<Long, Void>() {
                 @Override
                 public void completed(Long result, Void attachment) {
                     System.out.println("Read: " + result.longValue());
@@ -212,7 +216,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
 
         private void write(ByteBuffer buffer) {
             buffer.flip();
-            CompletionState state = wrapper.write(true, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE, new CompletionHandler<Long, Void>() {
+            CompletionState state = wrapper.write(BlockingMode.BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE, new CompletionHandler<Long, Void>() {
                 @Override
                 public void completed(Long result, Void attachment) {
                     System.out.println("Write: " + result.longValue());
@@ -236,7 +240,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         }
 
         @Override
-        public SocketState upgradeDispatch(SocketStatus status) {
+        public SocketState upgradeDispatch(SocketEvent status) {
             System.out.println("Processing: " + status);
             switch (status) {
             case OPEN_READ:
@@ -245,15 +249,18 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
             case OPEN_WRITE:
                 break;
             case STOP:
-            case ASYNC_READ_ERROR:
-            case ASYNC_WRITE_ERROR:
-            case CLOSE_NOW:
             case DISCONNECT:
             case ERROR:
             case TIMEOUT:
+            case CONNECT_FAIL:
                 return SocketState.CLOSED;
             }
             return SocketState.UPGRADED;
+        }
+
+        @Override
+        public void timeoutAsync(long now) {
+            // NO-OP
         }
 
         @Override

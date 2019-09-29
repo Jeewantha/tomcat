@@ -33,7 +33,10 @@ import org.apache.catalina.Context;
 import org.apache.catalina.core.StandardContext;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.catalina.valves.RemoteAddrValve;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.descriptor.web.SecurityCollection;
+import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 import org.apache.tomcat.websocket.server.WsContextListener;
 
 /**
@@ -50,7 +53,7 @@ public class TestMapperWebapps extends TomcatBaseTest{
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "Bug53356", new Bug53356Servlet());
-        ctx.addServletMapping("", "Bug53356");
+        ctx.addServletMappingDecoded("", "Bug53356");
 
         tomcat.start();
 
@@ -103,7 +106,7 @@ public class TestMapperWebapps extends TomcatBaseTest{
         res = getUrl("http://localhost:" + getPort()
                 + "/examples/servlets/servlet/HelloWorldExample");
         text = res.toString();
-        Assert.assertTrue(text, text.contains("<h1>Hello World!</h1>"));
+        Assert.assertTrue(text, text.contains("<a href=\"../helloworld.html\">"));
 
         res = getUrl("http://localhost:" + getPort()
                 + "/examples/jsp/jsp2/el/basic-arithmetic.jsp");
@@ -137,7 +140,7 @@ public class TestMapperWebapps extends TomcatBaseTest{
         res = getUrl("http://localhost:" + getPort()
                 + "/examples/servlets/servlet/HelloWorldExample");
         text = res.toString();
-        Assert.assertTrue(text, text.contains("<h1>Hello World!</h1>"));
+        Assert.assertTrue(text, text.contains("<a href=\"../helloworld.html\">"));
 
         res = getUrl("http://localhost:" + getPort()
                 + "/examples/jsp/jsp2/el/basic-arithmetic.jsp");
@@ -224,6 +227,60 @@ public class TestMapperWebapps extends TomcatBaseTest{
                 new HashMap<String,List<String>>());
         Assert.assertEquals(HttpServletResponse.SC_NOT_FOUND, rc);
     }
+
+    @Test
+    public void testRedirect() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // Use standard test webapp as ROOT
+        File rootDir = new File("test/webapp");
+        org.apache.catalina.Context root =
+                tomcat.addWebapp(null, "", rootDir.getAbsolutePath());
+
+        // Add a security constraint
+        SecurityConstraint constraint = new SecurityConstraint();
+        SecurityCollection collection = new SecurityCollection();
+        collection.addPatternDecoded("/welcome-files/*");
+        collection.addPatternDecoded("/welcome-files");
+        constraint.addCollection(collection);
+        constraint.addAuthRole("foo");
+        root.addConstraint(constraint);
+
+        // Also make examples available
+        File examplesDir = new File(getBuildDirectory(), "webapps/examples");
+        org.apache.catalina.Context examples  = tomcat.addWebapp(
+                null, "/examples", examplesDir.getAbsolutePath());
+        examples.setMapperContextRootRedirectEnabled(false);
+        // Then block access to the examples to test redirection
+        RemoteAddrValve rav = new RemoteAddrValve();
+        rav.setDeny(".*");
+        rav.setDenyStatus(404);
+        examples.getPipeline().addValve(rav);
+
+        tomcat.start();
+
+        // Redirects within a web application
+        doRedirectTest("/welcome-files", 401);
+        doRedirectTest("/welcome-files/", 401);
+
+        doRedirectTest("/jsp", 302);
+        doRedirectTest("/jsp/", 404);
+
+        doRedirectTest("/WEB-INF", 404);
+        doRedirectTest("/WEB-INF/", 404);
+
+        // Redirects between web applications
+        doRedirectTest("/examples", 404);
+        doRedirectTest("/examples/", 404);
+    }
+
+
+    private void doRedirectTest(String path, int expected) throws IOException {
+        ByteChunk bc = new ByteChunk();
+        int rc = getUrl("http://localhost:" + getPort() + path, bc, false);
+        Assert.assertEquals(expected, rc);
+    }
+
 
     /**
      * Prepare a string to search in messages that contain a timestamp, when it

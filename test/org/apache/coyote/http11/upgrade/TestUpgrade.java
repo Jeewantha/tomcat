@@ -26,6 +26,7 @@ import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 
 import javax.net.SocketFactory;
 import javax.servlet.ReadListener;
@@ -43,7 +44,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import static org.apache.catalina.startup.SimpleHttpClient.CRLF;
-
 import org.apache.catalina.Context;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
@@ -148,6 +148,7 @@ public class TestUpgrade extends TomcatBaseTest {
         Assert.assertEquals(MESSAGE, response);
 
         uc.shutdownInput();
+        pw.close();
     }
 
 
@@ -161,7 +162,7 @@ public class TestUpgrade extends TomcatBaseTest {
 
         UpgradeServlet servlet = new UpgradeServlet(upgradeHandlerClass);
         Tomcat.addServlet(ctx, "servlet", servlet);
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -228,8 +229,9 @@ public class TestUpgrade extends TomcatBaseTest {
                 throw new IllegalArgumentException(ioe);
             }
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-            Writer writer = new OutputStreamWriter(os);
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+            Writer writer = new OutputStreamWriter(os, StandardCharsets.UTF_8);
 
             this.writer = writer;
             this.reader = reader;
@@ -303,7 +305,7 @@ public class TestUpgrade extends TomcatBaseTest {
         }
 
 
-        private class EchoListener implements ReadListener, WriteListener {
+        private static class EchoListener implements ReadListener, WriteListener {
 
             private final ServletInputStream sis;
             private final ServletOutputStream sos;

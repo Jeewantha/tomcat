@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 
-import static org.junit.Assert.assertEquals;
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.tomcat.util.buf.B2CConverter;
@@ -47,13 +47,13 @@ public class TesterParametersPerformance {
     }
 
     private long doTestProcessParameters(byte[] input, int size) {
-        assertEquals(input.length, 3);
+        Assert.assertEquals(input.length, 3);
 
         Parameters p = new Parameters();
 
         byte[] params = createParams(input, size);
         //byte[] input = createParams(8);
-        p.setEncoding("ISO-8859-1");
+        p.setCharset(StandardCharsets.ISO_8859_1);
         long start = System.nanoTime();
         p.processParameters(params, 0, params.length);
         return System.nanoTime() - start;

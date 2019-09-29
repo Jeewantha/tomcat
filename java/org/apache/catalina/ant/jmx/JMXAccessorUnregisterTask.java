@@ -22,7 +22,7 @@ import javax.management.ObjectName;
 import org.apache.tools.ant.BuildException;
 
 /**
- * unregister a MBean at <em>JMX</em> JSR 160 MBeans Server.
+ * unregister an MBean at <em>JMX</em> JSR 160 MBeans Server.
  * <ul>
  * <li>unregister Mbeans</li>
  * </ul>
@@ -53,14 +53,6 @@ public class JMXAccessorUnregisterTask extends JMXAccessorTask {
 
     // ------------------------------------------------------ protected Methods
 
-    /**
-     * Execute the specified command, based on the configured properties. The
-     * input stream will be closed upon completion of this task, whether it was
-     * executed successfully or not.
-     *
-     * @exception Exception
-     *                if an error occurs
-     */
     @Override
     public String jmxExecute(MBeanServerConnection jmxServerConnection)
         throws Exception {
@@ -73,11 +65,12 @@ public class JMXAccessorUnregisterTask extends JMXAccessorTask {
 
 
     /**
-     * Unregister Mbean
-     * @param jmxServerConnection
-     * @param name
-     * @return The value of the given named attribute
-     * @throws Exception
+     * Unregister MBean.
+     *
+     * @param jmxServerConnection Connection to the JMX server
+     * @param name The MBean name
+     * @return null (no error message to report other than exception)
+     * @throws Exception An error occurred
      */
     protected String jmxUuregister(MBeanServerConnection jmxServerConnection,String name) throws Exception {
         String error = null;

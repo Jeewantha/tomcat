@@ -31,7 +31,7 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class BackgroundProcessManager {
 
-    private static final Log log =
+    private final Log log =
             LogFactory.getLog(BackgroundProcessManager.class);
     private static final StringManager sm =
             StringManager.getManager(BackgroundProcessManager.class);
@@ -104,6 +104,17 @@ public class BackgroundProcessManager {
     int getProcessCount() {
         synchronized (processesLock) {
             return processes.size();
+        }
+    }
+
+
+    void shutdown() {
+        synchronized (processesLock) {
+            processes.clear();
+            if (wsBackgroundThread != null) {
+                wsBackgroundThread.halt();
+                wsBackgroundThread = null;
+            }
         }
     }
 

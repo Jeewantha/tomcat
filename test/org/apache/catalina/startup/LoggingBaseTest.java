@@ -24,10 +24,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.LogManager;
 
-import static org.junit.Assert.fail;
-
 import org.junit.After;
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -52,9 +51,11 @@ import org.apache.juli.logging.LogFactory;
  */
 public abstract class LoggingBaseTest {
 
+    private static List<File> deleteOnClassTearDown = new ArrayList<>();
+
     protected Log log;
 
-    private File tempDir;
+    private static File tempDir;
 
     private List<File> deleteOnTearDown = new ArrayList<>();
 
@@ -103,6 +104,16 @@ public abstract class LoggingBaseTest {
 
     @BeforeClass
     public static void setUpPerTestClass() throws Exception {
+        // Create catalina.base directory
+        File tempBase = new File(System.getProperty("tomcat.test.temp", "output/tmp"));
+        if (!tempBase.mkdirs() && !tempBase.isDirectory()) {
+            Assert.fail("Unable to create base temporary directory for tests");
+        }
+        Path tempBasePath = FileSystems.getDefault().getPath(tempBase.getAbsolutePath());
+        tempDir = Files.createTempDirectory(tempBasePath, "test").toFile();
+
+        System.setProperty("catalina.base", tempDir.getAbsolutePath());
+
         // Configure logging
         System.setProperty("java.util.logging.manager",
                 "org.apache.juli.ClassLoaderLogManager");
@@ -114,16 +125,6 @@ public abstract class LoggingBaseTest {
 
     @Before
     public void setUp() throws Exception {
-        // Create catalina.base directory
-        File tempBase = new File(System.getProperty("tomcat.test.temp", "output/tmp"));
-        if (!tempBase.mkdirs() && !tempBase.isDirectory()) {
-            fail("Unable to create base temporary directory for tests");
-        }
-        Path tempBasePath = FileSystems.getDefault().getPath(tempBase.getAbsolutePath());
-        tempDir = Files.createTempDirectory(tempBasePath, "test").toFile();
-
-        System.setProperty("catalina.base", tempDir.getAbsolutePath());
-
         log = LogFactory.getLog(getClass());
         log.info("Starting test case [" + testName.getMethodName() + "]");
     }
@@ -135,7 +136,8 @@ public abstract class LoggingBaseTest {
         }
         deleteOnTearDown.clear();
 
-        ExpandWar.deleteDir(tempDir);
+        // tempDir contains log files which will be open until JULI shuts down
+        deleteOnClassTearDown.add(tempDir);
     }
 
     @AfterClass
@@ -146,5 +148,9 @@ public abstract class LoggingBaseTest {
         } else {
             logManager.reset();
         }
+        for (File file : deleteOnClassTearDown) {
+            ExpandWar.delete(file);
+        }
+        deleteOnClassTearDown.clear();
     }
 }

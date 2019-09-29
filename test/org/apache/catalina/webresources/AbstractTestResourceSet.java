@@ -102,6 +102,9 @@ public abstract class AbstractTestResourceSet {
         Assert.assertTrue(webResource.isDirectory());
         Assert.assertEquals("d1", webResource.getName());
         Assert.assertEquals(getMount() + "/d1/", webResource.getWebappPath());
+        Assert.assertEquals(-1, webResource.getContentLength());
+        Assert.assertNull(webResource.getContent());
+        Assert.assertNull(webResource.getInputStream());
     }
 
     @Test
@@ -110,6 +113,9 @@ public abstract class AbstractTestResourceSet {
         Assert.assertTrue(webResource.isDirectory());
         Assert.assertEquals("d1", webResource.getName());
         Assert.assertEquals(getMount() + "/d1/", webResource.getWebappPath());
+        Assert.assertEquals(-1, webResource.getContentLength());
+        Assert.assertNull(webResource.getContent());
+        Assert.assertNull(webResource.getInputStream());
     }
 
     @Test
@@ -120,6 +126,16 @@ public abstract class AbstractTestResourceSet {
         Assert.assertEquals("d1-f1.txt", webResource.getName());
         Assert.assertEquals(
                 getMount() + "/d1/d1-f1.txt", webResource.getWebappPath());
+        Assert.assertEquals(0, webResource.getContentLength());
+        Assert.assertEquals(0, webResource.getContent().length);
+        Assert.assertNotNull(webResource.getInputStream());
+    }
+
+    @Test
+    public final void testGetResourceFileWithTrailingSlash() {
+        WebResource webResource =
+                resourceRoot.getResource(getMount() + "/d1/d1-f1.txt/");
+        Assert.assertFalse(webResource.exists());
     }
 
     @Test
@@ -382,16 +398,19 @@ public abstract class AbstractTestResourceSet {
 
     @Test
     public final void testMkdirNew() {
+        String newDirName = getNewDirName();
         if (isWriteable()) {
-            Assert.assertTrue(resourceRoot.mkdir(getMount() + "/new-test"));
+            Assert.assertTrue(resourceRoot.mkdir(getMount() + "/" + newDirName));
 
-            File file = new File(getBaseDir(), "new-test");
+            File file = new File(getBaseDir(), newDirName);
             Assert.assertTrue(file.isDirectory());
             Assert.assertTrue(file.delete());
         } else {
-            Assert.assertFalse(resourceRoot.mkdir(getMount() + "/new-test"));
+            Assert.assertFalse(resourceRoot.mkdir(getMount() + "/" + newDirName));
         }
     }
+
+    protected abstract String getNewDirName();
 
     //------------------------------------------------------------------ write()
 
@@ -428,14 +447,8 @@ public abstract class AbstractTestResourceSet {
     public final void testWriteDirB() {
         WebResource d1 = resourceRoot.getResource(getMount() + "/d1/");
         InputStream is = new ByteArrayInputStream("test".getBytes());
-        if (d1.exists()) {
+        if (d1.exists() || d1.isVirtual()) {
             Assert.assertFalse(resourceRoot.write(getMount() + "/d1/", is, false));
-        } else if (d1.isVirtual()) {
-            Assert.assertTrue(resourceRoot.write(
-                    getMount() + "/d1/", is, false));
-            File file = new File(getBaseDir(), "d1");
-            Assert.assertTrue(file.exists());
-            Assert.assertTrue(file.delete());
         } else {
             Assert.fail("Unhandled condition in unit test");
         }
@@ -449,24 +462,37 @@ public abstract class AbstractTestResourceSet {
     }
 
     @Test(expected = NullPointerException.class)
-    public final void testWriteNew() {
-        resourceRoot.write(getMount() + "/new-test", null, false);
+    public final void testWriteNull() {
+        resourceRoot.write(getMount() + "/" + getNewFileNameNull(), null, false);
     }
+
+    protected abstract String getNewFileNameNull();
 
     @Test
     public final void testWrite() {
+        String newFileName = getNewFileName();
         InputStream is = new ByteArrayInputStream("test".getBytes());
         if (isWriteable()) {
             Assert.assertTrue(resourceRoot.write(
-                    getMount() + "/new-test", is, false));
-            File file = new File(getBaseDir(), "new-test");
+                    getMount() + "/" + newFileName, is, false));
+            File file = new File(getBaseDir(), newFileName);
             Assert.assertTrue(file.exists());
             Assert.assertTrue(file.delete());
         } else {
             Assert.assertFalse(resourceRoot.write(
-                    getMount() + "/new-test", is, false));
+                    getMount() + "/" + newFileName, is, false));
         }
     }
+
+    @Test
+    public final void testWriteWithTrailingSlash() {
+        String newFileName = getNewFileName() + "/";
+        InputStream is = new ByteArrayInputStream("test".getBytes());
+        Assert.assertFalse(resourceRoot.write(
+                getMount() + "/" + newFileName, is, false));
+    }
+
+    protected abstract String getNewFileName();
 
     // ------------------------------------------------------ getCanonicalPath()
 

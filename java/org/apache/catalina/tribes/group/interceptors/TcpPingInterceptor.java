@@ -40,7 +40,7 @@ import org.apache.juli.logging.LogFactory;
  * @version 1.0
  */
 
-public class TcpPingInterceptor extends ChannelInterceptorBase {
+public class TcpPingInterceptor extends ChannelInterceptorBase implements TcpPingInterceptorMBean {
 
     private static final Log log = LogFactory.getLog(TcpPingInterceptor.class);
     protected static final StringManager sm = StringManager.getManager(TcpPingInterceptor.class);
@@ -69,7 +69,9 @@ public class TcpPingInterceptor extends ChannelInterceptorBase {
         if ( thread == null && useThread) {
             thread = new PingThread();
             thread.setDaemon(true);
-            thread.setName("TcpPingInterceptor.PingThread-"+cnt.addAndGet(1));
+            String channelName = "";
+            if (getChannel().getName() != null) channelName = "[" + getChannel().getName() + "]";
+            thread.setName("TcpPingInterceptor.PingThread" + channelName +"-"+cnt.addAndGet(1));
             thread.start();
         }
 
@@ -86,9 +88,9 @@ public class TcpPingInterceptor extends ChannelInterceptorBase {
     }
 
     @Override
-    public void stop(int svc) throws ChannelException {
+    public synchronized void stop(int svc) throws ChannelException {
         running = false;
-        if ( thread != null ) {
+        if (thread != null) {
             thread.interrupt();
             thread = null;
         }
@@ -101,6 +103,7 @@ public class TcpPingInterceptor extends ChannelInterceptorBase {
         if (!getUseThread()) sendPing();
     }
 
+    @Override
     public long getInterval() {
         return interval;
     }
@@ -117,6 +120,7 @@ public class TcpPingInterceptor extends ChannelInterceptorBase {
         this.staticOnly = staticOnly;
     }
 
+    @Override
     public boolean getUseThread() {
         return useThread;
     }

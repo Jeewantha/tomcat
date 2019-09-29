@@ -38,11 +38,12 @@ import org.apache.jasper.EmbeddedServletOptions;
 import org.apache.jasper.Options;
 import org.apache.jasper.compiler.JspRuntimeContext;
 import org.apache.jasper.compiler.Localizer;
+import org.apache.jasper.runtime.ExceptionUtils;
 import org.apache.jasper.security.SecurityUtil;
-import org.apache.jasper.util.ExceptionUtils;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.PeriodicEventListener;
+import org.apache.tomcat.util.security.Escape;
 
 /**
  * The JSP engine (a.k.a Jasper).
@@ -71,8 +72,8 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
     private ServletConfig config;
     private transient Options options;
     private transient JspRuntimeContext rctxt;
-    //jspFile for a jsp configured explicitly as a servlet, in environments where this configuration is
-    //translated into an init-param for this servlet.
+    // jspFile for a jsp configured explicitly as a servlet, in environments where this
+    // configuration is translated into an init-param for this servlet.
     private String jspFile;
 
 
@@ -88,26 +89,26 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
 
         // Initialize the JSP Runtime Context
         // Check for a custom Options implementation
-        String engineOptionsName =
-            config.getInitParameter("engineOptionsClass");
+        String engineOptionsName = config.getInitParameter("engineOptionsClass");
+        if (Constants.IS_SECURITY_ENABLED && engineOptionsName != null) {
+            log.info(Localizer.getMessage(
+                    "jsp.info.ignoreSetting", "engineOptionsClass", engineOptionsName));
+            engineOptionsName = null;
+        }
         if (engineOptionsName != null) {
             // Instantiate the indicated Options implementation
             try {
-                ClassLoader loader = Thread.currentThread()
-                        .getContextClassLoader();
-                Class<?> engineOptionsClass =
-                    loader.loadClass(engineOptionsName);
-                Class<?>[] ctorSig =
-                    { ServletConfig.class, ServletContext.class };
-                Constructor<?> ctor =
-                    engineOptionsClass.getConstructor(ctorSig);
+                ClassLoader loader = Thread.currentThread().getContextClassLoader();
+                Class<?> engineOptionsClass = loader.loadClass(engineOptionsName);
+                Class<?>[] ctorSig = { ServletConfig.class, ServletContext.class };
+                Constructor<?> ctor = engineOptionsClass.getConstructor(ctorSig);
                 Object[] args = { config, context };
                 options = (Options) ctor.newInstance(args);
             } catch (Throwable e) {
                 e = ExceptionUtils.unwrapInvocationTargetException(e);
                 ExceptionUtils.handleThrowable(e);
                 // Need to localize this.
-                log.warn("Failed to load engineOptionsClass", e);
+                log.warn(Localizer.getMessage("jsp.warning.engineOptionsClass", engineOptionsName), e);
                 // Use the default Options implementation
                 options = new EmbeddedServletOptions(config, context);
             }
@@ -123,7 +124,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                     return;
                 }
             } catch (MalformedURLException e) {
-                throw new ServletException("cannot locate jsp file", e);
+                throw new ServletException(Localizer.getMessage("jsp.error.no.jsp", jspFile), e);
             }
             try {
                 if (SecurityUtil.isPackageProtectionEnabled()){
@@ -138,11 +139,11 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                     serviceJspFile(null, null, jspFile, true);
                 }
             } catch (IOException e) {
-                throw new ServletException("Could not precompile jsp: " + jspFile, e);
+                throw new ServletException(Localizer.getMessage("jsp.error.precompilation", jspFile), e);
             } catch (PrivilegedActionException e) {
                 Throwable t = e.getCause();
                 if (t instanceof ServletException) throw (ServletException)t;
-                throw new ServletException("Could not precompile jsp: " + jspFile, e);
+                throw new ServletException(Localizer.getMessage("jsp.error.precompilation", jspFile), e);
             }
         }
 
@@ -253,7 +254,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
             return false;            // part of some other name or value
         }
         int limit = queryString.length();
-        int ampersand = queryString.indexOf("&");
+        int ampersand = queryString.indexOf('&');
         if (ampersand > 0) {
             limit = ampersand;
         }
@@ -268,9 +269,8 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
             // precompilation request can be ignored.
             return true;             // ?jsp_precompile=false
         } else {
-            throw new ServletException("Cannot have request parameter " +
-                                       Constants.PRECOMPILE + " set to " +
-                                       value);
+            throw new ServletException(Localizer.getMessage("jsp.error.precompilation.parameter",
+                    Constants.PRECOMPILE, value));
         }
 
     }
@@ -404,7 +404,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                 Localizer.getMessage("jsp.error.file.not.found",jspUri);
             // Strictly, filtering this is an application
             // responsibility but just in case...
-            throw new ServletException(SecurityUtil.filter(msg));
+            throw new ServletException(Escape.htmlElementContent(msg));
         } else {
             try {
                 response.sendError(HttpServletResponse.SC_NOT_FOUND,
@@ -414,7 +414,6 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                         jspUri));
             }
         }
-        return;
     }
 
 

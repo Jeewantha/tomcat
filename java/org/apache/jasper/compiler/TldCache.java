@@ -27,10 +27,10 @@ import javax.servlet.ServletContext;
 
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.descriptor.tld.TaglibXml;
 import org.apache.tomcat.util.descriptor.tld.TldParser;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
-import org.apache.tomcat.util.scan.Jar;
 import org.xml.sax.SAXException;
 
 /**
@@ -93,6 +93,9 @@ public class TldCache {
 
     public TaglibXml getTaglibXml(TldResourcePath tldResourcePath) throws JasperException {
         TaglibXmlCacheEntry cacheEntry = tldResourcePathTaglibXmlMap.get(tldResourcePath);
+        if (cacheEntry == null) {
+            return null;
+        }
         long lastModified[] = getLastModified(tldResourcePath);
         if (lastModified[0] != cacheEntry.getWebAppPathLastModified() ||
                 lastModified[1] != cacheEntry.getEntryLastModified()) {

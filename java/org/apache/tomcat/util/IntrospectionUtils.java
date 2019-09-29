@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util;
 
 import java.lang.reflect.InvocationTargetException;
@@ -25,19 +24,25 @@ import java.util.Hashtable;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.PermissionCheck;
 
 /**
  * Utils for introspection and reflection
  */
 public final class IntrospectionUtils {
 
-
     private static final Log log = LogFactory.getLog(IntrospectionUtils.class);
+    private static final StringManager sm = StringManager.getManager(IntrospectionUtils.class);
 
     /**
      * Find a method with the right name If found, call the method ( if param is
      * int or boolean we'll convert value to the right type before) - that means
      * you can have setDebug(1).
+     * @param o The object to set a property on
+     * @param name The property name
+     * @param value The property value
+     * @return <code>true</code> if operation was successful
      */
     public static boolean setProperty(Object o, String name, String value) {
         return setProperty(o,name,value,true);
@@ -82,7 +87,7 @@ public final class IntrospectionUtils {
                     if ("java.lang.Integer".equals(paramType.getName())
                             || "int".equals(paramType.getName())) {
                         try {
-                            params[0] = new Integer(value);
+                            params[0] = Integer.valueOf(value);
                         } catch (NumberFormatException ex) {
                             ok = false;
                         }
@@ -90,7 +95,7 @@ public final class IntrospectionUtils {
                     }else if ("java.lang.Long".equals(paramType.getName())
                                 || "long".equals(paramType.getName())) {
                             try {
-                                params[0] = new Long(value);
+                                params[0] = Long.valueOf(value);
                             } catch (NumberFormatException ex) {
                                 ok = false;
                             }
@@ -161,18 +166,11 @@ public final class IntrospectionUtils {
                 }
             }
 
-        } catch (IllegalArgumentException ex2) {
-            log.warn("IAE " + o + " " + name + " " + value, ex2);
-        } catch (SecurityException ex1) {
-            log.warn("IntrospectionUtils: SecurityException for " +
-                    o.getClass() + " " + name + "=" + value + ")", ex1);
-        } catch (IllegalAccessException iae) {
-            log.warn("IntrospectionUtils: IllegalAccessException for " +
-                    o.getClass() + " " + name + "=" + value + ")", iae);
-        } catch (InvocationTargetException ie) {
-            ExceptionUtils.handleThrowable(ie.getCause());
-            log.warn("IntrospectionUtils: InvocationTargetException for " +
-                    o.getClass() + " " + name + "=" + value + ")", ie);
+        } catch (IllegalArgumentException | SecurityException | IllegalAccessException e) {
+            log.warn(sm.getString("introspectionUtils.setPropertyError", name, value, o.getClass()), e);
+        } catch (InvocationTargetException e) {
+            ExceptionUtils.handleThrowable(e.getCause());
+            log.warn(sm.getString("introspectionUtils.setPropertyError", name, value, o.getClass()), e);
         }
         return false;
     }
@@ -207,35 +205,54 @@ public final class IntrospectionUtils {
                 return getPropertyMethod.invoke(o, params);
             }
 
-        } catch (IllegalArgumentException ex2) {
-            log.warn("IAE " + o + " " + name, ex2);
-        } catch (SecurityException ex1) {
-            log.warn("IntrospectionUtils: SecurityException for " +
-                    o.getClass() + " " + name + ")", ex1);
-        } catch (IllegalAccessException iae) {
-            log.warn("IntrospectionUtils: IllegalAccessException for " +
-                    o.getClass() + " " + name + ")", iae);
-        } catch (InvocationTargetException ie) {
-            ExceptionUtils.handleThrowable(ie.getCause());
-            log.warn("IntrospectionUtils: InvocationTargetException for " +
-                    o.getClass() + " " + name + ")", ie);
+        } catch (IllegalArgumentException | SecurityException | IllegalAccessException e) {
+            log.warn(sm.getString("introspectionUtils.getPropertyError", name, o.getClass()), e);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof NullPointerException) {
+                // Assume the underlying object uses a storage to represent an unset property
+                return null;
+            }
+            ExceptionUtils.handleThrowable(e.getCause());
+            log.warn(sm.getString("introspectionUtils.getPropertyError", name, o.getClass()), e);
         }
         return null;
     }
 
     /**
-     * Replace ${NAME} with the property value
+     * Replace ${NAME} with the property value.
+     * @param value The value
+     * @param staticProp Replacement properties
+     * @param dynamicProp Replacement properties
+     * @return the replacement value
+     * @deprecated Use {@link #replaceProperties(String, Hashtable, PropertySource[], ClassLoader)}
      */
+    @Deprecated
     public static String replaceProperties(String value,
             Hashtable<Object,Object> staticProp, PropertySource dynamicProp[]) {
-        if (value.indexOf("$") < 0) {
+        return replaceProperties(value, staticProp, dynamicProp, null);
+    }
+
+    /**
+     * Replace ${NAME} with the property value.
+     * @param value The value
+     * @param staticProp Replacement properties
+     * @param dynamicProp Replacement properties
+     * @param classLoader Class loader associated with the code requesting the
+     *                    property
+     * @return the replacement value
+     */
+    public static String replaceProperties(String value,
+            Hashtable<Object,Object> staticProp, PropertySource dynamicProp[],
+            ClassLoader classLoader) {
+
+        if (value.indexOf('$') < 0) {
             return value;
         }
         StringBuilder sb = new StringBuilder();
         int prev = 0;
         // assert value!=nil
         int pos;
-        while ((pos = value.indexOf("$", prev)) >= 0) {
+        while ((pos = value.indexOf('$', prev)) >= 0) {
             if (pos > 0) {
                 sb.append(value.substring(prev, pos));
             }
@@ -258,8 +275,12 @@ public final class IntrospectionUtils {
                     v = (String) staticProp.get(n);
                 }
                 if (v == null && dynamicProp != null) {
-                    for (int i = 0; i < dynamicProp.length; i++) {
-                        v = dynamicProp[i].getProperty(n);
+                    for (PropertySource propertySource : dynamicProp) {
+                        if (propertySource instanceof SecurePropertySource) {
+                            v = ((SecurePropertySource) propertySource).getProperty(n, classLoader);
+                        } else {
+                            v = propertySource.getProperty(n);
+                        }
                         if (v != null) {
                             break;
                         }
@@ -278,7 +299,9 @@ public final class IntrospectionUtils {
     }
 
     /**
-     * Reverse of Introspector.decapitalize
+     * Reverse of Introspector.decapitalize.
+     * @param name The name
+     * @return the capitalized string
      */
     public static String capitalize(String name) {
         if (name == null || name.length() == 0) {
@@ -306,24 +329,19 @@ public final class IntrospectionUtils {
         return methods;
     }
 
-    @SuppressWarnings("null") // Neither params nor methodParams can be null
-                              // when comparing their lengths
+    @SuppressWarnings("null") // params cannot be null when comparing lengths
     public static Method findMethod(Class<?> c, String name,
             Class<?> params[]) {
         Method methods[] = findMethods(c);
-        if (methods == null)
-            return null;
         for (int i = 0; i < methods.length; i++) {
             if (methods[i].getName().equals(name)) {
                 Class<?> methodParams[] = methods[i].getParameterTypes();
-                if (methodParams == null)
-                    if (params == null || params.length == 0)
-                        return methods[i];
-                if (params == null)
-                    if (methodParams == null || methodParams.length == 0)
-                        return methods[i];
-                if (params.length != methodParams.length)
+                if (params == null && methodParams.length == 0) {
+                    return methods[i];
+                }
+                if (params.length != methodParams.length) {
                     continue;
+                }
                 boolean found = true;
                 for (int j = 0; j < params.length; j++) {
                     if (params[j] != methodParams[j]) {
@@ -331,8 +349,9 @@ public final class IntrospectionUtils {
                         break;
                     }
                 }
-                if (found)
+                if (found) {
                     return methods[i];
+                }
             }
         }
         return null;
@@ -340,10 +359,8 @@ public final class IntrospectionUtils {
 
     public static Object callMethod1(Object target, String methodN,
             Object param1, String typeParam1, ClassLoader cl) throws Exception {
-        if (target == null || param1 == null) {
-            throw new IllegalArgumentException(
-                    "IntrospectionUtils: Assert: Illegal params " +
-                    target + " " + param1);
+        if (target == null || methodN == null || param1 == null) {
+            throw new IllegalArgumentException(sm.getString("introspectionUtils.nullParameter"));
         }
         if (log.isDebugEnabled())
             log.debug("IntrospectionUtils: callMethod1 " +
@@ -407,7 +424,7 @@ public final class IntrospectionUtils {
         } else if ("java.lang.Integer".equals(paramType.getName())
                 || "int".equals(paramType.getName())) {
             try {
-                result = new Integer(object);
+                result = Integer.valueOf(object);
             } catch (NumberFormatException ex) {
             }
             // Try a setFoo ( boolean )
@@ -433,18 +450,75 @@ public final class IntrospectionUtils {
                         paramType.getName());
         }
         if (result == null) {
-            throw new IllegalArgumentException("Can't convert argument: " + object);
+            throw new IllegalArgumentException(sm.getString("introspectionUtils.conversionError", object, paramType.getName()));
         }
         return result;
     }
+
+
+    /**
+     * Checks to see if the specified class is an instance of or assignable from
+     * the specified type. The class <code>clazz</code>, all its superclasses,
+     * interfaces and those superinterfaces are tested for a match against
+     * the type name <code>type</code>.
+     *
+     * This is similar to <code>instanceof</code> or {@link Class#isAssignableFrom}
+     * except that the target type will not be resolved into a Class
+     * object, which provides some security and memory benefits.
+     *
+     * @param clazz The class to test for a match.
+     * @param type The name of the type that <code>clazz</code> must be.
+     *
+     * @return <code>true</code> if the <code>clazz</code> tested is an
+     *         instance of the specified <code>type</code>,
+     *         <code>false</code> otherwise.
+     */
+    public static boolean isInstance(Class<?> clazz, String type) {
+        if (type.equals(clazz.getName())) {
+            return true;
+        }
+
+        Class<?>[] ifaces = clazz.getInterfaces();
+        for (Class<?> iface : ifaces) {
+            if (isInstance(iface, type)) {
+                return true;
+            }
+        }
+
+        Class<?> superClazz = clazz.getSuperclass();
+        if (superClazz == null) {
+            return false;
+        } else {
+            return isInstance(superClazz, type);
+        }
+    }
+
 
     // -------------------- Get property --------------------
     // This provides a layer of abstraction
 
     public static interface PropertySource {
-
         public String getProperty(String key);
-
     }
 
+
+    public static interface SecurePropertySource extends PropertySource {
+
+        /**
+         * Obtain a property value, checking that code associated with the
+         * provided class loader has permission to access the property. If the
+         * {@code classLoader} is {@code null} or if {@code classLoader} does
+         * not implement {@link PermissionCheck} then the property value will be
+         * looked up <b>without</b> a call to
+         * {@link PermissionCheck#check(java.security.Permission)}
+         *
+         * @param key           The key of the requested property
+         * @param classLoader   The class loader associated with the code that
+         *                      trigger the property lookup
+         * @return The property value or {@code null} if it could not be found
+         *         or if {@link PermissionCheck#check(java.security.Permission)}
+         *         fails
+         */
+        public String getProperty(String key, ClassLoader classLoader);
+    }
 }

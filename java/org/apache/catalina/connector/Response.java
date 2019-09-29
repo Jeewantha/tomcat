@@ -18,7 +18,9 @@ package org.apache.catalina.connector;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -31,31 +33,33 @@ import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
-import java.util.Vector;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import javax.servlet.ServletOutputStream;
+import javax.servlet.ServletResponse;
 import javax.servlet.SessionTrackingMode;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponseWrapper;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Globals;
 import org.apache.catalina.Session;
-import org.apache.catalina.Wrapper;
 import org.apache.catalina.security.SecurityUtil;
-import org.apache.catalina.util.RequestUtil;
 import org.apache.catalina.util.SessionConfig;
 import org.apache.coyote.ActionCode;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.UEncoder;
 import org.apache.tomcat.util.buf.UEncoder.SafeCharsSet;
+import org.apache.tomcat.util.buf.UriUtil;
 import org.apache.tomcat.util.http.FastHttpDateFormat;
 import org.apache.tomcat.util.http.MimeHeaders;
 import org.apache.tomcat.util.http.parser.MediaTypeCache;
-import org.apache.tomcat.util.net.URL;
 import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.Escape;
 
 /**
  * Wrapper object for the Coyote response.
@@ -63,14 +67,12 @@ import org.apache.tomcat.util.res.StringManager;
  * @author Remy Maucherat
  * @author Craig R. McClanahan
  */
-public class Response
-    implements HttpServletResponse {
+public class Response implements HttpServletResponse {
 
+    private static final Log log = LogFactory.getLog(Response.class);
+    protected static final StringManager sm = StringManager.getManager(Response.class);
 
-    // ----------------------------------------------------------- Constructors
-
-    private static final MediaTypeCache MEDIA_TYPE_CACHE =
-            new MediaTypeCache(100);
+    private static final MediaTypeCache MEDIA_TYPE_CACHE = new MediaTypeCache(100);
 
     /**
      * Compliance with SRV.15.2.22.1. A call to Response.getWriter() if no
@@ -81,52 +83,34 @@ public class Response
     private static final boolean ENFORCE_ENCODING_IN_GET_WRITER;
 
     static {
-        // Ensure that URL is loaded for SM
-        URL.isSchemeChar('c');
-
-        ENFORCE_ENCODING_IN_GET_WRITER = Boolean.valueOf(
+        ENFORCE_ENCODING_IN_GET_WRITER = Boolean.parseBoolean(
                 System.getProperty("org.apache.catalina.connector.Response.ENFORCE_ENCODING_IN_GET_WRITER",
-                        "true")).booleanValue();
+                        "true"));
     }
-
-    public Response() {
-    }
-
-
-    // ----------------------------------------------------- Class Variables
-
-    /**
-     * The string manager for this package.
-     */
-    protected static final StringManager sm = StringManager.getManager(Response.class);
 
 
     // ----------------------------------------------------- Instance Variables
 
     /**
      * The date format we will use for creating date headers.
+     *
+     * @deprecated Unused. This will be removed in Tomcat 10
      */
+    @Deprecated
     protected SimpleDateFormat format = null;
 
 
-    // ------------------------------------------------------------- Properties
-
-    /**
-     * Set the Connector through which this Request was received.
-     *
-     * @param connector The new connector
-     */
-    public void setConnector(Connector connector) {
-        if("AJP/1.3".equals(connector.getProtocol())) {
-            // default size to size of one ajp-packet
-            outputBuffer = new OutputBuffer(8184);
-        } else {
-            outputBuffer = new OutputBuffer();
-        }
-        outputStream = new CoyoteOutputStream(outputBuffer);
-        writer = new CoyoteWriter(outputBuffer);
+    public Response() {
+        this(OutputBuffer.DEFAULT_BUFFER_SIZE);
     }
 
+
+    public Response(int outputBufferSize) {
+        outputBuffer = new OutputBuffer(outputBufferSize);
+    }
+
+
+    // ------------------------------------------------------------- Properties
 
     /**
      * Coyote response.
@@ -144,7 +128,7 @@ public class Response
     }
 
     /**
-     * Get the Coyote response.
+     * @return the Coyote response.
      */
     public org.apache.coyote.Response getCoyoteResponse() {
         return this.coyoteResponse;
@@ -152,17 +136,17 @@ public class Response
 
 
     /**
-     * Return the Context within which this Request is being processed.
+     * @return the Context within which this Request is being processed.
      */
     public Context getContext() {
-        return (request.getContext());
+        return request.getContext();
     }
 
 
     /**
      * The associated output buffer.
      */
-    protected OutputBuffer outputBuffer;
+    protected final OutputBuffer outputBuffer;
 
 
     /**
@@ -194,37 +178,6 @@ public class Response
      */
     private boolean isCharacterEncodingSet = false;
 
-    /**
-     * With the introduction of async processing and the possibility of
-     * non-container threads calling sendError() tracking the current error
-     * state and ensuring that the correct error page is called becomes more
-     * complicated. This state attribute helps by tracking the current error
-     * state and informing callers that attempt to change state if the change
-     * was successful or if another thread got there first.
-     *
-     * <pre>
-     * The state machine is very simple:
-     *
-     * 0 - NONE
-     * 1 - NOT_REPORTED
-     * 2 - REPORTED
-     *
-     *
-     *   -->---->-- >NONE
-     *   |   |        |
-     *   |   |        | setError()
-     *   ^   ^        |
-     *   |   |       \|/
-     *   |   |-<-NOT_REPORTED
-     *   |            |
-     *   ^            | report()
-     *   |            |
-     *   |           \|/
-     *   |----<----REPORTED
-     * </pre>
-     */
-    private final AtomicInteger errorState = new AtomicInteger(0);
-
 
     /**
      * Using output stream flag.
@@ -250,8 +203,16 @@ public class Response
     protected final CharChunk redirectURLCC = new CharChunk();
 
 
-    // --------------------------------------------------------- Public Methods
+    /*
+     * Not strictly required but it makes generating HTTP/2 push requests a lot
+     * easier if these are retained until the response is recycled.
+     */
+    private final List<Cookie> cookies = new ArrayList<>();
 
+    private HttpServletResponse applicationResponse = null;
+
+
+    // --------------------------------------------------------- Public Methods
 
     /**
      * Release all object references, and initialize instance variables, in
@@ -259,14 +220,15 @@ public class Response
      */
     public void recycle() {
 
+        cookies.clear();
         outputBuffer.recycle();
         usingOutputStream = false;
         usingWriter = false;
         appCommitted = false;
         included = false;
-        errorState.set(0);
         isCharacterEncodingSet = false;
 
+        applicationResponse = null;
         if (Globals.IS_SECURITY_ENABLED || Connector.RECYCLE_FACADES) {
             if (facade != null) {
                 facade.clear();
@@ -280,17 +242,22 @@ public class Response
                 writer.clear();
                 writer = null;
             }
-        } else {
+        } else if (writer != null) {
             writer.recycle();
         }
 
     }
 
 
+    public List<Cookie> getCookies() {
+        return cookies;
+    }
+
+
     // ------------------------------------------------------- Response Methods
 
     /**
-     * Return the number of bytes the application has actually written to the
+     * @return the number of bytes the application has actually written to the
      * output stream. This excludes chunking, compression, etc. as well as
      * headers.
      */
@@ -300,8 +267,9 @@ public class Response
 
 
     /**
-     * Return the number of bytes the actually written to the socket. This
+     * @return the number of bytes the actually written to the socket. This
      * includes chunking, compression, etc. but excludes headers.
+     * @param flush if <code>true</code> will perform a buffer flush first
      */
     public long getBytesWritten(boolean flush) {
         if (flush) {
@@ -326,11 +294,13 @@ public class Response
 
     /**
      * Application commit flag accessor.
+     *
+     * @return <code>true</code> if the application has committed the response
      */
     public boolean isAppCommitted() {
-        return (this.appCommitted || isCommitted() || isSuspended()
+        return this.appCommitted || isCommitted() || isSuspended()
                 || ((getContentLength() > 0)
-                    && (getContentWritten() >= getContentLength())));
+                    && (getContentWritten() >= getContentLength()));
     }
 
 
@@ -340,10 +310,10 @@ public class Response
     protected Request request = null;
 
     /**
-     * Return the Request with which this Response is associated.
+     * @return the Request with which this Response is associated.
      */
     public org.apache.catalina.connector.Request getRequest() {
-        return (this.request);
+        return this.request;
     }
 
     /**
@@ -361,15 +331,41 @@ public class Response
      */
     protected ResponseFacade facade = null;
 
+
     /**
-     * Return the <code>ServletResponse</code> for which this object
+     * @return the <code>ServletResponse</code> for which this object
      * is the facade.
      */
     public HttpServletResponse getResponse() {
         if (facade == null) {
             facade = new ResponseFacade(this);
         }
-        return (facade);
+        if (applicationResponse == null) {
+            applicationResponse = facade;
+        }
+        return applicationResponse;
+    }
+
+
+    /**
+     * Set a wrapped HttpServletResponse to pass to the application. Components
+     * wishing to wrap the response should obtain the response via
+     * {@link #getResponse()}, wrap it and then call this method with the
+     * wrapped response.
+     *
+     * @param applicationResponse The wrapped response to pass to the
+     *        application
+     */
+    public void setResponse(HttpServletResponse applicationResponse) {
+        // Check the wrapper wraps this request
+        ServletResponse r = applicationResponse;
+        while (r instanceof HttpServletResponseWrapper) {
+            r = ((HttpServletResponseWrapper) r).getResponse();
+        }
+        if (r != facade) {
+            throw new IllegalArgumentException(sm.getString("response.illegalWrap"));
+        }
+        this.applicationResponse = applicationResponse;
     }
 
 
@@ -385,6 +381,8 @@ public class Response
 
     /**
      * Suspended flag accessor.
+     *
+     * @return <code>true</code> if the response is suspended
      */
     public boolean isSuspended() {
         return outputBuffer.isSuspended();
@@ -393,6 +391,8 @@ public class Response
 
     /**
      * Closed flag accessor.
+     *
+     * @return <code>true</code> if the response has been closed
      */
     public boolean isClosed() {
         return outputBuffer.isClosed();
@@ -401,34 +401,31 @@ public class Response
 
     /**
      * Set the error flag.
+     *
+     * @return <code>false</code> if the error flag was already set
      */
     public boolean setError() {
-        boolean result = errorState.compareAndSet(0, 1);
-        if (result) {
-            Wrapper wrapper = getRequest().getWrapper();
-            if (wrapper != null) {
-                wrapper.incrementErrorCount();
-            }
-        }
-        return result;
+        return getCoyoteResponse().setError();
     }
 
 
     /**
      * Error flag accessor.
+     *
+     * @return <code>true</code> if the response has encountered an error
      */
     public boolean isError() {
-        return errorState.get() > 0;
+        return getCoyoteResponse().isError();
     }
 
 
     public boolean isErrorReportRequired() {
-        return errorState.get() == 1;
+        return getCoyoteResponse().isErrorReportRequired();
     }
 
 
     public boolean setErrorReported() {
-        return errorState.compareAndSet(1, 2);
+        return getCoyoteResponse().setErrorReported();
     }
 
 
@@ -445,7 +442,7 @@ public class Response
 
 
     /**
-     * Return the content length that was set or calculated for this Response.
+     * @return the content length that was set or calculated for this Response.
      */
     public int getContentLength() {
         return getCoyoteResponse().getContentLength();
@@ -453,7 +450,7 @@ public class Response
 
 
     /**
-     * Return the content type that was set or calculated for this response,
+     * @return the content type that was set or calculated for this response,
      * or <code>null</code> if no content type was set.
      */
     @Override
@@ -502,7 +499,7 @@ public class Response
 
 
     /**
-     * Return the actual buffer size used for this Response.
+     * @return the actual buffer size used for this Response.
      */
     @Override
     public int getBufferSize() {
@@ -511,16 +508,31 @@ public class Response
 
 
     /**
-     * Return the character encoding used for this Response.
+     * @return the character encoding used for this Response.
      */
     @Override
     public String getCharacterEncoding() {
-        return (getCoyoteResponse().getCharacterEncoding());
+        String charset = getCoyoteResponse().getCharacterEncoding();
+        if (charset != null) {
+            return charset;
+        }
+
+        Context context = getContext();
+        String result = null;
+        if (context != null) {
+            result =  context.getResponseCharacterEncoding();
+        }
+
+        if (result == null) {
+            result = org.apache.coyote.Constants.DEFAULT_BODY_CHARSET.name();
+        }
+
+        return result;
     }
 
 
     /**
-     * Return the servlet output stream associated with this Response.
+     * @return the servlet output stream associated with this Response.
      *
      * @exception IllegalStateException if <code>getWriter</code> has
      *  already been called for this response
@@ -545,16 +557,16 @@ public class Response
 
 
     /**
-     * Return the Locale assigned to this response.
+     * @return the Locale assigned to this response.
      */
     @Override
     public Locale getLocale() {
-        return (getCoyoteResponse().getLocale());
+        return getCoyoteResponse().getLocale();
     }
 
 
     /**
-     * Return the writer associated with this Response.
+     * @return the writer associated with this Response.
      *
      * @exception IllegalStateException if <code>getOutputStream</code> has
      *  already been called for this response
@@ -596,6 +608,8 @@ public class Response
 
     /**
      * Has the output of this response already been committed?
+     *
+     * @return <code>true</code> if the response has been committed
      */
     @Override
     public boolean isCommitted() {
@@ -698,10 +712,6 @@ public class Response
     }
 
 
-
-    /**
-     * TODO SERVLET 3.1
-     */
     @Override
     public void setContentLengthLong(long length) {
         if (isCommitted()) {
@@ -714,7 +724,6 @@ public class Response
         }
 
         getCoyoteResponse().setContentLength(length);
-
     }
 
 
@@ -753,14 +762,19 @@ public class Response
         if (m[1] != null) {
             // Ignore charset if getWriter() has already been called
             if (!usingWriter) {
-                getCoyoteResponse().setCharacterEncoding(m[1]);
+                try {
+                    getCoyoteResponse().setCharacterEncoding(m[1]);
+                } catch (UnsupportedEncodingException e) {
+                    log.warn(sm.getString("coyoteResponse.encoding.invalid", m[1]), e);
+                }
+
                 isCharacterEncodingSet = true;
             }
         }
     }
 
 
-    /*
+    /**
      * Overrides the name of the character encoding used in the body
      * of the request. This method must be called prior to reading
      * request parameters or reading input using getReader().
@@ -785,7 +799,12 @@ public class Response
             return;
         }
 
-        getCoyoteResponse().setCharacterEncoding(charset);
+        try {
+            getCoyoteResponse().setCharacterEncoding(charset);
+        } catch (UnsupportedEncodingException e) {
+            log.warn(sm.getString("coyoteResponse.encoding.invalid", charset), e);
+            return;
+        }
         isCharacterEncodingSet = true;
     }
 
@@ -820,9 +839,18 @@ public class Response
             return;
         }
 
-        String charset = getContext().getCharset(locale);
-        if (charset != null) {
-            getCoyoteResponse().setCharacterEncoding(charset);
+        // In some error handling scenarios, the context is unknown
+        // (e.g. a 404 when a ROOT context is not present)
+        Context context = getContext();
+        if (context != null) {
+            String charset = context.getCharset(locale);
+            if (charset != null) {
+                try {
+                    getCoyoteResponse().setCharacterEncoding(charset);
+                } catch (UnsupportedEncodingException e) {
+                    log.warn(sm.getString("coyoteResponse.encoding.invalid", charset), e);
+                }
+            }
         }
     }
 
@@ -838,7 +866,6 @@ public class Response
 
     @Override
     public Collection<String> getHeaderNames() {
-
         MimeHeaders headers = getCoyoteResponse().getMimeHeaders();
         int n = headers.size();
         List<String> result = new ArrayList<>(n);
@@ -852,19 +879,18 @@ public class Response
 
     @Override
     public Collection<String> getHeaders(String name) {
-
         Enumeration<String> enumeration =
                 getCoyoteResponse().getMimeHeaders().values(name);
-        Vector<String> result = new Vector<>();
+        List<String> result = new ArrayList<>();
         while (enumeration.hasMoreElements()) {
-            result.addElement(enumeration.nextElement());
+            result.add(enumeration.nextElement());
         }
         return result;
     }
 
 
     /**
-     * Return the error message that was set with <code>sendError()</code>
+     * @return the error message that was set with <code>sendError()</code>
      * for this Response.
      */
     public String getMessage() {
@@ -893,6 +919,8 @@ public class Response
         if (included || isCommitted()) {
             return;
         }
+
+        cookies.add(cookie);
 
         String header = generateCookieString(cookie);
         //if we reached here, no exception, cookie is valid
@@ -939,12 +967,8 @@ public class Response
         // Web application code can receive a IllegalArgumentException
         // from the generateHeader() invocation
         if (SecurityUtil.isPackageProtectionEnabled()) {
-            return AccessController.doPrivileged(new PrivilegedAction<String>() {
-                @Override
-                public String run(){
-                    return getContext().getCookieProcessor().generateHeader(cookie);
-                }
-            });
+            return AccessController.doPrivileged(
+                    new PrivilegedGenerateCookieString(getContext(), cookie));
         } else {
             return getContext().getCookieProcessor().generateHeader(cookie);
         }
@@ -973,14 +997,7 @@ public class Response
             return;
         }
 
-        if (format == null) {
-            format = new SimpleDateFormat(FastHttpDateFormat.RFC1123_DATE,
-                                          Locale.US);
-            format.setTimeZone(TimeZone.getTimeZone("GMT"));
-        }
-
-        addHeader(name, FastHttpDateFormat.formatDate(value, format));
-
+        addHeader(name, FastHttpDateFormat.formatDate(value));
     }
 
 
@@ -1028,7 +1045,7 @@ public class Response
      * visible to {@link org.apache.coyote.Response}
      *
      * Called from set/addHeader.
-     * Return true if the header is special, no need to set the header.
+     * @return <code>true</code> if the header is special, no need to set the header.
      */
     private boolean checkSpecialHeader(String name, String value) {
         if (name.equalsIgnoreCase("Content-Type")) {
@@ -1070,6 +1087,7 @@ public class Response
      * Has the specified header been set already in this response?
      *
      * @param name Name of the header to check
+     * @return <code>true</code> if the header has been set
      */
     @Override
     public boolean containsHeader(String name) {
@@ -1091,21 +1109,15 @@ public class Response
     }
 
 
-    /**
-     * Encode the session identifier associated with this response
-     * into the specified redirect URL, if necessary.
-     *
-     * @param url URL to be encoded
-     */
     @Override
-    public String encodeRedirectURL(String url) {
+    public void setTrailerFields(Supplier<Map<String, String>> supplier) {
+        getCoyoteResponse().setTrailerFields(supplier);
+    }
 
-        if (isEncodeable(toAbsolute(url))) {
-            return (toEncoded(url, request.getSessionInternal().getIdInternal()));
-        } else {
-            return (url);
-        }
 
+    @Override
+    public Supplier<Map<String, String>> getTrailerFields() {
+        return getCoyoteResponse().getTrailerFields();
     }
 
 
@@ -1114,6 +1126,24 @@ public class Response
      * into the specified redirect URL, if necessary.
      *
      * @param url URL to be encoded
+     * @return <code>true</code> if the URL was encoded
+     */
+    @Override
+    public String encodeRedirectURL(String url) {
+        if (isEncodeable(toAbsolute(url))) {
+            return toEncoded(url, request.getSessionInternal().getIdInternal());
+        } else {
+            return url;
+        }
+    }
+
+
+    /**
+     * Encode the session identifier associated with this response
+     * into the specified redirect URL, if necessary.
+     *
+     * @param url URL to be encoded
+     * @return <code>true</code> if the URL was encoded
      *
      * @deprecated As of Version 2.1 of the Java Servlet API, use
      *  <code>encodeRedirectURL()</code> instead.
@@ -1121,7 +1151,7 @@ public class Response
     @Override
     @Deprecated
     public String encodeRedirectUrl(String url) {
-        return (encodeRedirectURL(url));
+        return encodeRedirectURL(url);
     }
 
 
@@ -1130,6 +1160,7 @@ public class Response
      * into the specified URL, if necessary.
      *
      * @param url URL to be encoded
+     * @return <code>true</code> if the URL was encoded
      */
     @Override
     public String encodeURL(String url) {
@@ -1149,9 +1180,9 @@ public class Response
             } else if (url.equals(absolute) && !hasPath(url)) {
                 url += '/';
             }
-            return (toEncoded(url, request.getSessionInternal().getIdInternal()));
+            return toEncoded(url, request.getSessionInternal().getIdInternal());
         } else {
-            return (url);
+            return url;
         }
 
     }
@@ -1162,6 +1193,7 @@ public class Response
      * into the specified URL, if necessary.
      *
      * @param url URL to be encoded
+     * @return <code>true</code> if the URL was encoded
      *
      * @deprecated As of Version 2.1 of the Java Servlet API, use
      *  <code>encodeURL()</code> instead.
@@ -1169,7 +1201,7 @@ public class Response
     @Override
     @Deprecated
     public String encodeUrl(String url) {
-        return (encodeURL(url));
+        return encodeURL(url);
     }
 
 
@@ -1260,15 +1292,19 @@ public class Response
         sendRedirect(location, SC_FOUND);
     }
 
+
     /**
      * Internal method that allows a redirect to be sent with a status other
      * than {@link HttpServletResponse#SC_FOUND} (302). No attempt is made to
      * validate the status code.
+     *
+     * @param location Location URL to redirect to
+     * @param status HTTP status code that will be sent
+     * @throws IOException an IO exception occurred
      */
     public void sendRedirect(String location, int status) throws IOException {
         if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.sendRedirect.ise"));
+            throw new IllegalStateException(sm.getString("coyoteResponse.sendRedirect.ise"));
         }
 
         // Ignore any call from an included servlet
@@ -1281,16 +1317,24 @@ public class Response
 
         // Generate a temporary redirect to the specified location
         try {
-            String absolute = toAbsolute(location);
+            String locationUri;
+            // Relative redirects require HTTP/1.1
+            if (getRequest().getCoyoteRequest().getSupportsRelativeRedirects() &&
+                    getContext().getUseRelativeRedirects()) {
+                locationUri = location;
+            } else {
+                locationUri = toAbsolute(location);
+            }
             setStatus(status);
-            setHeader("Location", absolute);
+            setHeader("Location", locationUri);
             if (getContext().getSendRedirectBody()) {
                 PrintWriter writer = getWriter();
                 writer.print(sm.getString("coyoteResponse.sendRedirect.note",
-                        RequestUtil.filter(absolute)));
+                        Escape.htmlElementContent(locationUri)));
                 flushBuffer();
             }
         } catch (IllegalArgumentException e) {
+            log.warn(sm.getString("response.sendRedirectFail", location), e);
             setStatus(SC_NOT_FOUND);
         }
 
@@ -1321,13 +1365,7 @@ public class Response
             return;
         }
 
-        if (format == null) {
-            format = new SimpleDateFormat(FastHttpDateFormat.RFC1123_DATE,
-                                          Locale.US);
-            format.setTimeZone(TimeZone.getTimeZone("GMT"));
-        }
-
-        setHeader(name, FastHttpDateFormat.formatDate(value, format));
+        setHeader(name, FastHttpDateFormat.formatDate(value));
     }
 
 
@@ -1355,8 +1393,9 @@ public class Response
 
         char cc=name.charAt(0);
         if (cc=='C' || cc=='c') {
-            if (checkSpecialHeader(name, value))
-            return;
+            if (checkSpecialHeader(name, value)) {
+                return;
+            }
         }
 
         getCoyoteResponse().setHeader(name, value);
@@ -1432,7 +1471,6 @@ public class Response
 
     // ------------------------------------------------------ Protected Methods
 
-
     /**
      * Return <code>true</code> if the specified URL should be encoded with
      * a session identifier.  This will be true if all of the following
@@ -1445,6 +1483,7 @@ public class Response
      * </ul>
      *
      * @param location Absolute URL to be validated
+     * @return <code>true</code> if the URL should be encoded
      */
     protected boolean isEncodeable(final String location) {
 
@@ -1474,20 +1513,16 @@ public class Response
         }
 
         if (SecurityUtil.isPackageProtectionEnabled()) {
-            return (
-                AccessController.doPrivileged(new PrivilegedAction<Boolean>() {
-
-                @Override
-                public Boolean run(){
-                    return Boolean.valueOf(doIsEncodeable(hreq, session, location));
-                }
-            })).booleanValue();
+            Boolean result =  AccessController.doPrivileged(
+                    new PrivilegedDoIsEncodable(getContext(), hreq, session, location));
+            return result.booleanValue();
         } else {
-            return doIsEncodeable(hreq, session, location);
+            return doIsEncodeable(getContext(), hreq, session, location);
         }
     }
 
-    private boolean doIsEncodeable(Request hreq, Session session,
+
+    private static boolean doIsEncodeable(Context context, Request hreq, Session session,
                                    String location) {
         // Is this a valid absolute URL?
         URL url = null;
@@ -1524,15 +1559,14 @@ public class Response
             return false;
         }
 
-        String contextPath = getContext().getPath();
+        String contextPath = context.getPath();
         if (contextPath != null) {
             String file = url.getFile();
-            if ((file == null) || !file.startsWith(contextPath)) {
+            if (!file.startsWith(contextPath)) {
                 return false;
             }
-            String tok = ";" +
-                    SessionConfig.getSessionUriParamName(request.getContext()) +
-                    "=" + session.getIdInternal();
+            String tok = ";" + SessionConfig.getSessionUriParamName(context) + "=" +
+                    session.getIdInternal();
             if( file.indexOf(tok, contextPath.length()) >= 0 ) {
                 return false;
             }
@@ -1550,6 +1584,7 @@ public class Response
      * already absolute, return it unchanged.
      *
      * @param location URL to be (possibly) converted and then returned
+     * @return the encoded URL
      *
      * @exception IllegalArgumentException if a MalformedURLException is
      *  thrown when converting the relative URL to an absolute one
@@ -1557,7 +1592,7 @@ public class Response
     protected String toAbsolute(String location) {
 
         if (location == null) {
-            return (location);
+            return location;
         }
 
         boolean leadingSlash = location.startsWith("/");
@@ -1579,7 +1614,7 @@ public class Response
                 throw iae;
             }
 
-        } else if (leadingSlash || !hasScheme(location)) {
+        } else if (leadingSlash || !UriUtil.hasScheme(location)) {
 
             redirectURLCC.recycle();
 
@@ -1601,17 +1636,10 @@ public class Response
                     String relativePath = request.getDecodedRequestURI();
                     int pos = relativePath.lastIndexOf('/');
                     CharChunk encodedURI = null;
-                    final String frelativePath = relativePath;
-                    final int fend = pos;
                     if (SecurityUtil.isPackageProtectionEnabled() ){
                         try{
                             encodedURI = AccessController.doPrivileged(
-                                new PrivilegedExceptionAction<CharChunk>(){
-                                    @Override
-                                    public CharChunk run() throws IOException{
-                                        return urlEncoder.encodeURL(frelativePath, 0, fend);
-                                    }
-                           });
+                                    new PrivilgedEncodeUrl(urlEncoder, relativePath, pos));
                         } catch (PrivilegedActionException pae){
                             IllegalArgumentException iae =
                                 new IllegalArgumentException(location);
@@ -1639,15 +1667,17 @@ public class Response
 
         } else {
 
-            return (location);
+            return location;
 
         }
 
     }
 
-    /*
+    /**
      * Removes /./ and /../ sequences from absolute URLs.
      * Code borrowed heavily from CoyoteAdapter.normalize()
+     *
+     * @param cc the char chunk containing the chars to normalize
      */
     private void normalize(CharChunk cc) {
         // Strip query string and/or fragment first as doing it this way makes
@@ -1733,14 +1763,15 @@ public class Response
     }
 
     private void copyChars(char[] c, int dest, int src, int len) {
-        for (int pos = 0; pos < len; pos++) {
-            c[pos + dest] = c[pos + src];
-        }
+        System.arraycopy(c, src, c, dest, len);
     }
 
 
     /**
-     * Determine if an absolute URL has a path component
+     * Determine if an absolute URL has a path component.
+     *
+     * @param uri the URL that will be checked
+     * @return <code>true</code> if the URL has a path
      */
     private boolean hasPath(String uri) {
         int pos = uri.indexOf("://");
@@ -1755,32 +1786,16 @@ public class Response
     }
 
     /**
-     * Determine if a URI string has a <code>scheme</code> component.
-     */
-    private boolean hasScheme(String uri) {
-        int len = uri.length();
-        for(int i=0; i < len ; i++) {
-            char c = uri.charAt(i);
-            if(c == ':') {
-                return i > 0;
-            } else if(!URL.isSchemeChar(c)) {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Return the specified URL with the specified session identifier
      * suitably encoded.
      *
      * @param url URL to be encoded with the session id
      * @param sessionId Session id to be included in the encoded URL
+     * @return the encoded URL
      */
     protected String toEncoded(String url, String sessionId) {
-
         if ((url == null) || (sessionId == null)) {
-            return (url);
+            return url;
         }
 
         String path = url;
@@ -1806,7 +1821,64 @@ public class Response
         }
         sb.append(anchor);
         sb.append(query);
-        return (sb.toString());
+        return sb.toString();
+    }
 
+
+    private static class PrivilegedGenerateCookieString implements PrivilegedAction<String> {
+
+        private final Context context;
+        private final Cookie cookie;
+
+        public PrivilegedGenerateCookieString(Context context, Cookie cookie) {
+            this.context = context;
+            this.cookie = cookie;
+        }
+
+        @Override
+        public String run(){
+            return context.getCookieProcessor().generateHeader(cookie);
+        }
+    }
+
+
+    private static class PrivilegedDoIsEncodable implements PrivilegedAction<Boolean> {
+
+        private final Context context;
+        private final Request hreq;
+        private final Session session;
+        private final String location;
+
+        public PrivilegedDoIsEncodable(Context context, Request hreq, Session session,
+                String location) {
+            this.context = context;
+            this.hreq = hreq;
+            this.session = session;
+            this.location = location;
+        }
+
+        @Override
+        public Boolean run(){
+            return Boolean.valueOf(doIsEncodeable(context, hreq, session, location));
+        }
+    }
+
+
+    private static class PrivilgedEncodeUrl implements PrivilegedExceptionAction<CharChunk> {
+
+        private final UEncoder urlEncoder;
+        private final String relativePath;
+        private final int end;
+
+        public PrivilgedEncodeUrl(UEncoder urlEncoder, String relativePath, int end) {
+            this.urlEncoder = urlEncoder;
+            this.relativePath = relativePath;
+            this.end = end;
+        }
+
+        @Override
+        public CharChunk run() throws IOException{
+            return urlEncoder.encodeURL(relativePath, 0, end);
+        }
     }
 }

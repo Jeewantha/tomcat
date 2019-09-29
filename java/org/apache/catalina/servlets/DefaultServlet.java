@@ -29,13 +29,20 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.io.Reader;
+import java.io.Serializable;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.AccessController;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.StringTokenizer;
 
@@ -67,10 +74,16 @@ import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.connector.RequestFacade;
 import org.apache.catalina.connector.ResponseFacade;
-import org.apache.catalina.util.RequestUtil;
+import org.apache.catalina.util.IOTools;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.catalina.util.URLEncoder;
+import org.apache.catalina.webresources.CachedResource;
+import org.apache.tomcat.util.buf.B2CConverter;
+import org.apache.tomcat.util.http.ResponseUtil;
+import org.apache.tomcat.util.http.parser.ContentRange;
+import org.apache.tomcat.util.http.parser.Ranges;
 import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.Escape;
 import org.apache.tomcat.util.security.PrivilegedGetTccl;
 import org.apache.tomcat.util.security.PrivilegedSetTccl;
 import org.w3c.dom.Document;
@@ -139,15 +152,12 @@ public class DefaultServlet extends HttpServlet {
      */
     protected static final ArrayList<Range> FULL = new ArrayList<>();
 
+    private static final Range IGNORE = new Range();
+
     /**
      * MIME multipart separation string
      */
     protected static final String mimeSeparation = "CATALINA_MIME_BOUNDARY";
-
-    /**
-     * JNDI resources name.
-     */
-    protected static final String RESOURCES_JNDI_NAME = "java:/comp/Resources";
 
     /**
      * Size of file transfer buffer in bytes.
@@ -193,9 +203,9 @@ public class DefaultServlet extends HttpServlet {
     protected boolean readOnly = true;
 
     /**
-     * Should be serve gzip versions of files. By default, it's set to false.
+     * List of compression formats to serve and their preference order.
      */
-    protected boolean gzip = false;
+    protected CompressionFormat[] compressionFormats;
 
     /**
      * The output buffer size to use when serving resources.
@@ -232,6 +242,12 @@ public class DefaultServlet extends HttpServlet {
      * the platform default is used.
      */
     protected String fileEncoding = null;
+    private transient Charset fileEncodingCharset = null;
+
+    /**
+     * If a file has a BOM, should that be used in preference to fileEncoding?
+     */
+    private boolean useBomIfPresent = true;
 
     /**
      * Minimum size for sendfile usage in bytes.
@@ -247,6 +263,21 @@ public class DefaultServlet extends HttpServlet {
      * Flag to determine if server information is presented.
      */
     protected boolean showServerInfo = true;
+
+    /**
+     * Flag to determine if resources should be sorted.
+     */
+    protected boolean sortListings = false;
+
+    /**
+     * The sorting manager for sorting files and directories.
+     */
+    protected transient SortManager sortManager;
+
+    /**
+     * Flag that indicates whether partial PUTs are permitted.
+     */
+    private boolean allowPartialPut = true;
 
 
     // --------------------------------------------------------- Public Methods
@@ -280,14 +311,29 @@ public class DefaultServlet extends HttpServlet {
         if (getServletConfig().getInitParameter("readonly") != null)
             readOnly = Boolean.parseBoolean(getServletConfig().getInitParameter("readonly"));
 
-        if (getServletConfig().getInitParameter("gzip") != null)
-            gzip = Boolean.parseBoolean(getServletConfig().getInitParameter("gzip"));
+        compressionFormats = parseCompressionFormats(
+                getServletConfig().getInitParameter("precompressed"),
+                getServletConfig().getInitParameter("gzip"));
 
         if (getServletConfig().getInitParameter("sendfileSize") != null)
             sendfileSize =
                 Integer.parseInt(getServletConfig().getInitParameter("sendfileSize")) * 1024;
 
         fileEncoding = getServletConfig().getInitParameter("fileEncoding");
+        if (fileEncoding == null) {
+            fileEncodingCharset = Charset.defaultCharset();
+            fileEncoding = fileEncodingCharset.name();
+        } else {
+            try {
+                fileEncodingCharset = B2CConverter.getCharset(fileEncoding);
+            } catch (UnsupportedEncodingException e) {
+                throw new ServletException(e);
+            }
+        }
+
+        if (getServletConfig().getInitParameter("useBomIfPresent") != null)
+            useBomIfPresent = Boolean.parseBoolean(
+                    getServletConfig().getInitParameter("useBomIfPresent"));
 
         globalXsltFile = getServletConfig().getInitParameter("globalXsltFile");
         contextXsltFile = getServletConfig().getInitParameter("contextXsltFile");
@@ -313,12 +359,52 @@ public class DefaultServlet extends HttpServlet {
                 Globals.RESOURCES_ATTR);
 
         if (resources == null) {
-            throw new UnavailableException("No resources");
+            throw new UnavailableException(sm.getString("defaultServlet.noResources"));
         }
 
         if (getServletConfig().getInitParameter("showServerInfo") != null) {
             showServerInfo = Boolean.parseBoolean(getServletConfig().getInitParameter("showServerInfo"));
         }
+
+        if (getServletConfig().getInitParameter("sortListings") != null) {
+            sortListings = Boolean.parseBoolean(getServletConfig().getInitParameter("sortListings"));
+
+            if(sortListings) {
+                boolean sortDirectoriesFirst;
+                if (getServletConfig().getInitParameter("sortDirectoriesFirst") != null) {
+                    sortDirectoriesFirst = Boolean.parseBoolean(getServletConfig().getInitParameter("sortDirectoriesFirst"));
+                } else {
+                    sortDirectoriesFirst = false;
+                }
+
+                sortManager = new SortManager(sortDirectoriesFirst);
+            }
+        }
+
+        if (getServletConfig().getInitParameter("allowPartialPut") != null) {
+            allowPartialPut = Boolean.parseBoolean(getServletConfig().getInitParameter("allowPartialPut"));
+        }
+    }
+
+    private CompressionFormat[] parseCompressionFormats(String precompressed, String gzip) {
+        List<CompressionFormat> ret = new ArrayList<>();
+        if (precompressed != null && precompressed.indexOf('=') > 0) {
+            for (String pair : precompressed.split(",")) {
+                String[] setting = pair.split("=");
+                String encoding = setting[0];
+                String extension = setting[1];
+                ret.add(new CompressionFormat(extension, encoding));
+            }
+        } else if (precompressed != null) {
+            if (Boolean.parseBoolean(precompressed)) {
+                ret.add(new CompressionFormat(".br", "br"));
+                ret.add(new CompressionFormat(".gz", "gzip"));
+            }
+        } else if (Boolean.parseBoolean(gzip)) {
+            // gzip handling is for backwards compatibility with Tomcat 8.x
+            ret.add(new CompressionFormat(".gz", "gzip"));
+        }
+        return ret.toArray(new CompressionFormat[ret.size()]);
     }
 
 
@@ -329,44 +415,43 @@ public class DefaultServlet extends HttpServlet {
      * Return the relative path associated with this servlet.
      *
      * @param request The servlet request we are processing
+     * @return the relative path
      */
     protected String getRelativePath(HttpServletRequest request) {
+        return getRelativePath(request, false);
+    }
+
+    protected String getRelativePath(HttpServletRequest request, boolean allowEmptyPath) {
         // IMPORTANT: DefaultServlet can be mapped to '/' or '/path/*' but always
         // serves resources from the web app root with context rooted paths.
         // i.e. it cannot be used to mount the web app root under a sub-path
         // This method must construct a complete context rooted path, although
         // subclasses can change this behaviour.
 
-        // Are we being processed by a RequestDispatcher.include()?
-        if (request.getAttribute(
-                RequestDispatcher.INCLUDE_REQUEST_URI) != null) {
-            String result = (String) request.getAttribute(
-                    RequestDispatcher.INCLUDE_PATH_INFO);
-            if (result == null) {
-                result = (String) request.getAttribute(
-                        RequestDispatcher.INCLUDE_SERVLET_PATH);
-            } else {
-                result = (String) request.getAttribute(
-                        RequestDispatcher.INCLUDE_SERVLET_PATH) + result;
-            }
-            if ((result == null) || (result.equals(""))) {
-                result = "/";
-            }
-            return (result);
-        }
+        String servletPath;
+        String pathInfo;
 
-        // No, extract the desired path directly from the request
-        String result = request.getPathInfo();
-        if (result == null) {
-            result = request.getServletPath();
+        if (request.getAttribute(RequestDispatcher.INCLUDE_REQUEST_URI) != null) {
+            // For includes, get the info from the attributes
+            pathInfo = (String) request.getAttribute(RequestDispatcher.INCLUDE_PATH_INFO);
+            servletPath = (String) request.getAttribute(RequestDispatcher.INCLUDE_SERVLET_PATH);
         } else {
-            result = request.getServletPath() + result;
+            pathInfo = request.getPathInfo();
+            servletPath = request.getServletPath();
         }
-        if ((result == null) || (result.equals(""))) {
-            result = "/";
-        }
-        return (result);
 
+        StringBuilder result = new StringBuilder();
+        if (servletPath.length() > 0) {
+            result.append(servletPath);
+        }
+        if (pathInfo != null) {
+            result.append(pathInfo);
+        }
+        if (result.length() == 0 && !allowEmptyPath) {
+            result.append('/');
+        }
+
+        return result.toString();
     }
 
 
@@ -379,6 +464,18 @@ public class DefaultServlet extends HttpServlet {
      */
     protected String getPathPrefix(final HttpServletRequest request) {
         return request.getContextPath();
+    }
+
+
+    @Override
+    protected void service(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+
+        if (req.getDispatcherType() == DispatcherType.ERROR) {
+            doGet(req, resp);
+        } else {
+            super.service(req, resp);
+        }
     }
 
 
@@ -445,24 +542,35 @@ public class DefaultServlet extends HttpServlet {
     protected void doOptions(HttpServletRequest req, HttpServletResponse resp)
         throws ServletException, IOException {
 
+        resp.setHeader("Allow", determineMethodsAllowed(req));
+    }
+
+
+    protected String determineMethodsAllowed(HttpServletRequest req) {
         StringBuilder allow = new StringBuilder();
-        // There is a doGet method
-        allow.append("GET, HEAD");
-        // There is a doPost
-        allow.append(", POST");
-        // There is a doPut
-        allow.append(", PUT");
-        // There is a doDelete
-        allow.append(", DELETE");
+
+        // Start with methods that are always allowed
+        allow.append("OPTIONS, GET, HEAD, POST");
+
+        // PUT and DELETE depend on readonly
+        if (!readOnly) {
+            allow.append(", PUT, DELETE");
+        }
+
         // Trace - assume disabled unless we can prove otherwise
         if (req instanceof RequestFacade &&
                 ((RequestFacade) req).getAllowTrace()) {
             allow.append(", TRACE");
         }
-        // Always allow options
-        allow.append(", OPTIONS");
 
-        resp.setHeader("Allow", allow.toString());
+        return allow.toString();
+    }
+
+
+    protected void sendNotAllowed(HttpServletRequest req, HttpServletResponse resp)
+            throws IOException {
+        resp.addHeader("Allow", determineMethodsAllowed(req));
+        resp.sendError(WebdavStatus.SC_METHOD_NOT_ALLOWED);
     }
 
 
@@ -497,7 +605,7 @@ public class DefaultServlet extends HttpServlet {
         throws ServletException, IOException {
 
         if (readOnly) {
-            resp.sendError(HttpServletResponse.SC_FORBIDDEN);
+            sendNotAllowed(req, resp);
             return;
         }
 
@@ -507,6 +615,11 @@ public class DefaultServlet extends HttpServlet {
 
         Range range = parseContentRange(req, resp);
 
+        if (range == null) {
+            // Processing error. parseContentRange() set the error code
+            return;
+        }
+
         InputStream resourceInputStream = null;
 
         try {
@@ -514,11 +627,11 @@ public class DefaultServlet extends HttpServlet {
             // resource - create a temp. file on the local filesystem to
             // perform this operation
             // Assume just one range is specified for now
-            if (range != null) {
+            if (range == IGNORE) {
+                resourceInputStream = req.getInputStream();
+            } else {
                 File contentFile = executePartialPut(req, range, path);
                 resourceInputStream = new FileInputStream(contentFile);
-            } else {
-                resourceInputStream = req.getInputStream();
             }
 
             if (resources.write(path, resourceInputStream, true)) {
@@ -546,6 +659,11 @@ public class DefaultServlet extends HttpServlet {
      * Handle a partial PUT.  New content specified in request is appended to
      * existing content in oldRevisionContent (if present). This code does
      * not support simultaneous partial updates to the same resource.
+     * @param req The Servlet request
+     * @param range The range that will be written
+     * @param path The path
+     * @return the associated file object
+     * @throws IOException an IO error occurred
      */
     protected File executePartialPut(HttpServletRequest req, Range range,
                                      String path)
@@ -564,39 +682,39 @@ public class DefaultServlet extends HttpServlet {
             contentFile.deleteOnExit();
         }
 
-        RandomAccessFile randAccessContentFile =
-            new RandomAccessFile(contentFile, "rw");
+        try (RandomAccessFile randAccessContentFile =
+            new RandomAccessFile(contentFile, "rw")) {
 
-        WebResource oldResource = resources.getResource(path);
+            WebResource oldResource = resources.getResource(path);
 
-        // Copy data in oldRevisionContent to contentFile
-        if (oldResource.isFile()) {
-            BufferedInputStream bufOldRevStream =
-                new BufferedInputStream(oldResource.getInputStream(),
-                        BUFFER_SIZE);
+            // Copy data in oldRevisionContent to contentFile
+            if (oldResource.isFile()) {
+                try (BufferedInputStream bufOldRevStream =
+                    new BufferedInputStream(oldResource.getInputStream(),
+                            BUFFER_SIZE)) {
 
-            int numBytesRead;
-            byte[] copyBuffer = new byte[BUFFER_SIZE];
-            while ((numBytesRead = bufOldRevStream.read(copyBuffer)) != -1) {
-                randAccessContentFile.write(copyBuffer, 0, numBytesRead);
+                    int numBytesRead;
+                    byte[] copyBuffer = new byte[BUFFER_SIZE];
+                    while ((numBytesRead = bufOldRevStream.read(copyBuffer)) != -1) {
+                        randAccessContentFile.write(copyBuffer, 0, numBytesRead);
+                    }
+
+                }
             }
 
-            bufOldRevStream.close();
-        }
+            randAccessContentFile.setLength(range.length);
 
-        randAccessContentFile.setLength(range.length);
-
-        // Append data in request input stream to contentFile
-        randAccessContentFile.seek(range.start);
-        int numBytesRead;
-        byte[] transferBuffer = new byte[BUFFER_SIZE];
-        BufferedInputStream requestBufInStream =
-            new BufferedInputStream(req.getInputStream(), BUFFER_SIZE);
-        while ((numBytesRead = requestBufInStream.read(transferBuffer)) != -1) {
-            randAccessContentFile.write(transferBuffer, 0, numBytesRead);
+            // Append data in request input stream to contentFile
+            randAccessContentFile.seek(range.start);
+            int numBytesRead;
+            byte[] transferBuffer = new byte[BUFFER_SIZE];
+            try (BufferedInputStream requestBufInStream =
+                new BufferedInputStream(req.getInputStream(), BUFFER_SIZE)) {
+                while ((numBytesRead = requestBufInStream.read(transferBuffer)) != -1) {
+                    randAccessContentFile.write(transferBuffer, 0, numBytesRead);
+                }
+            }
         }
-        randAccessContentFile.close();
-        requestBufInStream.close();
 
         return contentFile;
     }
@@ -616,7 +734,7 @@ public class DefaultServlet extends HttpServlet {
         throws ServletException, IOException {
 
         if (readOnly) {
-            resp.sendError(HttpServletResponse.SC_FORBIDDEN);
+            sendNotAllowed(req, resp);
             return;
         }
 
@@ -644,9 +762,10 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets all the specified conditions,
-     * and false if any of the conditions is not satisfied, in which case
-     * request processing is stopped
+     * @return <code>true</code> if the resource meets all the specified
+     *  conditions, and <code>false</code> if any of the conditions is not
+     *  satisfied, in which case request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfHeaders(HttpServletRequest request,
                                      HttpServletResponse response,
@@ -665,20 +784,21 @@ public class DefaultServlet extends HttpServlet {
      * URL rewriter.
      *
      * @param path Path which has to be rewritten
+     * @return the rewritten path
      */
     protected String rewriteUrl(String path) {
-        return URLEncoder.DEFAULT.encode( path );
+        return URLEncoder.DEFAULT.encode(path, StandardCharsets.UTF_8);
     }
 
 
     /**
      * Serve the specified resource, optionally including the data content.
      *
-     * @param request  The servlet request we are processing
-     * @param response The servlet response we are creating
-     * @param content  Should the content be included?
-     * @param encoding The encoding to use if it is necessary to access the
-     *                 source as characters rather than as bytes
+     * @param request       The servlet request we are processing
+     * @param response      The servlet response we are creating
+     * @param content       Should the content be included?
+     * @param inputEncoding The encoding to use if it is necessary to access the
+     *                      source as characters rather than as bytes
      *
      * @exception IOException if an input/output error occurs
      * @exception ServletException if a servlet-specified error occurs
@@ -686,13 +806,14 @@ public class DefaultServlet extends HttpServlet {
     protected void serveResource(HttpServletRequest request,
                                  HttpServletResponse response,
                                  boolean content,
-                                 String encoding)
+                                 String inputEncoding)
         throws IOException, ServletException {
 
         boolean serveContent = content;
 
         // Identify the requested resource path
-        String path = getRelativePath(request);
+        String path = getRelativePath(request, true);
+
         if (debug > 0) {
             if (serveContent)
                 log("DefaultServlet.serveResource:  Serving resource '" +
@@ -702,7 +823,14 @@ public class DefaultServlet extends HttpServlet {
                     path + "' headers only");
         }
 
+        if (path.length() == 0) {
+            // Context root redirect
+            doDirectoryRedirect(request, response);
+            return;
+        }
+
         WebResource resource = resources.getResource(path);
+        boolean isError = DispatcherType.ERROR == request.getDispatcherType();
 
         if (!resource.exists()) {
             // Check if we're included so we can return the appropriate
@@ -718,7 +846,12 @@ public class DefaultServlet extends HttpServlet {
                         "defaultServlet.missingResource", requestUri));
             }
 
-            response.sendError(HttpServletResponse.SC_NOT_FOUND, requestUri);
+            if (isError) {
+                response.sendError(((Integer) request.getAttribute(
+                        RequestDispatcher.ERROR_STATUS_CODE)).intValue());
+            } else {
+                response.sendError(HttpServletResponse.SC_NOT_FOUND, requestUri);
+            }
             return;
         }
 
@@ -737,25 +870,14 @@ public class DefaultServlet extends HttpServlet {
                         "defaultServlet.missingResource", requestUri));
             }
 
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, requestUri);
-            return;
-        }
-
-        // If the resource is not a collection, and the resource path
-        // ends with "/" or "\", return NOT FOUND
-        if (resource.isFile() && (path.endsWith("/") || path.endsWith("\\"))) {
-            // Check if we're included so we can return the appropriate
-            // missing resource name in the error
-            String requestUri = (String) request.getAttribute(
-                    RequestDispatcher.INCLUDE_REQUEST_URI);
-            if (requestUri == null) {
-                requestUri = request.getRequestURI();
+            if (isError) {
+                response.sendError(((Integer) request.getAttribute(
+                        RequestDispatcher.ERROR_STATUS_CODE)).intValue());
+            } else {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, requestUri);
             }
-            response.sendError(HttpServletResponse.SC_NOT_FOUND, requestUri);
             return;
         }
-
-        boolean isError = response.getStatus() >= HttpServletResponse.SC_BAD_REQUEST;
 
         boolean included = false;
         // Check if the conditions specified in the optional If headers are
@@ -777,7 +899,7 @@ public class DefaultServlet extends HttpServlet {
         }
 
         // These need to reflect the original resource, not the potentially
-        // gzip'd version of the resource so get them now if they are going to
+        // precompressed version of the resource so get them now if they are going to
         // be needed later
         String eTag = null;
         String lastModifiedHttp = null;
@@ -787,35 +909,33 @@ public class DefaultServlet extends HttpServlet {
         }
 
 
-        // Serve a gzipped version of the file if present
-        boolean usingGzippedVersion = false;
-        if (gzip && !included && resource.isFile() && !path.endsWith(".gz")) {
-            WebResource gzipResource = resources.getResource(path + ".gz");
-            if (gzipResource.exists() && gzipResource.isFile()) {
-                Collection<String> varyHeaders = response.getHeaders("Vary");
-                boolean addRequired = true;
-                for (String varyHeader : varyHeaders) {
-                    if ("*".equals(varyHeader) ||
-                            "accept-encoding".equalsIgnoreCase(varyHeader)) {
-                        addRequired = false;
-                        break;
-                    }
-                }
-                if (addRequired) {
-                    response.addHeader("Vary", "accept-encoding");
-                }
-                if (checkIfGzip(request)) {
-                    response.addHeader("Content-Encoding", "gzip");
-                    resource = gzipResource;
-                    usingGzippedVersion = true;
+        // Serve a precompressed version of the file if present
+        boolean usingPrecompressedVersion = false;
+        if (compressionFormats.length > 0 && !included && resource.isFile() &&
+                !pathEndsWithCompressedExtension(path)) {
+            List<PrecompressedResource> precompressedResources =
+                    getAvailablePrecompressedResources(path);
+            if (!precompressedResources.isEmpty()) {
+                ResponseUtil.addVaryFieldName(response, "accept-encoding");
+                PrecompressedResource bestResource =
+                        getBestPrecompressedResource(request, precompressedResources);
+                if (bestResource != null) {
+                    response.addHeader("Content-Encoding", bestResource.format.encoding);
+                    resource = bestResource.resource;
+                    usingPrecompressedVersion = true;
                 }
             }
         }
 
-        ArrayList<Range> ranges = null;
+        ArrayList<Range> ranges = FULL;
         long contentLength = -1L;
 
         if (resource.isDirectory()) {
+            if (!path.endsWith("/")) {
+                doDirectoryRedirect(request, response);
+                return;
+            }
+
             // Skip directory listings if we have been configured to
             // suppress them
             if (!listings) {
@@ -833,6 +953,9 @@ public class DefaultServlet extends HttpServlet {
 
                 // Parse range specifier
                 ranges = parseRange(request, response, resource);
+                if (ranges == null) {
+                    return;
+                }
 
                 // ETag header
                 response.setHeader("ETag", eTag);
@@ -860,12 +983,7 @@ public class DefaultServlet extends HttpServlet {
             } catch (IllegalStateException e) {
                 // If it fails, we try to get a Writer instead if we're
                 // trying to serve a text file
-                if (!usingGzippedVersion &&
-                        ((contentType == null) ||
-                                (contentType.startsWith("text")) ||
-                                (contentType.endsWith("xml")) ||
-                                (contentType.contains("/javascript")))
-                        ) {
+                if (!usingPrecompressedVersion && isText(contentType)) {
                     writer = response.getWriter();
                     // Cannot reliably serve partial content with a Writer
                     ranges = FULL;
@@ -875,7 +993,7 @@ public class DefaultServlet extends HttpServlet {
             }
         }
 
-        // Check to see if a Filter, Valve of wrapper has written some content.
+        // Check to see if a Filter, Valve or wrapper has written some content.
         // If it has, disable range requests and setting of a content length
         // since neither can be done reliably.
         ServletResponse r = response;
@@ -890,18 +1008,42 @@ public class DefaultServlet extends HttpServlet {
             ranges = FULL;
         }
 
-        if (resource.isDirectory() ||
-                isError ||
-                ( (ranges == null || ranges.isEmpty())
-                        && request.getHeader("Range") == null ) ||
-                ranges == FULL ) {
+        String outputEncoding = response.getCharacterEncoding();
+        Charset charset = B2CConverter.getCharset(outputEncoding);
+        boolean conversionRequired;
+        /*
+         * The test below deliberately uses != to compare two Strings. This is
+         * because the code is looking to see if the default character encoding
+         * has been returned because no explicit character encoding has been
+         * defined. There is no clean way of doing this via the Servlet API. It
+         * would be possible to add a Tomcat specific API but that would require
+         * quite a bit of code to get to the Tomcat specific request object that
+         * may have been wrapped. The != test is a (slightly hacky) quick way of
+         * doing this.
+         */
+        boolean outputEncodingSpecified =
+                outputEncoding != org.apache.coyote.Constants.DEFAULT_BODY_CHARSET.name() &&
+                outputEncoding != resources.getContext().getResponseCharacterEncoding();
+        if (!usingPrecompressedVersion && isText(contentType) && outputEncodingSpecified &&
+                !charset.equals(fileEncodingCharset)) {
+            conversionRequired = true;
+            // Conversion often results fewer/more/different bytes.
+            // That does not play nicely with range requests.
+            ranges = FULL;
+        } else {
+            conversionRequired = false;
+        }
 
+        if (resource.isDirectory() || isError || ranges == FULL ) {
             // Set the appropriate output headers
             if (contentType != null) {
                 if (debug > 0)
                     log("DefaultServlet.serveFile:  contentType='" +
                         contentType + "'");
-                response.setContentType(contentType);
+                // Don't override a previously set content type
+                if (response.getContentType() == null) {
+                    response.setContentType(contentType);
+                }
             }
             if (resource.isFile() && contentLength >= 0 &&
                     (!serveContent || ostream != null)) {
@@ -909,8 +1051,8 @@ public class DefaultServlet extends HttpServlet {
                     log("DefaultServlet.serveFile:  contentLength=" +
                         contentLength);
                 // Don't set a content length if something else has already
-                // written to the response.
-                if (contentWritten == 0) {
+                // written to the response or if conversion will be taking place
+                if (contentWritten == 0 && !conversionRequired) {
                     response.setContentLengthLong(contentLength);
                 }
             }
@@ -926,36 +1068,79 @@ public class DefaultServlet extends HttpServlet {
                     // Output via a writer so can't use sendfile or write
                     // content directly.
                     if (resource.isDirectory()) {
-                        renderResult = render(getPathPrefix(request), resource);
+                        renderResult = render(request, getPathPrefix(request), resource, inputEncoding);
                     } else {
                         renderResult = resource.getInputStream();
+                        if (included) {
+                            // Need to make sure any BOM is removed
+                            if (!renderResult.markSupported()) {
+                                renderResult = new BufferedInputStream(renderResult);
+                            }
+                            Charset bomCharset = processBom(renderResult);
+                            if (bomCharset != null && useBomIfPresent) {
+                                inputEncoding = bomCharset.name();
+                            }
+                        }
                     }
-                    copy(resource, renderResult, writer, encoding);
+                    copy(renderResult, writer, inputEncoding);
                 } else {
-                    // Output is via an InputStream
+                    // Output is via an OutputStream
                     if (resource.isDirectory()) {
-                        renderResult = render(getPathPrefix(request), resource);
+                        renderResult = render(request, getPathPrefix(request), resource, inputEncoding);
                     } else {
                         // Output is content of resource
-                        if (!checkSendfile(request, response, resource,
-                                contentLength, null)) {
-                            // sendfile not possible so check if resource
-                            // content is available directly
-                            byte[] resourceBody = resource.getContent();
-                            if (resourceBody == null) {
-                                // Resource content not available, use
-                                // inputstream
-                                renderResult = resource.getInputStream();
+                        // Check to see if conversion is required
+                        if (conversionRequired || included) {
+                            // When including a file, we need to check for a BOM
+                            // to determine if a conversion is required, so we
+                            // might as well always convert
+                            InputStream source = resource.getInputStream();
+                            if (!source.markSupported()) {
+                                source = new BufferedInputStream(source);
+                            }
+                            Charset bomCharset = processBom(source);
+                            if (bomCharset != null && useBomIfPresent) {
+                                inputEncoding = bomCharset.name();
+                            }
+                            // Following test also ensures included resources
+                            // are converted if an explicit output encoding was
+                            // specified
+                            if (outputEncodingSpecified) {
+                                OutputStreamWriter osw = new OutputStreamWriter(ostream, charset);
+                                PrintWriter pw = new PrintWriter(osw);
+                                copy(source, pw, inputEncoding);
+                                pw.flush();
                             } else {
-                                // Use the resource content directly
-                                ostream.write(resourceBody);
+                                // Just included but no conversion
+                                renderResult = source;
+                            }
+                        } else {
+                            if (!checkSendfile(request, response, resource, contentLength, null)) {
+                                // sendfile not possible so check if resource
+                                // content is available directly via
+                                // CachedResource. Do not want to call
+                                // getContent() on other resource
+                                // implementations as that could trigger loading
+                                // the contents of a very large file into memory
+                                byte[] resourceBody = null;
+                                if (resource instanceof CachedResource) {
+                                    resourceBody = resource.getContent();
+                                }
+                                if (resourceBody == null) {
+                                    // Resource content not directly available,
+                                    // use InputStream
+                                    renderResult = resource.getInputStream();
+                                } else {
+                                    // Use the resource content directly
+                                    ostream.write(resourceBody);
+                                }
                             }
                         }
                     }
                     // If a stream was configured, it needs to be copied to
                     // the output (this method closes the stream)
                     if (renderResult != null) {
-                        copy(resource, renderResult, ostream);
+                        copy(renderResult, ostream);
                     }
                 }
             }
@@ -1022,56 +1207,231 @@ public class DefaultServlet extends HttpServlet {
     }
 
 
+    /*
+     * Code borrowed heavily from Jasper's EncodingDetector
+     */
+    private static Charset processBom(InputStream is) throws IOException {
+        // Java supported character sets do not use BOMs longer than 4 bytes
+        byte[] bom = new byte[4];
+        is.mark(bom.length);
+
+        int count = is.read(bom);
+
+        // BOMs are at least 2 bytes
+        if (count < 2) {
+            skip(is, 0);
+            return null;
+        }
+
+        // Look for two byte BOMs
+        int b0 = bom[0] & 0xFF;
+        int b1 = bom[1] & 0xFF;
+        if (b0 == 0xFE && b1 == 0xFF) {
+            skip(is, 2);
+            return StandardCharsets.UTF_16BE;
+        }
+        // Delay the UTF_16LE check if there are more that 2 bytes since it
+        // overlaps with UTF-32LE.
+        if (count == 2 && b0 == 0xFF && b1 == 0xFE) {
+            skip(is, 2);
+            return StandardCharsets.UTF_16LE;
+        }
+
+        // Remaining BOMs are at least 3 bytes
+        if (count < 3) {
+            skip(is, 0);
+            return null;
+        }
+
+        // UTF-8 is only 3-byte BOM
+        int b2 = bom[2] & 0xFF;
+        if (b0 == 0xEF && b1 == 0xBB && b2 == 0xBF) {
+            skip(is, 3);
+            return StandardCharsets.UTF_8;
+        }
+
+        if (count < 4) {
+            skip(is, 0);
+            return null;
+        }
+
+        // Look for 4-byte BOMs
+        int b3 = bom[3] & 0xFF;
+        if (b0 == 0x00 && b1 == 0x00 && b2 == 0xFE && b3 == 0xFF) {
+            return Charset.forName("UTF-32BE");
+        }
+        if (b0 == 0xFF && b1 == 0xFE && b2 == 0x00 && b3 == 0x00) {
+            return Charset.forName("UTF-32LE");
+        }
+
+        // Now we can check for UTF16-LE. There is an assumption here that we
+        // won't see a UTF16-LE file with a BOM where the first real data is
+        // 0x00 0x00
+        if (b0 == 0xFF && b1 == 0xFE) {
+            skip(is, 2);
+            return StandardCharsets.UTF_16LE;
+        }
+
+        skip(is, 0);
+        return null;
+    }
+
+
+    private static void skip(InputStream is, int skip) throws IOException {
+        is.reset();
+        while (skip-- > 0) {
+            is.read();
+        }
+    }
+
+
+    private static boolean isText(String contentType) {
+        return  contentType == null || contentType.startsWith("text") ||
+                contentType.endsWith("xml") || contentType.contains("/javascript");
+    }
+
+
+    private boolean pathEndsWithCompressedExtension(String path) {
+        for (CompressionFormat format : compressionFormats) {
+            if (path.endsWith(format.extension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<PrecompressedResource> getAvailablePrecompressedResources(String path) {
+        List<PrecompressedResource> ret = new ArrayList<>(compressionFormats.length);
+        for (CompressionFormat format : compressionFormats) {
+            WebResource precompressedResource = resources.getResource(path + format.extension);
+            if (precompressedResource.exists() && precompressedResource.isFile()) {
+                ret.add(new PrecompressedResource(precompressedResource, format));
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Match the client preferred encoding formats to the available precompressed resources.
+     *
+     * @param request   The servlet request we are processing
+     * @param precompressedResources   List of available precompressed resources.
+     * @return The best matching precompressed resource or null if no match was found.
+     */
+    private PrecompressedResource getBestPrecompressedResource(HttpServletRequest request,
+            List<PrecompressedResource> precompressedResources) {
+        Enumeration<String> headers = request.getHeaders("Accept-Encoding");
+        PrecompressedResource bestResource = null;
+        double bestResourceQuality = 0;
+        int bestResourcePreference = Integer.MAX_VALUE;
+        while (headers.hasMoreElements()) {
+            String header = headers.nextElement();
+            for (String preference : header.split(",")) {
+                double quality = 1;
+                int qualityIdx = preference.indexOf(';');
+                if (qualityIdx > 0) {
+                    int equalsIdx = preference.indexOf('=', qualityIdx + 1);
+                    if (equalsIdx == -1) {
+                        continue;
+                    }
+                    quality = Double.parseDouble(preference.substring(equalsIdx + 1).trim());
+                }
+                if (quality >= bestResourceQuality) {
+                    String encoding = preference;
+                    if (qualityIdx > 0) {
+                        encoding = encoding.substring(0, qualityIdx);
+                    }
+                    encoding = encoding.trim();
+                    if ("identity".equals(encoding)) {
+                        bestResource = null;
+                        bestResourceQuality = quality;
+                        bestResourcePreference = Integer.MAX_VALUE;
+                        continue;
+                    }
+                    if ("*".equals(encoding)) {
+                        bestResource = precompressedResources.get(0);
+                        bestResourceQuality = quality;
+                        bestResourcePreference = 0;
+                        continue;
+                    }
+                    for (int i = 0; i < precompressedResources.size(); ++i) {
+                        PrecompressedResource resource = precompressedResources.get(i);
+                        if (encoding.equals(resource.format.encoding)) {
+                            if (quality > bestResourceQuality || i < bestResourcePreference) {
+                                bestResource = resource;
+                                bestResourceQuality = quality;
+                                bestResourcePreference = i;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return bestResource;
+    }
+
+    private void doDirectoryRedirect(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        StringBuilder location = new StringBuilder(request.getRequestURI());
+        location.append('/');
+        if (request.getQueryString() != null) {
+            location.append('?');
+            location.append(request.getQueryString());
+        }
+        // Avoid protocol relative redirects
+        while (location.length() > 1 && location.charAt(1) == '/') {
+            location.deleteCharAt(0);
+        }
+        response.sendRedirect(response.encodeRedirectURL(location.toString()));
+    }
+
     /**
      * Parse the content-range header.
      *
-     * @param request The servlet request we a)re processing
+     * @param request The servlet request we are processing
      * @param response The servlet response we are creating
-     * @return Range
+     * @return the partial content-range, {@code null} if the content-range
+     *         header was invalid or {@code #IGNORE} if there is no header to
+     *         process
+     * @throws IOException an IO error occurred
      */
     protected Range parseContentRange(HttpServletRequest request,
                                       HttpServletResponse response)
         throws IOException {
 
         // Retrieving the content-range header (if any is specified
-        String rangeHeader = request.getHeader("Content-Range");
+        String contentRangeHeader = request.getHeader("Content-Range");
 
-        if (rangeHeader == null)
+        if (contentRangeHeader == null) {
+            return IGNORE;
+        }
+
+        if (!allowPartialPut) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
             return null;
+        }
+
+        ContentRange contentRange = ContentRange.parse(new StringReader(contentRangeHeader));
+
+        if (contentRange == null) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return null;
+        }
+
 
         // bytes is the only range unit supported
-        if (!rangeHeader.startsWith("bytes")) {
+        if (!contentRange.getUnits().equals("bytes")) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST);
             return null;
         }
 
-        rangeHeader = rangeHeader.substring(6).trim();
-
-        int dashPos = rangeHeader.indexOf('-');
-        int slashPos = rangeHeader.indexOf('/');
-
-        if (dashPos == -1) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
-            return null;
-        }
-
-        if (slashPos == -1) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
-            return null;
-        }
-
+        // TODO: Remove the internal representation and use Ranges
+        // Convert to internal representation
         Range range = new Range();
-
-        try {
-            range.start = Long.parseLong(rangeHeader.substring(0, dashPos));
-            range.end =
-                Long.parseLong(rangeHeader.substring(dashPos + 1, slashPos));
-            range.length = Long.parseLong
-                (rangeHeader.substring(slashPos + 1, rangeHeader.length()));
-        } catch (NumberFormatException e) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
-            return null;
-        }
+        range.start = contentRange.getStart();
+        range.end = contentRange.getEnd();
+        range.length = contentRange.getLength();
 
         if (!range.validate()) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST);
@@ -1079,7 +1439,6 @@ public class DefaultServlet extends HttpServlet {
         }
 
         return range;
-
     }
 
 
@@ -1089,11 +1448,17 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return Vector of ranges
+     * @return a list of ranges, {@code null} if the range header was invalid or
+     *         {@code #FULL} if the Range header should be ignored.
+     * @throws IOException an IO error occurred
      */
     protected ArrayList<Range> parseRange(HttpServletRequest request,
             HttpServletResponse response,
             WebResource resource) throws IOException {
+
+        // Range headers are only valid on GET requests. That implies they are
+        // also valid on HEAD requests. This method is only called by doGet()
+        // and doHead() so no need to check the request method.
 
         // Checking If-Range
         String headerValue = request.getHeader("If-Range");
@@ -1111,107 +1476,81 @@ public class DefaultServlet extends HttpServlet {
             long lastModified = resource.getLastModified();
 
             if (headerValueTime == (-1L)) {
-
                 // If the ETag the client gave does not match the entity
                 // etag, then the entire entity is returned.
-                if (!eTag.equals(headerValue.trim()))
+                if (!eTag.equals(headerValue.trim())) {
                     return FULL;
-
+                }
             } else {
-
-                // If the timestamp of the entity the client got is older than
+                // If the timestamp of the entity the client got differs from
                 // the last modification date of the entity, the entire entity
                 // is returned.
-                if (lastModified > (headerValueTime + 1000))
+                if (Math.abs(lastModified  -headerValueTime) > 1000) {
                     return FULL;
-
+                }
             }
-
         }
 
         long fileLength = resource.getContentLength();
 
-        if (fileLength == 0)
-            return null;
+        if (fileLength == 0) {
+            // Range header makes no sense for a zero length resource. Tomcat
+            // therefore opts to ignore it.
+            return FULL;
+        }
 
         // Retrieving the range header (if any is specified
         String rangeHeader = request.getHeader("Range");
 
-        if (rangeHeader == null)
-            return null;
-        // bytes is the only range unit supported (and I don't see the point
-        // of adding new ones).
-        if (!rangeHeader.startsWith("bytes")) {
+        if (rangeHeader == null) {
+            // No Range header is the same as ignoring any Range header
+            return FULL;
+        }
+
+        Ranges ranges = Ranges.parse(new StringReader(rangeHeader));
+
+        if (ranges == null) {
+            // The Range header is present but not formatted correctly.
+            // Could argue for a 400 response but 416 is more specific.
+            // There is also the option to ignore the (invalid) Range header.
+            // RFC7233#4.4 notes that many servers do ignore the Range header in
+            // these circumstances but Tomcat has always returned a 416.
             response.addHeader("Content-Range", "bytes */" + fileLength);
-            response.sendError
-                (HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+            response.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
             return null;
         }
 
-        rangeHeader = rangeHeader.substring(6);
+        // bytes is the only range unit supported (and I don't see the point
+        // of adding new ones).
+        if (!ranges.getUnits().equals("bytes")) {
+            // RFC7233#3.1 Servers must ignore range units they don't understand
+            return FULL;
+        }
 
-        // Vector which will contain all the ranges which are successfully
-        // parsed.
+        // TODO: Remove the internal representation and use Ranges
+        // Convert to internal representation
         ArrayList<Range> result = new ArrayList<>();
-        StringTokenizer commaTokenizer = new StringTokenizer(rangeHeader, ",");
 
-        // Parsing the range list
-        while (commaTokenizer.hasMoreTokens()) {
-            String rangeDefinition = commaTokenizer.nextToken().trim();
-
+        for (Ranges.Entry entry : ranges.getEntries()) {
             Range currentRange = new Range();
-            currentRange.length = fileLength;
-
-            int dashPos = rangeDefinition.indexOf('-');
-
-            if (dashPos == -1) {
-                response.addHeader("Content-Range", "bytes */" + fileLength);
-                response.sendError
-                    (HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
-                return null;
-            }
-
-            if (dashPos == 0) {
-
-                try {
-                    long offset = Long.parseLong(rangeDefinition);
-                    currentRange.start = fileLength + offset;
-                    currentRange.end = fileLength - 1;
-                } catch (NumberFormatException e) {
-                    response.addHeader("Content-Range",
-                                       "bytes */" + fileLength);
-                    response.sendError
-                        (HttpServletResponse
-                         .SC_REQUESTED_RANGE_NOT_SATISFIABLE);
-                    return null;
+            if (entry.getStart() == -1) {
+                currentRange.start = fileLength - entry.getEnd();
+                if (currentRange.start < 0) {
+                    currentRange.start = 0;
                 }
-
+                currentRange.end = fileLength - 1;
+            } else if (entry.getEnd() == -1) {
+                currentRange.start = entry.getStart();
+                currentRange.end = fileLength - 1;
             } else {
-
-                try {
-                    currentRange.start = Long.parseLong
-                        (rangeDefinition.substring(0, dashPos));
-                    if (dashPos < rangeDefinition.length() - 1)
-                        currentRange.end = Long.parseLong
-                            (rangeDefinition.substring
-                             (dashPos + 1, rangeDefinition.length()));
-                    else
-                        currentRange.end = fileLength - 1;
-                } catch (NumberFormatException e) {
-                    response.addHeader("Content-Range",
-                                       "bytes */" + fileLength);
-                    response.sendError
-                        (HttpServletResponse
-                         .SC_REQUESTED_RANGE_NOT_SATISFIABLE);
-                    return null;
-                }
-
+                currentRange.start = entry.getStart();
+                currentRange.end = entry.getEnd();
             }
+            currentRange.length = fileLength;
 
             if (!currentRange.validate()) {
                 response.addHeader("Content-Range", "bytes */" + fileLength);
-                response.sendError
-                    (HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+                response.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
                 return null;
             }
 
@@ -1222,32 +1561,93 @@ public class DefaultServlet extends HttpServlet {
     }
 
 
+    /**
+     * Decide which way to render. HTML or XML.
+     *
+     * @param contextPath The path
+     * @param resource    The resource
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the input stream with the rendered output
+     *
+     * @throws IOException an IO error occurred
+     * @throws ServletException rendering error
+     *
+     * @deprecated Use {@link #render(HttpServletRequest, String, WebResource, String)} instead
+     */
+    @Deprecated
+    protected InputStream render(String contextPath, WebResource resource, String encoding)
+        throws IOException, ServletException {
+
+        return render(null, contextPath, resource, encoding);
+    }
 
     /**
-     *  Decide which way to render. HTML or XML.
+     * Decide which way to render. HTML or XML.
+     *
+     * @param request     The HttpServletRequest being served
+     * @param contextPath The path
+     * @param resource    The resource
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the input stream with the rendered output
+     *
+     * @throws IOException an IO error occurred
+     * @throws ServletException rendering error
      */
-    protected InputStream render(String contextPath, WebResource resource)
+    protected InputStream render(HttpServletRequest request, String contextPath, WebResource resource, String encoding)
         throws IOException, ServletException {
 
         Source xsltSource = findXsltSource(resource);
 
         if (xsltSource == null) {
-            return renderHtml(contextPath, resource);
+            return renderHtml(request, contextPath, resource, encoding);
         }
-        return renderXml(contextPath, resource, xsltSource);
+        return renderXml(request, contextPath, resource, xsltSource, encoding);
+    }
 
+
+    /**
+     * Return an InputStream to an XML representation of the contents this
+     * directory.
+     *
+     * @param contextPath Context path to which our internal paths are relative
+     * @param resource    The associated resource
+     * @param xsltSource  The XSL stylesheet
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the XML data
+     *
+     * @throws IOException an IO error occurred
+     * @throws ServletException rendering error
+     * @deprecated Unused. Will be removed in Tomcat 10
+     * @deprecated Use {@link #render(HttpServletRequest, String, WebResource, String)} instead
+     */
+    @Deprecated
+    protected InputStream renderXml(String contextPath, WebResource resource, Source xsltSource,
+            String encoding)
+        throws ServletException, IOException
+    {
+        return renderXml(null, contextPath, resource, xsltSource, encoding);
     }
 
     /**
-     * Return an InputStream to an HTML representation of the contents
-     * of this directory.
+     * Return an InputStream to an XML representation of the contents this
+     * directory.
      *
-     * @param contextPath Context path to which our internal paths are
-     *  relative
+     * @param request     The HttpServletRequest being served
+     * @param contextPath Context path to which our internal paths are relative
+     * @param resource    The associated resource
+     * @param xsltSource  The XSL stylesheet
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the XML data
+     *
+     * @throws IOException an IO error occurred
+     * @throws ServletException rendering error
      */
-    protected InputStream renderXml(String contextPath,
-                                    WebResource resource,
-                                    Source xsltSource)
+    protected InputStream renderXml(HttpServletRequest request, String contextPath, WebResource resource, Source xsltSource,
+            String encoding)
         throws IOException, ServletException {
 
         StringBuilder sb = new StringBuilder();
@@ -1306,14 +1706,14 @@ public class DefaultServlet extends HttpServlet {
               .append("'");
 
             sb.append(">");
-            sb.append(RequestUtil.filter(entry));
+            sb.append(Escape.htmlElementContent(entry));
             if (childResource.isDirectory())
                 sb.append("/");
             sb.append("</entry>");
         }
         sb.append("</entries>");
 
-        String readme = getReadme(resource);
+        String readme = getReadme(resource, encoding);
 
         if (readme!=null) {
             sb.append("<readme><![CDATA[");
@@ -1347,13 +1747,13 @@ public class DefaultServlet extends HttpServlet {
             Transformer transformer = tFactory.newTransformer(xsltSource);
 
             ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            OutputStreamWriter osWriter = new OutputStreamWriter(stream, "UTF8");
+            OutputStreamWriter osWriter = new OutputStreamWriter(stream, StandardCharsets.UTF_8);
             StreamResult out = new StreamResult(osWriter);
             transformer.transform(xmlSource, out);
             osWriter.flush();
-            return (new ByteArrayInputStream(stream.toByteArray()));
+            return new ByteArrayInputStream(stream.toByteArray());
         } catch (TransformerException e) {
-            throw new ServletException("XSL transformer error", e);
+            throw new ServletException(sm.getString("defaultServlet.xslError"), e);
         } finally {
             if (Globals.IS_SECURITY_ENABLED) {
                 PrivilegedSetTccl pa = new PrivilegedSetTccl(original);
@@ -1365,27 +1765,54 @@ public class DefaultServlet extends HttpServlet {
     }
 
     /**
-     * Return an InputStream to an HTML representation of the contents
-     * of this directory.
+     * Return an InputStream to an HTML representation of the contents of this
+     * directory.
      *
-     * @param contextPath Context path to which our internal paths are
-     *  relative
+     * @param contextPath Context path to which our internal paths are relative
+     * @param resource    The associated resource
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the HTML data
+     *
+     * @throws IOException an IO error occurred
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10
+     * @deprecated Use {@link #renderHtml(HttpServletRequest, String, WebResource, String)} instead
      */
-    protected InputStream renderHtml(String contextPath, WebResource resource)
+    @Deprecated
+    protected InputStream renderHtml(String contextPath, WebResource resource, String encoding)
+        throws IOException {
+        return renderHtml(null, contextPath, resource, encoding);
+    }
+
+    /**
+     * Return an InputStream to an HTML representation of the contents of this
+     * directory.
+     *
+     * @param request     The HttpServletRequest being served
+     * @param contextPath Context path to which our internal paths are relative
+     * @param resource    The associated resource
+     * @param encoding    The encoding to use to process the readme (if any)
+     *
+     * @return the HTML data
+     *
+     * @throws IOException an IO error occurred
+     */
+    protected InputStream renderHtml(HttpServletRequest request, String contextPath, WebResource resource, String encoding)
         throws IOException {
 
         // Prepare a writer to a buffered area
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        OutputStreamWriter osWriter = new OutputStreamWriter(stream, "UTF8");
+        OutputStreamWriter osWriter = new OutputStreamWriter(stream, StandardCharsets.UTF_8);
         PrintWriter writer = new PrintWriter(osWriter);
 
         StringBuilder sb = new StringBuilder();
 
-        String[] entries = resources.list(resource.getWebappPath());
+        String directoryWebappPath = resource.getWebappPath();
+        WebResource[] entries = resources.listResources(directoryWebappPath);
 
         // rewriteUrl(contextPath) is expensive. cache result for later reuse
         String rewrittenContextPath =  rewriteUrl(contextPath);
-        String directoryWebappPath = resource.getWebappPath();
 
         // Render the page header
         sb.append("<html>\r\n");
@@ -1430,27 +1857,59 @@ public class DefaultServlet extends HttpServlet {
         sb.append("<table width=\"100%\" cellspacing=\"0\"" +
                      " cellpadding=\"5\" align=\"center\">\r\n");
 
+        SortManager.Order order;
+        if(sortListings && null != request)
+            order = sortManager.getOrder(request.getQueryString());
+        else
+            order = null;
         // Render the column headings
         sb.append("<tr>\r\n");
         sb.append("<td align=\"left\"><font size=\"+1\"><strong>");
-        sb.append(sm.getString("directory.filename"));
+        if(sortListings && null != request) {
+            sb.append("<a href=\"?C=N;O=");
+            sb.append(getOrderChar(order, 'N'));
+            sb.append("\">");
+            sb.append(sm.getString("directory.filename"));
+            sb.append("</a>");
+        } else {
+            sb.append(sm.getString("directory.filename"));
+        }
         sb.append("</strong></font></td>\r\n");
         sb.append("<td align=\"center\"><font size=\"+1\"><strong>");
-        sb.append(sm.getString("directory.size"));
+        if(sortListings && null != request) {
+            sb.append("<a href=\"?C=S;O=");
+            sb.append(getOrderChar(order, 'S'));
+            sb.append("\">");
+            sb.append(sm.getString("directory.size"));
+            sb.append("</a>");
+        } else {
+            sb.append(sm.getString("directory.size"));
+        }
         sb.append("</strong></font></td>\r\n");
         sb.append("<td align=\"right\"><font size=\"+1\"><strong>");
-        sb.append(sm.getString("directory.lastModified"));
+        if(sortListings && null != request) {
+            sb.append("<a href=\"?C=M;O=");
+            sb.append(getOrderChar(order, 'M'));
+            sb.append("\">");
+            sb.append(sm.getString("directory.lastModified"));
+            sb.append("</a>");
+        } else {
+            sb.append(sm.getString("directory.lastModified"));
+        }
         sb.append("</strong></font></td>\r\n");
         sb.append("</tr>");
 
+        if(null != sortManager && null != request) {
+            sortManager.sort(entries, request.getQueryString());
+        }
+
         boolean shade = false;
-        for (String entry : entries) {
-            if (entry.equalsIgnoreCase("WEB-INF") ||
-                entry.equalsIgnoreCase("META-INF"))
+        for (WebResource childResource : entries) {
+            String filename = childResource.getName();
+            if (filename.equalsIgnoreCase("WEB-INF") ||
+                filename.equalsIgnoreCase("META-INF"))
                 continue;
 
-            WebResource childResource =
-                    resources.getResource(directoryWebappPath + entry);
             if (!childResource.exists()) {
                 continue;
             }
@@ -1464,11 +1923,11 @@ public class DefaultServlet extends HttpServlet {
             sb.append("<td align=\"left\">&nbsp;&nbsp;\r\n");
             sb.append("<a href=\"");
             sb.append(rewrittenContextPath);
-            sb.append(rewriteUrl(directoryWebappPath + entry));
+            sb.append(rewriteUrl(childResource.getWebappPath()));
             if (childResource.isDirectory())
                 sb.append("/");
             sb.append("\"><tt>");
-            sb.append(RequestUtil.filter(entry));
+            sb.append(Escape.htmlElementContent(filename));
             if (childResource.isDirectory())
                 sb.append("/");
             sb.append("</tt></a></td>\r\n");
@@ -1492,7 +1951,7 @@ public class DefaultServlet extends HttpServlet {
 
         sb.append("<HR size=\"1\" noshade=\"noshade\">");
 
-        String readme = getReadme(resource);
+        String readme = getReadme(resource, encoding);
         if (readme!=null) {
             sb.append(readme);
             sb.append("<HR size=\"1\" noshade=\"noshade\">");
@@ -1507,7 +1966,7 @@ public class DefaultServlet extends HttpServlet {
         // Return an input stream to the underlying bytes
         writer.write(sb.toString());
         writer.flush();
-        return (new ByteArrayInputStream(stream.toByteArray()));
+        return new ByteArrayInputStream(stream.toByteArray());
 
     }
 
@@ -1516,6 +1975,7 @@ public class DefaultServlet extends HttpServlet {
      * Render the specified file size (in bytes).
      *
      * @param size File size (in bytes)
+     * @return the formatted size
      */
     protected String renderSize(long size) {
 
@@ -1531,19 +1991,34 @@ public class DefaultServlet extends HttpServlet {
 
     /**
      * Get the readme file as a string.
+     * @param directory The directory to search
+     * @param encoding The readme encoding
+     * @return the readme for the specified directory
      */
-    protected String getReadme(WebResource directory) {
+    protected String getReadme(WebResource directory, String encoding) {
 
         if (readmeFile != null) {
             WebResource resource = resources.getResource(
                     directory.getWebappPath() + readmeFile);
             if (resource.isFile()) {
                 StringWriter buffer = new StringWriter();
-                try (InputStream is = resource.getInputStream();
-                        InputStreamReader reader = new InputStreamReader(is)) {
+                InputStreamReader reader = null;
+                try (InputStream is = resource.getInputStream()){
+                    if (encoding != null) {
+                        reader = new InputStreamReader(is, encoding);
+                    } else {
+                        reader = new InputStreamReader(is);
+                    }
                     copyRange(reader, new PrintWriter(buffer));
                 } catch (IOException e) {
-                    log("Failure to close reader", e);
+                    log(sm.getString("defaultServlet.readerCloseFailed"), e);
+                } finally {
+                    if (reader != null) {
+                        try {
+                            reader.close();
+                        } catch (IOException e) {
+                        }
+                    }
                 }
                 return buffer.toString();
             } else {
@@ -1559,7 +2034,10 @@ public class DefaultServlet extends HttpServlet {
 
 
     /**
-     * Return a Source for the xsl template (if possible)
+     * Return a Source for the xsl template (if possible).
+     * @param directory The directory to search
+     * @return the source for the specified directory
+     * @throws IOException an IO error occurred
      */
     protected Source findXsltSource(WebResource directory)
         throws IOException {
@@ -1602,11 +2080,16 @@ public class DefaultServlet extends HttpServlet {
          */
         if (globalXsltFile != null) {
             File f = validateGlobalXsltFile();
-            if (f != null){
-                try (FileInputStream fis = new FileInputStream(f)){
-                    byte b[] = new byte[(int)f.length()]; /* danger! */
-                    fis.read(b);
-                    return new StreamSource(new ByteArrayInputStream(b));
+            if (f != null) {
+                long globalXsltFileSize = f.length();
+                if (globalXsltFileSize > Integer.MAX_VALUE) {
+                    log("globalXsltFile [" + f.getAbsolutePath() + "] is too big to buffer");
+                } else {
+                    try (FileInputStream fis = new FileInputStream(f)){
+                        byte b[] = new byte[(int)f.length()];
+                        IOTools.readFully(fis, b);
+                        return new StreamSource(new ByteArrayInputStream(b));
+                    }
                 }
             }
         }
@@ -1689,19 +2172,29 @@ public class DefaultServlet extends HttpServlet {
 
     /**
      * Check if sendfile can be used.
+     * @param request The Servlet request
+     * @param response The Servlet response
+     * @param resource The resource
+     * @param length The length which will be written (will be used only if
+     *  range is null)
+     * @param range The range that will be written
+     * @return <code>true</code> if sendfile should be used (writing is then
+     *  delegated to the endpoint)
      */
     protected boolean checkSendfile(HttpServletRequest request,
                                   HttpServletResponse response,
                                   WebResource resource,
                                   long length, Range range) {
+        String canonicalPath;
         if (sendfileSize > 0
-            && resource.isFile()
             && length > sendfileSize
-            && (resource.getCanonicalPath() != null)
-            && (Boolean.TRUE == request.getAttribute(Globals.SENDFILE_SUPPORTED_ATTR))
+            && (Boolean.TRUE.equals(request.getAttribute(Globals.SENDFILE_SUPPORTED_ATTR)))
             && (request.getClass().getName().equals("org.apache.catalina.connector.RequestFacade"))
-            && (response.getClass().getName().equals("org.apache.catalina.connector.ResponseFacade"))) {
-            request.setAttribute(Globals.SENDFILE_FILENAME_ATTR, resource.getCanonicalPath());
+            && (response.getClass().getName().equals("org.apache.catalina.connector.ResponseFacade"))
+            && resource.isFile()
+            && ((canonicalPath = resource.getCanonicalPath()) != null)
+            ) {
+            request.setAttribute(Globals.SENDFILE_FILENAME_ATTR, canonicalPath);
             if (range == null) {
                 request.setAttribute(Globals.SENDFILE_FILE_START_ATTR, Long.valueOf(0L));
                 request.setAttribute(Globals.SENDFILE_FILE_END_ATTR, Long.valueOf(length));
@@ -1721,9 +2214,10 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfMatch(HttpServletRequest request,
             HttpServletResponse response, WebResource resource)
@@ -1744,7 +2238,7 @@ public class DefaultServlet extends HttpServlet {
                         conditionSatisfied = true;
                 }
 
-                // If none of the given ETags match, 412 Precodition failed is
+                // If none of the given ETags match, 412 Precondition failed is
                 // sent back
                 if (!conditionSatisfied) {
                     response.sendError
@@ -1764,9 +2258,9 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
      */
     protected boolean checkIfModifiedSince(HttpServletRequest request,
             HttpServletResponse response, WebResource resource) {
@@ -1800,9 +2294,10 @@ public class DefaultServlet extends HttpServlet {
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfNoneMatch(HttpServletRequest request,
             HttpServletResponse response, WebResource resource)
@@ -1850,33 +2345,15 @@ public class DefaultServlet extends HttpServlet {
     }
 
     /**
-     * Check if the user agent supports gzip encoding.
-     *
-     * @param request   The servlet request we are processing
-     * @return boolean true if the user agent supports gzip encoding,
-     * and false if the user agent does not support gzip encoding
-     */
-    protected boolean checkIfGzip(HttpServletRequest request) {
-        Enumeration<String> headers = request.getHeaders("Accept-Encoding");
-        while (headers.hasMoreElements()) {
-            String header = headers.nextElement();
-            if (header.indexOf("gzip") != -1) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    /**
      * Check if the if-unmodified-since condition is satisfied.
      *
      * @param request   The servlet request we are processing
      * @param response  The servlet response we are creating
      * @param resource  The resource
-     * @return boolean true if the resource meets the specified condition,
-     * and false if the condition is not satisfied, in which case request
-     * processing is stopped
+     * @return <code>true</code> if the resource meets the specified condition,
+     *  and <code>false</code> if the condition is not satisfied, in which case
+     *  request processing is stopped
+     * @throws IOException an IO error occurred
      */
     protected boolean checkIfUnmodifiedSince(HttpServletRequest request,
             HttpServletResponse response, WebResource resource)
@@ -1904,15 +2381,12 @@ public class DefaultServlet extends HttpServlet {
      * output stream, and ensure that both streams are closed before returning
      * (even in the face of an exception).
      *
-     * @param resource  The source resource
      * @param is        The input stream to read the source resource from
      * @param ostream   The output stream to write to
      *
      * @exception IOException if an input/output error occurs
      */
-    protected void copy(WebResource resource, InputStream is,
-                      ServletOutputStream ostream)
-        throws IOException {
+    protected void copy(InputStream is, ServletOutputStream ostream) throws IOException {
 
         IOException exception = null;
         InputStream istream = new BufferedInputStream(is, input);
@@ -1934,30 +2408,20 @@ public class DefaultServlet extends HttpServlet {
      * output stream, and ensure that both streams are closed before returning
      * (even in the face of an exception).
      *
-     * @param resource  The source resource
      * @param is        The input stream to read the source resource from
      * @param writer    The writer to write to
      * @param encoding  The encoding to use when reading the source input stream
      *
      * @exception IOException if an input/output error occurs
      */
-    protected void copy(WebResource resource, InputStream is, PrintWriter writer,
-            String encoding) throws IOException {
-
+    protected void copy(InputStream is, PrintWriter writer, String encoding) throws IOException {
         IOException exception = null;
-
-        InputStream resourceInputStream = null;
-        if (resource.isFile()) {
-            resourceInputStream = resource.getInputStream();
-        } else {
-            resourceInputStream = is;
-        }
 
         Reader reader;
         if (encoding == null) {
-            reader = new InputStreamReader(resourceInputStream);
+            reader = new InputStreamReader(is);
         } else {
-            reader = new InputStreamReader(resourceInputStream, encoding);
+            reader = new InputStreamReader(is, encoding);
         }
 
         // Copy the input stream to the output stream
@@ -1967,8 +2431,9 @@ public class DefaultServlet extends HttpServlet {
         reader.close();
 
         // Rethrow any exception that has occurred
-        if (exception != null)
+        if (exception != null) {
             throw exception;
+        }
     }
 
 
@@ -2011,7 +2476,7 @@ public class DefaultServlet extends HttpServlet {
      * @param resource      The source resource
      * @param ostream       The output stream to write to
      * @param ranges        Enumeration of the ranges the client wanted to
- *                          retrieve
+     *                          retrieve
      * @param contentType   Content type of the resource
      * @exception IOException if an input/output error occurs
      */
@@ -2144,7 +2609,7 @@ public class DefaultServlet extends HttpServlet {
             return e;
         }
         if (skipped < start) {
-            return new IOException(sm.getString("defaultservlet.skipfail",
+            return new IOException(sm.getString("defaultServlet.skipfail",
                     Long.valueOf(skipped), Long.valueOf(start)));
         }
 
@@ -2194,6 +2659,26 @@ public class DefaultServlet extends HttpServlet {
         }
     }
 
+    protected static class CompressionFormat implements Serializable {
+        private static final long serialVersionUID = 1L;
+        public final String extension;
+        public final String encoding;
+
+        public CompressionFormat(String extension, String encoding) {
+            this.extension = extension;
+            this.encoding = encoding;
+        }
+    }
+
+    private static class PrecompressedResource {
+        public final WebResource resource;
+        public final CompressionFormat format;
+
+        private PrecompressedResource(WebResource resource, CompressionFormat format) {
+            this.resource = resource;
+            this.format = format;
+        }
+    }
 
     /**
      * This is secure in the sense that any attempt to use an external entity
@@ -2221,6 +2706,293 @@ public class DefaultServlet extends HttpServlet {
                 IOException {
             throw new SAXException(sm.getString("defaultServlet.blockExternalEntity2",
                     name, publicId, baseURI, systemId));
+        }
+    }
+
+    /**
+     * Gets the ordering character to be used for a particular column.
+     *
+     * @param order  The order that is currently being applied
+     * @param column The column that will be rendered.
+     *
+     * @return Either 'A' or 'D', to indicate "ascending" or "descending" sort
+     *         order.
+     */
+    private char getOrderChar(SortManager.Order order, char column) {
+        if(column == order.column) {
+            if(order.ascending) {
+                return 'D';
+            } else {
+                return 'A';
+            }
+        } else {
+            return 'D';
+        }
+    }
+
+    /**
+     * A class encapsulating the sorting of resources.
+     */
+    private static class SortManager
+    {
+        /**
+         * The default sort.
+         */
+        protected Comparator<WebResource> defaultResourceComparator;
+
+        /**
+         * Comparator to use when sorting resources by name.
+         */
+        protected Comparator<WebResource> resourceNameComparator;
+
+        /**
+         * Comparator to use when sorting files by name, ascending (reverse).
+         */
+        protected Comparator<WebResource> resourceNameComparatorAsc;
+
+        /**
+         * Comparator to use when sorting resources by size.
+         */
+        protected Comparator<WebResource> resourceSizeComparator;
+
+        /**
+         * Comparator to use when sorting files by size, ascending (reverse).
+         */
+        protected Comparator<WebResource> resourceSizeComparatorAsc;
+
+        /**
+         * Comparator to use when sorting resources by last-modified date.
+         */
+        protected Comparator<WebResource> resourceLastModifiedComparator;
+
+        /**
+         * Comparator to use when sorting files by last-modified date, ascending (reverse).
+         */
+        protected Comparator<WebResource> resourceLastModifiedComparatorAsc;
+
+        public SortManager(boolean directoriesFirst) {
+            resourceNameComparator = new ResourceNameComparator();
+            resourceNameComparatorAsc = Collections.reverseOrder(resourceNameComparator);
+            resourceSizeComparator = new ResourceSizeComparator(resourceNameComparator);
+            resourceSizeComparatorAsc = Collections.reverseOrder(resourceSizeComparator);
+            resourceLastModifiedComparator = new ResourceLastModifiedDateComparator(resourceNameComparator);
+            resourceLastModifiedComparatorAsc = Collections.reverseOrder(resourceLastModifiedComparator);
+
+            if(directoriesFirst) {
+                resourceNameComparator = new DirsFirstComparator(resourceNameComparator);
+                resourceNameComparatorAsc = new DirsFirstComparator(resourceNameComparatorAsc);
+                resourceSizeComparator = new DirsFirstComparator(resourceSizeComparator);
+                resourceSizeComparatorAsc = new DirsFirstComparator(resourceSizeComparatorAsc);
+                resourceLastModifiedComparator = new DirsFirstComparator(resourceLastModifiedComparator);
+                resourceLastModifiedComparatorAsc = new DirsFirstComparator(resourceLastModifiedComparatorAsc);
+            }
+
+            defaultResourceComparator = resourceNameComparator;
+        }
+
+        /**
+         * Sorts an array of resources according to an ordering string.
+         *
+         * @param resources The array to sort.
+         * @param order     The ordering string.
+         *
+         * @see #getOrder(String)
+         */
+        public void sort(WebResource[] resources, String order) {
+            Comparator<WebResource> comparator = getComparator(order);
+
+            if(null != comparator)
+                Arrays.sort(resources, comparator);
+        }
+
+        public Comparator<WebResource> getComparator(String order) {
+            return getComparator(getOrder(order));
+        }
+
+        public Comparator<WebResource> getComparator(Order order) {
+            if(null == order)
+                return defaultResourceComparator;
+
+            if('N' == order.column) {
+                if(order.ascending) {
+                    return resourceNameComparatorAsc;
+                } else {
+                    return resourceNameComparator;
+                }
+            }
+
+            if('S' == order.column) {
+                if(order.ascending) {
+                    return resourceSizeComparatorAsc;
+                } else {
+                    return resourceSizeComparator;
+                }
+            }
+
+            if('M' == order.column) {
+                if(order.ascending) {
+                    return resourceLastModifiedComparatorAsc;
+                } else {
+                    return resourceLastModifiedComparator;
+                }
+            }
+
+            return defaultResourceComparator;
+        }
+
+        /**
+         * Gets the Order to apply given an ordering-string. This
+         * ordering-string matches a subset of the ordering-strings
+         * supported by
+         * <a href="https://httpd.apache.org/docs/2.4/mod/mod_autoindex.html#query">Apache httpd</a>.
+         *
+         * @param order The ordering-string provided by the client.
+         *
+         * @return An Order specifying the column and ascending/descending to
+         *         be applied to resources.
+         */
+        public Order getOrder(String order) {
+            if(null == order || 0 == order.trim().length())
+                return Order.DEFAULT;
+
+            String[] options = order.split(";");
+
+            if(0 == options.length)
+                return Order.DEFAULT;
+
+            char column = '\0';
+            boolean ascending = false;
+
+            for(String option : options) {
+                option = option.trim();
+
+                if(2 < option.length()) {
+                    char opt = option.charAt(0);
+                    if('C' == opt)
+                        column = option.charAt(2);
+                    else if('O' == opt)
+                        ascending = ('A' == option.charAt(2));
+                }
+            }
+
+            if('N' == column) {
+                if(ascending) {
+                    return Order.NAME_ASC;
+                } else {
+                    return Order.NAME;
+                }
+            }
+
+            if('S' == column) {
+                if(ascending) {
+                    return Order.SIZE_ASC;
+                } else {
+                    return Order.SIZE;
+                }
+            }
+
+            if('M' == column) {
+                if(ascending) {
+                    return Order.LAST_MODIFIED_ASC;
+                } else {
+                    return Order.LAST_MODIFIED;
+                }
+            }
+
+            return Order.DEFAULT;
+        }
+
+        public static class Order {
+            final char column;
+            final boolean ascending;
+
+            public Order(char column, boolean ascending) {
+                this.column = column;
+                this.ascending = ascending;
+            }
+
+            public static final Order NAME = new Order('N', false);
+            public static final Order NAME_ASC = new Order('N', true);
+            public static final Order SIZE = new Order('S', false);
+            public static final Order SIZE_ASC = new Order('S', true);
+            public static final Order LAST_MODIFIED = new Order('M', false);
+            public static final Order LAST_MODIFIED_ASC = new Order('M', true);
+
+            public static final Order DEFAULT = NAME;
+        }
+    }
+
+    private static class DirsFirstComparator
+        implements Comparator<WebResource>
+    {
+        private final Comparator<WebResource> base;
+
+        public DirsFirstComparator(Comparator<WebResource> core) {
+            this.base = core;
+        }
+
+        @Override
+        public int compare(WebResource r1, WebResource r2) {
+            if(r1.isDirectory()) {
+                if(r2.isDirectory()) {
+                    return base.compare(r1, r2);
+                } else {
+                    return -1; // r1, directory, first
+                }
+            } else if(r2.isDirectory()) {
+                return 1; // r2, directory, first
+            } else {
+                return base.compare(r1, r2);
+            }
+        }
+    }
+
+    private static class ResourceNameComparator
+        implements Comparator<WebResource>
+    {
+        @Override
+        public int compare(WebResource r1, WebResource r2) {
+            return r1.getName().compareTo(r2.getName());
+        }
+    }
+
+    private static class ResourceSizeComparator
+        implements Comparator<WebResource>
+    {
+        private Comparator<WebResource> base;
+
+        public ResourceSizeComparator(Comparator<WebResource> base) {
+            this.base = base;
+        }
+
+        @Override
+        public int compare(WebResource r1, WebResource r2) {
+            int c = Long.compare(r1.getContentLength(), r2.getContentLength());
+
+            if(0 == c)
+                return base.compare(r1, r2);
+            else
+                return c;
+        }
+    }
+
+    private static class ResourceLastModifiedDateComparator
+        implements Comparator<WebResource>
+    {
+        private Comparator<WebResource> base;
+
+        public ResourceLastModifiedDateComparator(Comparator<WebResource> base) {
+            this.base = base;
+        }
+
+        @Override
+        public int compare(WebResource r1, WebResource r2) {
+            int c = Long.compare(r1.getLastModified(), r2.getLastModified());
+
+            if(0 == c)
+                return base.compare(r1, r2);
+            else
+                return c;
         }
     }
 }

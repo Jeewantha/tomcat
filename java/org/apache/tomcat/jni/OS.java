@@ -25,7 +25,6 @@ public class OS {
 
     /* OS Enums */
     private static final int UNIX      = 1;
-    private static final int NETWARE   = 2;
     private static final int WIN32     = 3;
     private static final int WIN64     = 4;
     private static final int LINUX     = 5;
@@ -47,7 +46,13 @@ public class OS {
     private static native boolean is(int type);
 
     public static final boolean IS_UNIX    = is(UNIX);
-    public static final boolean IS_NETWARE = is(NETWARE);
+    /**
+     * @deprecated Hard-coded to false since there has not been a supported
+     *             Netware platform for many years.
+     *             This will be removed in Tomcat 10 onwards
+     */
+    @Deprecated
+    public static final boolean IS_NETWARE = false;
     public static final boolean IS_WIN32   = is(WIN32);
     public static final boolean IS_WIN64   = is(WIN64);
     public static final boolean IS_LINUX   = is(LINUX);
@@ -58,6 +63,7 @@ public class OS {
     /**
      * Get the name of the system default character set.
      * @param pool the pool to allocate the name from, if needed
+     * @return the encoding
      */
     public static native String defaultEncoding(long pool);
 
@@ -66,6 +72,7 @@ public class OS {
      * Defers to apr_os_default_encoding if the current locale's
      * data can't be retrieved on this system.
      * @param pool the pool to allocate the name from, if needed
+     * @return the encoding
      */
     public static native String localeEncoding(long pool);
 
@@ -73,6 +80,7 @@ public class OS {
      * Generate random bytes.
      * @param buf Buffer to fill with random bytes
      * @param len Length of buffer in bytes
+     * @return the operation status
      */
     public static native int random(byte [] buf, int len);
 
@@ -102,6 +110,7 @@ public class OS {
      * </PRE>
      * @param inf array that will be filled with system information.
      *            Array length must be at least 16.
+     * @return the operation status
      */
     public static native int info(long [] inf);
 

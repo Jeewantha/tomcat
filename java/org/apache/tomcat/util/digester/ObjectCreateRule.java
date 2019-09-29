@@ -41,7 +41,7 @@ public class ObjectCreateRule extends Rule {
      */
     public ObjectCreateRule(String className) {
 
-        this(className, (String) null);
+        this(className, null);
 
     }
 
@@ -94,6 +94,25 @@ public class ObjectCreateRule extends Rule {
     public void begin(String namespace, String name, Attributes attributes)
             throws Exception {
 
+        String realClassName = getRealClassName(attributes);
+
+        if (realClassName == null) {
+            throw new NullPointerException(sm.getString("rule.noClassName", namespace, name));
+        }
+
+        // Instantiate the new object and push it on the context stack
+        Class<?> clazz = digester.getClassLoader().loadClass(realClassName);
+        Object instance = clazz.getConstructor().newInstance();
+        digester.push(instance);
+    }
+
+
+    /**
+     * Return the actual class name of the class to be instantiated.
+     * @param attributes The attribute list for this element
+     * @return the class name
+     */
+    protected String getRealClassName(Attributes attributes) {
         // Identify the name of the class to instantiate
         String realClassName = className;
         if (attributeName != null) {
@@ -102,20 +121,7 @@ public class ObjectCreateRule extends Rule {
                 realClassName = value;
             }
         }
-        if (digester.log.isDebugEnabled()) {
-            digester.log.debug("[ObjectCreateRule]{" + digester.match +
-                    "}New " + realClassName);
-        }
-
-        if (realClassName == null) {
-            throw new NullPointerException("No class name specified for " +
-                    namespace + " " + name);
-        }
-
-        // Instantiate the new object and push it on the context stack
-        Class<?> clazz = digester.getClassLoader().loadClass(realClassName);
-        Object instance = clazz.newInstance();
-        digester.push(instance);
+        return realClassName;
     }
 
 
@@ -145,15 +151,13 @@ public class ObjectCreateRule extends Rule {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("ObjectCreateRule[");
         sb.append("className=");
         sb.append(className);
         sb.append(", attributeName=");
         sb.append(attributeName);
         sb.append("]");
-        return (sb.toString());
-
+        return sb.toString();
     }
 
 

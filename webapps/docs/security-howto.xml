@@ -55,20 +55,55 @@
     the Tomcat process and provide that user with the minimum necessary
     permissions for the operating system. For example, it should not be possible
     to log on remotely using the Tomcat user.</p>
-    <p>File permissions should also be suitably restricted. Taking the Tomcat
-    instances at the ASF as an example (where auto-deployment is disabled and
-    web applications are deployed as exploded directories), the standard
-    configuration is to have all Tomcat files owned by root with group Tomcat
-    and whilst owner has read/write privileges, group only has read and world
-    has no permissions. The exceptions are the logs, temp and work directory
-    that are owned by the Tomcat user rather than root. This means that even if
-    an attacker compromises the Tomcat process, they can&apos;t change the
-    Tomcat configuration, deploy new web applications or modify existing web
-    applications. The Tomcat process runs with a umask of 007 to maintain these
-    permissions.</p>
+    <p>File permissions should also be suitably restricted. In the
+    <code>.tar.gz</code> distribution, files and directories are not world
+    readable and the group does not have write access. On Unix like operating
+    systems, Tomcat runs with a default umask of <code>0027</code> to maintain
+    these permissions for files created while Tomcat is running (e.g. log files,
+    expanded WARs, etc.).</p>
+    <p>Taking the Tomcat instances at the ASF as an example (where
+    auto-deployment is disabled and web applications are deployed as exploded
+    directories), the standard configuration is to have all Tomcat files owned
+    by root with group Tomcat and whilst owner has read/write privileges, group
+    only has read and world has no permissions. The exceptions are the logs,
+    temp and work directory that are owned by the Tomcat user rather than root.
+    This means that even if an attacker compromises the Tomcat process, they
+    can&apos;t change the Tomcat configuration, deploy new web applications or
+    modify existing web applications. The Tomcat process runs with a umask of
+    007 to maintain these permissions.</p>
     <p>At the network level, consider using a firewall to limit both incoming
     and outgoing connections to only those connections you  expect to be
     present.</p>
+
+    <subsection name="JMX">
+      <p>The security of the JMX connection is dependent on the implementation
+      provided by the JRE and therefore falls outside the control of Tomcat.</p>
+
+      <p>Typically, access control is very limited (either read-only to
+      everything or read-write to everything). Tomcat exposes a large amount
+      of internal information and control via JMX to aid debugging, monitoring
+      and management. Given the limited access control available, JMX access
+      should be treated as equivalent to local root/admin access and restricted
+      accordingly.</p>
+
+      <p>The JMX access control provided by most (all?) JRE vendors does not
+      log failed authentication attempts, nor does it provide an account
+      lock-out feature after repeated failed authentications. This makes a
+      brute force attack easy to mount and difficult to detect.</p>
+
+      <p>Given all of the above, care should be taken to ensure that, if used,
+      the JMX interface is appropriately secured. Options you may wish to
+      consider to secure the JMX interface include:</p>
+
+      <ul>
+        <li>configuring a strong password for all JMX users;</li>
+        <li>binding the JMX listener only to an internal network;</li>
+        <li>limiting network access to the JMX port to trusted clients; and</li>
+        <li>providing an application specific health page for use by external
+            monitoring systems.</li>
+      </ul>
+    </subsection>
+
   </section>
 
   <section name="Default web applications">
@@ -134,10 +169,11 @@
        <li>Do not remove the use of the <a
            href="config/realm.html#LockOut_Realm_-_org.apache.catalina.realm.LockOutRealm">LockOutRealm</a>
            which prevents brute force attacks against user passwords.</li>
-       <li>Uncomment the <a href="config/valve.html#Remote_Address_Filter">RemoteAddrValve</a>
-           in <code>/META-INF/context.xml</code> which limits access to
-           localhost. If remote access is required, limit it to specific IP
-           addresses using this valve.</li>
+       <li>Configure the <a href="config/valve.html#Remote_Address_Valve">RemoteAddrValve</a>
+           in the <a href="config/context.html">context.xml</a> file for the
+           management application which limits access to localhost by default.
+           If remote access is required, limit it to specific IP addresses using
+           this valve.</li>
      </ul>
    </subsection>
   </section>
@@ -203,8 +239,9 @@
       <p>The APR Lifecycle Listener is not stable if compiled on Solaris using
       gcc. If using the APR/native connector on Solaris, compile it with the
       Sun Studio compiler.</p>
-
-      <p>The Security Listener should be enabled and configured as appropriate.
+      <p>The JNI Library Loading Listener may be used to load native code. It should
+      only be used to load trusted libraries.</p>
+      <p>The Security Lifecycle Listener should be enabled and configured as appropriate.
       </p>
     </subsection>
 
@@ -265,28 +302,6 @@
       proxy uses AJP then the SSL attributes of the client connection are
       passed via the AJP protocol and separate connectors are not needed.</p>
 
-      <p>The <strong>sslEnabledProtocols</strong> attribute determines which
-      versions of the SSL/TLS protocol are used.  Since the POODLE attack in
-      2014, all SSL protocols are considered unsafe and a secure setting for
-      this attribute in a standalone Tomcat setup might be
-      <code>sslEnabledProtocols="TLSv1,TLSv1.1,TLSv1.2"</code></p>
-
-      <p>The <strong>ciphers</strong> attribute controls the ciphers used for
-      SSL connections. By default, the default ciphers for the JVM will be used.
-      This usually means that the weak export grade ciphers will be included in
-      the list of available ciphers. Secure environments will normally want to
-      configure a more limited set of ciphers.  This attribute accepts the
-      <a href="https://www.openssl.org/docs/apps/ciphers.html" target="_blank"
-         rel="nofollow">
-      OpenSSL syntax</a> for including/excluding cipher suites.
-      As of 2014-11-19, with standalone Tomcat 8 and Java 8, Forward Secrecy
-      can be achieved by specifying only TLS protocols using
-      the sslEnabledProtocols attribute (above) and excluding non-DH ciphers,
-      and weak/broken ciphers.  The
-      <a href="https://www.ssllabs.com/ssltest/index.html" target="_blank"
-         rel="nofollow">Qualys SSL/TLS test</a> is a useful tool for
-      configuring these settings.</p>
-
       <p>The <strong>tomcatAuthentication</strong> and
       <strong>tomcatAuthorization</strong> attributes are used with the
       AJP connectors to determine if Tomcat should handle all authentication and
@@ -343,6 +358,15 @@
       operating systems (this includes Windows) will disable a number of
       security measures and allow, among other things, direct access to the
       WEB-INF directory.</p>
+
+      <p>The <strong>sessionCookiePathUsesTrailingSlash</strong> can be used to
+      work around a bug in a number of browsers (Internet Explorer, Safari and
+      Edge) to prevent session cookies being exposed across applications when
+      applications share a common path prefix. However, enabling this option
+      can create problems for applications with Servlets mapped to
+      <code>/*</code>. It should also be noted the RFC6265 section 8.5 makes it
+      clear that different paths should not be considered sufficient to isolate
+      cookies from other applications.</p>
     </subsection>
 
     <subsection name="Valves">
@@ -352,7 +376,7 @@
       context as required.</p>
 
       <p>Any administrative application should be protected by a
-      RemoteAddrValve. (Note that this Valve is also available as a Filter.)
+      RemoteAddrValve (this Valve is also available as a Filter).
       The <strong>allow</strong> attribute should be used to limit access to a
       set of known trusted hosts.</p>
 
@@ -368,13 +392,17 @@
       <p>Modify the values as required. Note that this will also change the version
       number reported in some of the management tools and may make it harder to
       determine the real version installed. The CATALINA_HOME/bin/version.bat|sh
-      script will still report the version number.</p>
+      script will still report the correct version number.</p>
 
       <p>The default ErrorReportValve can display stack traces and/or JSP
       source code to clients when an error occurs. To avoid this, custom error
       handling can be configured within each web application. Alternatively, you
       can explicitly configure an <a href="config/valve.html">ErrorReportValve</a>
       and set its <strong>showReport</strong> attribute to <code>false</code>.</p>
+
+      <p>The RewriteValve uses regular expressions and poorly formed regex
+      patterns may be vulnerable to "catastrophic backtracking" or "ReDoS". See
+      <a href="rewrite.html">Rewrite docs</a> for more details.</p>
     </subsection>
 
     <subsection name="Realms">
@@ -406,6 +434,17 @@
       <p>The length of the session ID may be changed with the
       <strong>sessionIdLength</strong> attribute.</p>
     </subsection>
+
+    <subsection name="Cluster">
+      <p>The cluster implementation is written on the basis that a secure,
+      trusted network is used for all of the cluster related network traffic. It
+      is not safe to run a cluster on a insecure, untrusted network.</p>
+
+      <p>If you are operating on an untrusted network or would prefer to
+      exercise an over-abundance of caution, you can use the
+      <a href="config/cluster-interceptor.html#org.apache.catalina.tribes.group.interceptors.EncryptInterceptor_Attributes">EncryptInterceptor</a>
+      to encrypt traffic between nodes.</p>
+    </subsection>
   </section>
 
   <section name="System Properties">
@@ -432,9 +471,9 @@
   </section>
 
   <section name="web.xml">
-    <p>This applies to the default <code>conf/web.xml</code> file and
-    <code>WEB-INF/web.xml</code> files in web applications if they define
-    the components mentioned here.</p>
+    <p>This applies to the default <code>conf/web.xml</code> file, the
+    <code>/WEB-INF/tomcat-web.xml</code> and the <code>/WEB-INF/web.xml</code>
+    files in web applications if they define the components mentioned here.</p>
 
     <p>The <a href="default-servlet.html">DefaultServlet</a> is configured
     with <strong>readonly</strong> set to
@@ -461,8 +500,20 @@
     <p>Modify the values as required. Note that this will also change the version
     number reported in some of the management tools and may make it harder to
     determine the real version installed. The CATALINA_HOME/bin/version.bat|sh
-    script will still report the version number.
+    script will still report the correct version number.
     </p>
+
+    <p>The CGI Servlet is disabled by default. If enabled, the debug
+    initialisation parameter should not be set to <code>10</code> or higher on a
+    production system because the debug page is not secure.</p>
+
+    <p>When using the CGI Servlet on Windows with
+    <code>enableCmdLineArguments</code> enabled, review the setting of
+    <code>cmdLineArgumentsDecoded</code> carefully and ensure that it is
+    appropriate for your environment. The default value is secure. Insecure
+    configurations may expose the server to remote code execution. Further
+    information on the potential risks and mitigations may be found by
+    following the links in the <a href="cgi-howto.html">CGI How To</a>.</p>
 
     <p><a href="config/filter.html">FailedRequestFilter</a>
     can be configured and used to reject requests that had errors during

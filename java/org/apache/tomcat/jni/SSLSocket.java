@@ -24,22 +24,24 @@ package org.apache.tomcat.jni;
 public class SSLSocket {
 
     /**
-     * Attach APR socket on a SSL connection.
+     * Attach APR socket on an SSL connection.
      * @param ctx SSLContext to use.
      * @param sock APR Socket that already did physical connect or accept.
      * @return APR_STATUS code.
+     * @throws Exception An error occurred
      */
     public static native int attach(long ctx, long sock)
         throws Exception;
 
     /**
-     * Do a SSL handshake.
+     * Do an SSL handshake.
      * @param thesocket The socket to use
+     * @return the handshake status
      */
     public static native int handshake(long thesocket);
 
     /**
-     * Do a SSL renegotiation.
+     * Do an SSL renegotiation.
      * SSL supports per-directory re-configuration of SSL parameters.
      * This is implemented by performing an SSL renegotiation of the
      * re-configured parameters after the request is read, but before the
@@ -51,6 +53,7 @@ public class SSLSocket {
      * only), so Apache has no API hook for this step.
      *
      * @param thesocket The socket to use
+     * @return the operation status
      */
     public static native int renegotiate(long thesocket);
 
@@ -86,6 +89,7 @@ public class SSLSocket {
      * @param sock The socket to read the data from.
      * @param id Parameter id.
      * @return Byte array containing info id value.
+     * @throws Exception An error occurred
      */
     public static native byte[] getInfoB(long sock, int id)
         throws Exception;
@@ -96,6 +100,7 @@ public class SSLSocket {
      * @param sock The socket to read the data from.
      * @param id Parameter id.
      * @return String containing info id value.
+     * @throws Exception An error occurred
      */
     public static native String getInfoS(long sock, int id)
         throws Exception;
@@ -106,6 +111,7 @@ public class SSLSocket {
      * @param sock The socket to read the data from.
      * @param id Parameter id.
      * @return Integer containing info id value or -1 on error.
+     * @throws Exception An error occurred
      */
     public static native int getInfoI(long sock, int id)
         throws Exception;

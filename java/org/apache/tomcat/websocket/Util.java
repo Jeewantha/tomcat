@@ -69,7 +69,7 @@ public class Util {
 
 
     static boolean isControl(byte opCode) {
-        return (opCode & 0x08) > 0;
+        return (opCode & 0x08) != 0;
     }
 
 
@@ -342,8 +342,8 @@ public class Util {
                 @SuppressWarnings("unused")
                 Decoder instance;
                 try {
-                    instance = decoderClazz.newInstance();
-                } catch (InstantiationException | IllegalAccessException e) {
+                    instance = decoderClazz.getConstructor().newInstance();
+                } catch (ReflectiveOperationException e) {
                     throw new DeploymentException(
                             sm.getString("pojoMethodMapping.invalidDecoder",
                                     decoderClazz.getName()), e);

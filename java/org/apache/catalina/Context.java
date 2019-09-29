@@ -29,6 +29,7 @@ import javax.servlet.ServletSecurityElement;
 import javax.servlet.descriptor.JspConfigDescriptor;
 
 import org.apache.catalina.deploy.NamingResourcesImpl;
+import org.apache.tomcat.ContextBind;
 import org.apache.tomcat.InstanceManager;
 import org.apache.tomcat.JarScanner;
 import org.apache.tomcat.util.descriptor.web.ApplicationParameter;
@@ -57,7 +58,7 @@ import org.apache.tomcat.util.http.CookieProcessor;
  *
  * @author Craig R. McClanahan
  */
-public interface Context extends Container {
+public interface Context extends Container, ContextBind {
 
 
     // ----------------------------------------------------- Manifest Constants
@@ -395,15 +396,18 @@ public interface Context extends Container {
 
 
     /**
-     * Return the document root for this Context.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
+     * Obtain the document root for this Context.
+     *
+     * @return An absolute pathname or a relative (to the Host's appBase)
+     *         pathname.
      */
     public String getDocBase();
 
 
     /**
-     * Set the document root for this Context.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
+     * Set the document root for this Context. This can be either an absolute
+     * pathname or a relative pathname. Relative pathnames are relative to the
+     * containing Host's appBase.
      *
      * @param docBase The new document root
      */
@@ -411,13 +415,18 @@ public interface Context extends Container {
 
 
     /**
-     * Return the URL encoded context path, using UTF-8.
+     * Return the URL encoded context path
+     *
+     * @return The URL encoded (with UTF-8) context path
      */
     public String getEncodedPath();
 
 
     /**
-     * Return the boolean on the annotations parsing.
+     * Determine if annotations parsing is currently disabled
+     *
+     * @return {@code true} if annotation parsing is disabled for this web
+     *         application
      */
     public boolean getIgnoreAnnotations();
 
@@ -432,7 +441,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the login configuration descriptor for this web application.
+     * @return the login configuration descriptor for this web application.
      */
     public LoginConfig getLoginConfig();
 
@@ -446,7 +455,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the naming resources associated with this web application.
+     * @return the naming resources associated with this web application.
      */
     public NamingResourcesImpl getNamingResources();
 
@@ -460,7 +469,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the context path for this web application.
+     * @return the context path for this web application.
      */
     public String getPath();
 
@@ -474,7 +483,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the public identifier of the deployment descriptor DTD that is
+     * @return the public identifier of the deployment descriptor DTD that is
      * currently being parsed.
      */
     public String getPublicId();
@@ -490,7 +499,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the reloadable flag for this web application.
+     * @return the reloadable flag for this web application.
      */
     public boolean getReloadable();
 
@@ -504,7 +513,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the override flag for this web application.
+     * @return the override flag for this web application.
      */
     public boolean getOverride();
 
@@ -518,7 +527,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the privileged flag for this web application.
+     * @return the privileged flag for this web application.
      */
     public boolean getPrivileged();
 
@@ -532,13 +541,13 @@ public interface Context extends Container {
 
 
     /**
-     * Return the servlet context for which this Context is a facade.
+     * @return the Servlet context for which this Context is a facade.
      */
     public ServletContext getServletContext();
 
 
     /**
-     * Return the default session timeout (in minutes) for this
+     * @return the default session timeout (in minutes) for this
      * web application.
      */
     public int getSessionTimeout();
@@ -573,7 +582,7 @@ public interface Context extends Container {
     public void setSwallowAbortedUploads(boolean swallowAbortedUploads);
 
     /**
-     * Return the value of the swallowOutput flag.
+     * @return the value of the swallowOutput flag.
      */
     public boolean getSwallowOutput();
 
@@ -589,7 +598,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the Java class name of the Wrapper implementation used
+     * @return the Java class name of the Wrapper implementation used
      * for servlets registered in this Context.
      */
     public String getWrapperClass();
@@ -692,29 +701,37 @@ public interface Context extends Container {
     public void setJarScanner(JarScanner jarScanner);
 
     /**
-     * Obtain the {@link Authenticator} that is used by this context or
-     * <code>null</code> if none is used.
+     * @return the {@link Authenticator} that is used by this context. This is
+     *         always non-{@code null} for a started Context
      */
     public Authenticator getAuthenticator();
 
     /**
      * Set whether or not the effective web.xml for this context should be
      * logged on context start.
+     *
+     * @param logEffectiveWebXml set to <code>true</code> to log the complete
+     *        web.xml that will be used for the webapp
      */
     public void setLogEffectiveWebXml(boolean logEffectiveWebXml);
 
     /**
      * Should the effective web.xml for this context be logged on context start?
+     *
+     * @return true if the reconstructed web.xml that will be used for the
+     *   webapp should be logged
      */
     public boolean getLogEffectiveWebXml();
 
     /**
-     * Get the instance manager associated with this context.
+     * @return the instance manager associated with this context.
      */
     public InstanceManager getInstanceManager();
 
     /**
      * Set the instance manager associated with this context.
+     *
+     * @param instanceManager the new instance manager instance
      */
     public void setInstanceManager(InstanceManager instanceManager);
 
@@ -765,6 +782,8 @@ public interface Context extends Container {
 
     /**
      * Add a security constraint to the set for this web application.
+     *
+     * @param constraint The security constraint that should be added
      */
     public void addConstraint(SecurityConstraint constraint);
 
@@ -803,14 +822,6 @@ public interface Context extends Container {
      *  is malformed
      */
     public void addFilterMapBefore(FilterMap filterMap);
-
-    /**
-     * Add the classname of an InstanceListener to be added to each
-     * Wrapper appended to this Context.
-     *
-     * @param listener Java class name of an InstanceListener class
-     */
-    public void addInstanceListener(String listener);
 
 
     /**
@@ -866,7 +877,9 @@ public interface Context extends Container {
      * @param pattern URL pattern to be mapped
      * @param name Name of the corresponding servlet to execute
      */
-    public void addServletMapping(String pattern, String name);
+    public default void addServletMappingDecoded(String pattern, String name) {
+        addServletMappingDecoded(pattern, name, false);
+    }
 
 
     /**
@@ -878,7 +891,7 @@ public interface Context extends Container {
      * @param jspWildcard true if name identifies the JspServlet
      * and pattern contains a wildcard; false otherwise
      */
-    public void addServletMapping(String pattern, String name,
+    public void addServletMappingDecoded(String pattern, String name,
             boolean jspWildcard);
 
 
@@ -918,36 +931,46 @@ public interface Context extends Container {
 
 
     /**
+     * Factory method to create and return a new InstanceManager
+     * instance. This can be used for framework integration or easier
+     * configuration with custom Context implementations.
+     * @return the instance manager
+     */
+    public InstanceManager createInstanceManager();
+
+    /**
      * Factory method to create and return a new Wrapper instance, of
      * the Java implementation class appropriate for this Context
      * implementation.  The constructor of the instantiated Wrapper
      * will have been called, but no properties will have been set.
+     *
+     * @return a newly created wrapper instance that is used to wrap a Servlet
      */
     public Wrapper createWrapper();
 
 
     /**
-     * Return the set of application listener class names configured
+     * @return the set of application listener class names configured
      * for this application.
      */
     public String[] findApplicationListeners();
 
 
     /**
-     * Return the set of application parameters for this application.
+     * @return the set of application parameters for this application.
      */
     public ApplicationParameter[] findApplicationParameters();
 
 
     /**
-     * Return the set of security constraints for this web application.
+     * @return the set of security constraints for this web application.
      * If there are none, a zero-length array is returned.
      */
     public SecurityConstraint[] findConstraints();
 
 
     /**
-     * Return the error page entry for the specified HTTP error code,
+     * @return the error page entry for the specified HTTP error code,
      * if any; otherwise return <code>null</code>.
      *
      * @param errorCode Error code to look up
@@ -956,24 +979,41 @@ public interface Context extends Container {
 
 
     /**
-     * Return the error page entry for the specified Java exception type,
-     * if any; otherwise return <code>null</code>.
-     *
      * @param exceptionType Exception type to look up
+     *
+     * @return the error page entry for the specified Java exception type,
+     *         if any; otherwise return {@code null}.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     *             Use {@link #findErrorPage(Throwable)} instead.
      */
+    @Deprecated
     public ErrorPage findErrorPage(String exceptionType);
 
 
+    /**
+     * Find and return the ErrorPage instance for the specified exception's
+     * class, or an ErrorPage instance for the closest superclass for which
+     * there is such a definition.  If no associated ErrorPage instance is
+     * found, return <code>null</code>.
+     *
+     * @param throwable The exception type for which to find an ErrorPage
+     *
+     * @return the error page entry for the specified Java exception type,
+     *         if any; otherwise return {@code null}.
+     */
+    public ErrorPage findErrorPage(Throwable throwable);
+
 
     /**
-     * Return the set of defined error pages for all specified error codes
+     * @return the set of defined error pages for all specified error codes
      * and exception types.
      */
     public ErrorPage[] findErrorPages();
 
 
     /**
-     * Return the filter definition for the specified filter name, if any;
+     * @return the filter definition for the specified filter name, if any;
      * otherwise return <code>null</code>.
      *
      * @param filterName Filter name to look up
@@ -982,26 +1022,19 @@ public interface Context extends Container {
 
 
     /**
-     * Return the set of defined filters for this Context.
+     * @return the set of defined filters for this Context.
      */
     public FilterDef[] findFilterDefs();
 
 
     /**
-     * Return the set of filter mappings for this Context.
+     * @return the set of filter mappings for this Context.
      */
     public FilterMap[] findFilterMaps();
 
 
     /**
-     * Return the set of InstanceListener classes that will be added to
-     * newly created Wrappers automatically.
-     */
-    public String[] findInstanceListeners();
-
-
-    /**
-     * Return the MIME type to which the specified extension is mapped,
+     * @return the MIME type to which the specified extension is mapped,
      * if any; otherwise return <code>null</code>.
      *
      * @param extension Extension to map to a MIME type
@@ -1010,14 +1043,14 @@ public interface Context extends Container {
 
 
     /**
-     * Return the extensions for which MIME mappings are defined.  If there
+     * @return the extensions for which MIME mappings are defined.  If there
      * are none, a zero-length array is returned.
      */
     public String[] findMimeMappings();
 
 
     /**
-     * Return the value for the specified context initialization
+     * @return the value for the specified context initialization
      * parameter name, if any; otherwise return <code>null</code>.
      *
      * @param name Name of the parameter to return
@@ -1026,7 +1059,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the names of all defined context initialization parameters
+     * @return the names of all defined context initialization parameters
      * for this Context.  If no parameters are defined, a zero-length
      * array is returned.
      */
@@ -1039,12 +1072,13 @@ public interface Context extends Container {
      * is one.  Otherwise, return the specified role unchanged.
      *
      * @param role Security role to map
+     * @return The role name that was mapped to the specified role
      */
     public String findRoleMapping(String role);
 
 
     /**
-     * Return <code>true</code> if the specified security role is defined
+     * @return <code>true</code> if the specified security role is defined
      * for this application; otherwise return <code>false</code>.
      *
      * @param role Security role to verify
@@ -1053,14 +1087,14 @@ public interface Context extends Container {
 
 
     /**
-     * Return the security roles defined for this application.  If none
+     * @return the security roles defined for this application.  If none
      * have been defined, a zero-length array is returned.
      */
     public String[] findSecurityRoles();
 
 
     /**
-     * Return the servlet name mapped by the specified pattern (if any);
+     * @return the servlet name mapped by the specified pattern (if any);
      * otherwise return <code>null</code>.
      *
      * @param pattern Pattern for which a mapping is requested
@@ -1069,50 +1103,61 @@ public interface Context extends Container {
 
 
     /**
-     * Return the patterns of all defined servlet mappings for this
+     * @return the patterns of all defined servlet mappings for this
      * Context.  If no mappings are defined, a zero-length array is returned.
      */
     public String[] findServletMappings();
 
 
     /**
-     * Return the context-relative URI of the error page for the specified
+     * @return the context-relative URI of the error page for the specified
      * HTTP status code, if any; otherwise return <code>null</code>.
      *
      * @param status HTTP status code to look up
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     *             Use {@link #findErrorPage(int)} instead.
      */
+    @Deprecated
     public String findStatusPage(int status);
 
 
     /**
-     * Return the set of HTTP status codes for which error pages have
+     * @return the set of HTTP status codes for which error pages have
      * been specified.  If none are specified, a zero-length array
      * is returned.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     *             Use {@link #findErrorPages()} instead.
      */
+    @Deprecated
     public int[] findStatusPages();
 
 
     /**
-     * Get the associated ThreadBindingListener.
+     * @return the associated ThreadBindingListener.
      */
     public ThreadBindingListener getThreadBindingListener();
 
 
     /**
      * Get the associated ThreadBindingListener.
+     *
+     * @param threadBindingListener Set the listener that will receive
+     *       notifications when entering and exiting the application scope
      */
     public void setThreadBindingListener(ThreadBindingListener threadBindingListener);
 
 
     /**
-     * Return the set of watched resources for this Context. If none are
+     * @return the set of watched resources for this Context. If none are
      * defined, a zero length array will be returned.
      */
     public String[] findWatchedResources();
 
 
     /**
-     * Return <code>true</code> if the specified welcome file is defined
+     * @return <code>true</code> if the specified welcome file is defined
      * for this Context; otherwise return <code>false</code>.
      *
      * @param name Welcome file to verify
@@ -1121,21 +1166,21 @@ public interface Context extends Container {
 
 
     /**
-     * Return the set of welcome files defined for this Context.  If none are
+     * @return the set of welcome files defined for this Context.  If none are
      * defined, a zero-length array is returned.
      */
     public String[] findWelcomeFiles();
 
 
     /**
-     * Return the set of LifecycleListener classes that will be added to
+     * @return the set of LifecycleListener classes that will be added to
      * newly created Wrappers automatically.
      */
     public String[] findWrapperLifecycles();
 
 
     /**
-     * Return the set of ContainerListener classes that will be added to
+     * @return the set of ContainerListener classes that will be added to
      * newly created Wrappers automatically.
      */
     public String[] findWrapperListeners();
@@ -1144,6 +1189,8 @@ public interface Context extends Container {
     /**
      * Notify all {@link javax.servlet.ServletRequestListener}s that a request
      * has started.
+     *
+     * @param request The request object that will be passed to the listener
      * @return <code>true</code> if the listeners fire successfully, else
      *         <code>false</code>
      */
@@ -1152,6 +1199,8 @@ public interface Context extends Container {
     /**
      * Notify all {@link javax.servlet.ServletRequestListener}s that a request
      * has ended.
+     *
+     * @param request The request object that will be passed to the listener
      * @return <code>true</code> if the listeners fire successfully, else
      *         <code>false</code>
      */
@@ -1216,15 +1265,6 @@ public interface Context extends Container {
      * @param filterMap The filter mapping to be removed
      */
     public void removeFilterMap(FilterMap filterMap);
-
-
-    /**
-     * Remove a class name from the set of InstanceListener classes that
-     * will be added to newly created Wrappers.
-     *
-     * @param listener Class name of an InstanceListener class to be removed
-     */
-    public void removeInstanceListener(String listener);
 
 
     /**
@@ -1307,7 +1347,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the real path for a given virtual path, if possible; otherwise
+     * @return the real path for a given virtual path, if possible; otherwise
      * return <code>null</code>.
      *
      * @param path The path to the desired resource
@@ -1316,7 +1356,7 @@ public interface Context extends Container {
 
 
     /**
-     * Return the effective major version of the Servlet spec used by this
+     * @return the effective major version of the Servlet spec used by this
      * context.
      */
     public int getEffectiveMajorVersion();
@@ -1325,12 +1365,14 @@ public interface Context extends Container {
     /**
      * Set the effective major version of the Servlet spec used by this
      * context.
+     *
+     * @param major Set the version number
      */
     public void setEffectiveMajorVersion(int major);
 
 
     /**
-     * Return the effective minor version of the Servlet spec used by this
+     * @return the effective minor version of the Servlet spec used by this
      * context.
      */
     public int getEffectiveMinorVersion();
@@ -1339,12 +1381,14 @@ public interface Context extends Container {
     /**
      * Set the effective minor version of the Servlet spec used by this
      * context.
+     *
+     * @param minor Set the version number
      */
     public void setEffectiveMinorVersion(int minor);
 
 
     /**
-     * Obtain the JSP configuration for this context.
+     * @return the JSP configuration for this context.
      * Will be null if there is no JSP configuration.
      */
     public JspConfigDescriptor getJspConfigDescriptor();
@@ -1352,6 +1396,8 @@ public interface Context extends Container {
     /**
      * Set the JspConfigDescriptor for this context.
      * A null value indicates there is not JSP configuration.
+     *
+     * @param descriptor the new JSP configuration
      */
     public void setJspConfigDescriptor(JspConfigDescriptor descriptor);
 
@@ -1367,20 +1413,24 @@ public interface Context extends Container {
 
     /**
      * Is this Context paused whilst it is reloaded?
+     *
+     * @return <code>true</code> if the context has been paused
      */
     public boolean getPaused();
 
 
     /**
      * Is this context using version 2.2 of the Servlet spec?
+     *
+     * @return <code>true</code> for a legacy Servlet 2.2 webapp
      */
     boolean isServlet22();
 
     /**
-     * Notification that servlet security has been dynamically set in a
+     * Notification that Servlet security has been dynamically set in a
      * {@link javax.servlet.ServletRegistration.Dynamic}
-     * @param registration servlet security was modified for
-     * @param servletSecurityElement new security constraints for this servlet
+     * @param registration Servlet security was modified for
+     * @param servletSecurityElement new security constraints for this Servlet
      * @return urls currently mapped to this registration that are already
      *         present in web.xml
      */
@@ -1391,6 +1441,8 @@ public interface Context extends Container {
      * Sets the (comma separated) list of Servlets that expect a resource to be
      * present. Used to ensure that welcome files associated with Servlets that
      * expect a resource to be present are not mapped when there is no resource.
+     *
+     * @param resourceOnlyServlets The Servlet names comma separated list
      */
     public void setResourceOnlyServlets(String resourceOnlyServlets);
 
@@ -1411,7 +1463,7 @@ public interface Context extends Container {
     public boolean isResourceOnlyServlet(String servletName);
 
     /**
-     * Return the base name to use for WARs, directories or context.xml files
+     * @return the base name to use for WARs, directories or context.xml files
      * for this context.
      */
     public String getBaseName();
@@ -1420,24 +1472,29 @@ public interface Context extends Container {
      * Set the version of this web application - used to differentiate
      * different versions of the same web application when using parallel
      * deployment.
+     *
+     * @param webappVersion The webapp version associated with the context,
+     *    which should be unique
      */
     public void setWebappVersion(String webappVersion);
 
     /**
-     * Set the version of this web application - used to differentiate
+     * @return The version of this web application, used to differentiate
      * different versions of the same web application when using parallel
-     * deployment. If not specified, defaults to the empty string.
+     * deployment.
      */
     public String getWebappVersion();
 
     /**
      * Configure whether or not requests listeners will be fired on forwards for
      * this Context.
+     *
+     * @param enable <code>true</code> to fire request listeners when forwarding
      */
     public void setFireRequestListenersOnForwards(boolean enable);
 
     /**
-     * Determine whether or not requests listeners will be fired on forwards for
+     * @return whether or not requests listeners will be fired on forwards for
      * this Context.
      */
     public boolean getFireRequestListenersOnForwards();
@@ -1446,11 +1503,14 @@ public interface Context extends Container {
      * Configures if a user presents authentication credentials, whether the
      * context will process them when the request is for a non-protected
      * resource.
+     *
+     * @param enable <code>true</code> to perform authentication even outside
+     *    security constraints
      */
     public void setPreemptiveAuthentication(boolean enable);
 
     /**
-     * Determines if a user presents authentication credentials, will the
+     * @return if a user presents authentication credentials, will the
      * context will process them when the request is for a non-protected
      * resource.
      */
@@ -1459,17 +1519,19 @@ public interface Context extends Container {
     /**
      * Configures if a response body is included when a redirect response is
      * sent to the client.
+     *
+     * @param enable <code>true</code> to send a response body for redirects
      */
     public void setSendRedirectBody(boolean enable);
 
     /**
-     * Determines if the context is configured to include a response body as
+     * @return if the context is configured to include a response body as
      * part of a redirect response.
      */
     public boolean getSendRedirectBody();
 
     /**
-     * Return the Loader with which this Context is associated.
+     * @return the Loader with which this Context is associated.
      */
     public Loader getLoader();
 
@@ -1481,7 +1543,7 @@ public interface Context extends Container {
     public void setLoader(Loader loader);
 
     /**
-     * Return the Resources with which this Context is associated.
+     * @return the Resources with which this Context is associated.
      */
     public WebResourceRoot getResources();
 
@@ -1493,7 +1555,7 @@ public interface Context extends Container {
     public void setResources(WebResourceRoot resources);
 
     /**
-     * Return the Manager with which this Context is associated.  If there is
+     * @return the Manager with which this Context is associated.  If there is
      * no associated Manager, return <code>null</code>.
      */
     public Manager getManager();
@@ -1516,7 +1578,7 @@ public interface Context extends Container {
     public void setAddWebinfClassesResources(boolean addWebinfClassesResources);
 
     /**
-     * Gets the flag that indicates if /WEB-INF/classes should be treated like
+     * @return the flag that indicates if /WEB-INF/classes should be treated like
      * an exploded JAR and JAR resources made available as if they were in a
      * JAR.
      */
@@ -1620,46 +1682,7 @@ public interface Context extends Container {
     public Map<String, String> findPreDestroyMethods();
 
     /**
-     * Change the current thread context class loader to the web application
-     * class loader. If no web application class loader is defined, or if the
-     * current thread is already using the web application class loader then no
-     * change will be made. If the class loader is changed and a
-     * {@link ThreadBindingListener} is configured then
-     * {@link ThreadBindingListener#bind()} will be called after the change has
-     * been made.
-     *
-     * @param usePrivilegedAction
-     *          Should a {@link java.security.PrivilegedAction} be used when
-     *          obtaining the current thread context class loader and setting
-     *          the new one?
-     * @param originalClassLoader
-     *          The current class loader if known to save this method having to
-     *          look it up
-     *
-     * @return If the class loader has been changed by the method it will return
-     *         the thread context class loader in use when the method was
-     *         called. If no change was made then this method returns null.
-     */
-    public ClassLoader bind(boolean usePrivilegedAction, ClassLoader originalClassLoader);
-
-    /**
-     * Restore the current thread context class loader to the original class
-     * loader in used before {@link #bind(boolean, ClassLoader)} was called. If
-     * no original class loader is passed to this method then no change will be
-     * made. If the class loader is changed and a {@link ThreadBindingListener}
-     * is configured then {@link ThreadBindingListener#unbind()} will be called
-     * before the change is made.
-     *
-     * @param usePrivilegedAction
-     *          Should a {@link java.security.PrivilegedAction} be used when
-     *          setting the current thread context class loader?
-     * @param originalClassLoader
-     *          The class loader to restore as the thread context class loader
-     */
-    public void unbind(boolean usePrivilegedAction, ClassLoader originalClassLoader);
-
-    /**
-     * Obtain the token necessary for operations on the associated JNDI naming
+     * @return  the token necessary for operations on the associated JNDI naming
      * context.
      */
     public Object getNamingToken();
@@ -1676,8 +1699,206 @@ public interface Context extends Container {
     public void setCookieProcessor(CookieProcessor cookieProcessor);
 
     /**
-     * Obtains the {@link CookieProcessor} that will be used to process cookies
+     * @return the {@link CookieProcessor} that will be used to process cookies
      * for this Context.
      */
     public CookieProcessor getCookieProcessor();
+
+    /**
+     * When a client provides the ID for a new session, should that ID be
+     * validated? The only use case for using a client provided session ID is to
+     * have a common session ID across multiple web applications. Therefore,
+     * any client provided session ID should already exist in another web
+     * application. If this check is enabled, the client provided session ID
+     * will only be used if the session ID exists in at least one other web
+     * application for the current host. Note that the following additional
+     * tests are always applied, irrespective of this setting:
+     * <ul>
+     * <li>The session ID is provided by a cookie</li>
+     * <li>The session cookie has a path of {@code /}</li>
+     * </ul>
+     *
+     * @param validateClientProvidedNewSessionId
+     *          {@code true} if validation should be applied
+     */
+    public void setValidateClientProvidedNewSessionId(boolean validateClientProvidedNewSessionId);
+
+    /**
+     * Will client provided session IDs be validated (see {@link
+     * #setValidateClientProvidedNewSessionId(boolean)}) before use?
+     *
+     * @return {@code true} if validation will be applied. Otherwise, {@code
+     *         false}
+     */
+    public boolean getValidateClientProvidedNewSessionId();
+
+    /**
+     * If enabled, requests for a web application context root will be
+     * redirected (adding a trailing slash) by the Mapper. This is more
+     * efficient but has the side effect of confirming that the context path is
+     * valid.
+     *
+     * @param mapperContextRootRedirectEnabled Should the redirects be enabled?
+     */
+    public void setMapperContextRootRedirectEnabled(boolean mapperContextRootRedirectEnabled);
+
+    /**
+     * Determines if requests for a web application context root will be
+     * redirected (adding a trailing slash) by the Mapper. This is more
+     * efficient but has the side effect of confirming that the context path is
+     * valid.
+     *
+     * @return {@code true} if the Mapper level redirect is enabled for this
+     *         Context.
+     */
+    public boolean getMapperContextRootRedirectEnabled();
+
+    /**
+     * If enabled, requests for a directory will be redirected (adding a
+     * trailing slash) by the Mapper. This is more efficient but has the
+     * side effect of confirming that the directory is valid.
+     *
+     * @param mapperDirectoryRedirectEnabled Should the redirects be enabled?
+     */
+    public void setMapperDirectoryRedirectEnabled(boolean mapperDirectoryRedirectEnabled);
+
+    /**
+     * Determines if requests for a directory will be redirected (adding a
+     * trailing slash) by the Mapper. This is more efficient but has the
+     * side effect of confirming that the directory is valid.
+     *
+     * @return {@code true} if the Mapper level redirect is enabled for this
+     *         Context.
+     */
+    public boolean getMapperDirectoryRedirectEnabled();
+
+    /**
+     * Controls whether HTTP 1.1 and later location headers generated by a call
+     * to {@link javax.servlet.http.HttpServletResponse#sendRedirect(String)}
+     * will use relative or absolute redirects.
+     * <p>
+     * Relative redirects are more efficient but may not work with reverse
+     * proxies that change the context path. It should be noted that it is not
+     * recommended to use a reverse proxy to change the context path because of
+     * the multiple issues it creates.
+     * <p>
+     * Absolute redirects should work with reverse proxies that change the
+     * context path but may cause issues with the
+     * {@link org.apache.catalina.filters.RemoteIpFilter} if the filter is
+     * changing the scheme and/or port.
+     *
+     * @param useRelativeRedirects {@code true} to use relative redirects and
+     *                             {@code false} to use absolute redirects
+     */
+    public void setUseRelativeRedirects(boolean useRelativeRedirects);
+
+    /**
+     * Will HTTP 1.1 and later location headers generated by a call to
+     * {@link javax.servlet.http.HttpServletResponse#sendRedirect(String)} use
+     * relative or absolute redirects.
+     *
+     * @return {@code true} if relative redirects will be used {@code false} if
+     *         absolute redirects are used.
+     *
+     * @see #setUseRelativeRedirects(boolean)
+     */
+    public boolean getUseRelativeRedirects();
+
+    /**
+     * Are paths used in calls to obtain a request dispatcher expected to be
+     * encoded? This affects both how Tomcat handles calls to obtain a request
+     * dispatcher as well as how Tomcat generates paths used to obtain request
+     * dispatchers internally.
+     *
+     * @param dispatchersUseEncodedPaths {@code true} to use encoded paths,
+     *        otherwise {@code false}
+     */
+    public void setDispatchersUseEncodedPaths(boolean dispatchersUseEncodedPaths);
+
+    /**
+     * Are paths used in calls to obtain a request dispatcher expected to be
+     * encoded? This applys to both how Tomcat handles calls to obtain a request
+     * dispatcher as well as how Tomcat generates paths used to obtain request
+     * dispatchers internally.
+     *
+     * @return {@code true} if encoded paths will be used, otherwise
+     *         {@code false}
+     */
+    public boolean getDispatchersUseEncodedPaths();
+
+    /**
+     * Set the default request body encoding for this web application.
+     *
+     * @param encoding The default encoding
+     */
+    public void setRequestCharacterEncoding(String encoding);
+
+    /**
+     * Get the default request body encoding for this web application.
+     *
+     * @return The default request body encoding
+     */
+    public String getRequestCharacterEncoding();
+
+    /**
+     * Set the default response body encoding for this web application.
+     *
+     * @param encoding The default encoding
+     */
+    public void setResponseCharacterEncoding(String encoding);
+
+    /**
+     * Get the default response body encoding for this web application.
+     *
+     * @return The default response body encoding
+     */
+    public String getResponseCharacterEncoding();
+
+    /**
+     * Configure if, when returning a context path from {@link
+     * javax.servlet.http.HttpServletRequest#getContextPath()}, the return value
+     * is allowed to contain multiple leading '/' characters.
+     *
+     * @param allowMultipleLeadingForwardSlashInPath The new value for the flag
+     */
+    public void setAllowMultipleLeadingForwardSlashInPath(
+            boolean allowMultipleLeadingForwardSlashInPath);
+
+    /**
+     * When returning a context path from {@link
+     * javax.servlet.http.HttpServletRequest#getContextPath()}, is it allowed to
+     * contain multiple leading '/' characters?
+     *
+     * @return <code>true</code> if multiple leading '/' characters are allowed,
+     *         otherwise <code>false</code>
+     */
+    public boolean getAllowMultipleLeadingForwardSlashInPath();
+
+
+    public void incrementInProgressAsyncCount();
+
+
+    public void decrementInProgressAsyncCount();
+
+
+    /**
+     * Configure whether Tomcat will attempt to create an upload target used by
+     * this web application if it does not exist when the web application
+     * attempts to use it.
+     *
+     * @param createUploadTargets {@code true} if Tomcat should attempt to
+     *          create the upload target, otherwise {@code false}
+     */
+    public void setCreateUploadTargets(boolean createUploadTargets);
+
+
+    /**
+     * Will Tomcat attempt to create an upload target used by this web
+     * application if it does not exist when the web application attempts to use
+     * it?
+     *
+     * @return {@code true} if Tomcat will attempt to create an upload target
+     *         otherwise {@code false}
+     */
+    public boolean getCreateUploadTargets();
 }

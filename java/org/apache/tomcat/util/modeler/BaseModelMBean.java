@@ -48,6 +48,7 @@ import javax.management.modelmbean.ModelMBeanNotificationBroadcaster;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /*
  * Changes from commons.modeler:
@@ -62,7 +63,7 @@ import org.apache.juli.logging.LogFactory;
  *    like Object and Class.
  *  - setModelMBean is no longer called on resources ( not used in tomcat )
  *  - no caching of Methods for now - operations and setters are not called repeatedly in most
- *  management use cases. Getters should't be called very frequently either - and even if they
+ *  management use cases. Getters shouldn't be called very frequently either - and even if they
  *  are, the overhead of getting the method should be small compared with other JMX costs ( RMI, etc ).
  *  We can add getter cache if needed.
  *  - removed unused constructor, fields
@@ -100,23 +101,11 @@ import org.apache.juli.logging.LogFactory;
  * @author Craig R. McClanahan
  * @author Costin Manolache
  */
-public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBeanNotificationBroadcaster {
+public class BaseModelMBean implements DynamicMBean, MBeanRegistration,
+        ModelMBeanNotificationBroadcaster {
+
     private static final Log log = LogFactory.getLog(BaseModelMBean.class);
-
-    // ----------------------------------------------------------- Constructors
-
-    /**
-     * Construct a <code>ModelMBean</code> with default
-     * <code>ModelMBeanInfo</code> information.
-     *
-     * @exception MBeanException if the initializer of an object
-     *  throws an exception
-     * @exception RuntimeOperationsException if an IllegalArgumentException
-     *  occurs
-     */
-    protected BaseModelMBean() throws MBeanException, RuntimeOperationsException {
-        super();
-    }
+    private static final StringManager sm = StringManager.getManager(BaseModelMBean.class);
 
     // ----------------------------------------------------- Instance Variables
 
@@ -169,8 +158,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         // Validate the input parameters
         if (name == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Attribute name is null"),
-                 "Attribute name is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullAttributeName")),
+                        sm.getString("baseModelMBean.nullAttributeName"));
 
         if( (resource instanceof DynamicMBean) &&
              ! ( resource instanceof BaseModelMBean )) {
@@ -194,21 +183,21 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
                 t = e;
             if (t instanceof RuntimeException)
                 throw new RuntimeOperationsException
-                    ((RuntimeException) t, "Exception invoking method " + name);
+                    ((RuntimeException) t, sm.getString("baseModelMBean.invokeError", name));
             else if (t instanceof Error)
                 throw new RuntimeErrorException
-                    ((Error) t, "Error invoking method " + name);
+                    ((Error) t, sm.getString("baseModelMBean.invokeError", name));
             else
                 throw new MBeanException
-                    (e, "Exception invoking method " + name);
+                    (e, sm.getString("baseModelMBean.invokeError", name));
         } catch (Exception e) {
             throw new MBeanException
-                (e, "Exception invoking method " + name);
+                (e, sm.getString("baseModelMBean.invokeError", name));
         }
 
         // Return the results of this method invocation
         // FIXME - should we validate the return type?
-        return (result);
+        return result;
     }
 
 
@@ -223,8 +212,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         // Validate the input parameters
         if (names == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Attribute names list is null"),
-                 "Attribute names list is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullAttributeNameList")),
+                        sm.getString("baseModelMBean.nullAttributeNameList"));
 
         // Prepare our response, eating all exceptions
         AttributeList response = new AttributeList();
@@ -236,7 +225,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
                 // is the indication of a getter problem
             }
         }
-        return (response);
+        return response;
 
     }
 
@@ -284,8 +273,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         // Validate the input parameters
         if (name == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Method name is null"),
-                 "Method name is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullMethodName")),
+                        sm.getString("baseModelMBean.nullMethodName"));
 
         if( log.isDebugEnabled()) log.debug("Invoke " + name);
 
@@ -301,27 +290,27 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
             }
         } catch (InvocationTargetException e) {
             Throwable t = e.getTargetException();
-            log.error("Exception invoking method " + name , t );
+            log.error(sm.getString("baseModelMBean.invokeError", name), t );
             if (t == null)
                 t = e;
             if (t instanceof RuntimeException)
                 throw new RuntimeOperationsException
-                    ((RuntimeException) t, "Exception invoking method " + name);
+                    ((RuntimeException) t, sm.getString("baseModelMBean.invokeError", name));
             else if (t instanceof Error)
                 throw new RuntimeErrorException
-                    ((Error) t, "Error invoking method " + name);
+                    ((Error) t, sm.getString("baseModelMBean.invokeError", name));
             else
                 throw new MBeanException
-                    ((Exception)t, "Exception invoking method " + name);
+                    ((Exception)t, sm.getString("baseModelMBean.invokeError", name));
         } catch (Exception e) {
-            log.error("Exception invoking method " + name , e );
+            log.error(sm.getString("baseModelMBean.invokeError", name), e );
             throw new MBeanException
-                (e, "Exception invoking method " + name);
+                (e, sm.getString("baseModelMBean.invokeError", name));
         }
 
         // Return the results of this method invocation
         // FIXME - should we validate the return type?
-        return (result);
+        return result;
 
     }
 
@@ -354,8 +343,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
             try {
                 return Class.forName(signature);
             } catch (ClassNotFoundException e) {
-                throw new ReflectionException
-                    (e, "Cannot find Class for " + signature);
+                throw new ReflectionException(e, sm.getString("baseModelMBean.cnfeForSignature", signature));
             }
         }
     }
@@ -394,16 +382,16 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         // Validate the input parameters
         if (attribute == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Attribute is null"),
-                 "Attribute is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullAttribute")),
+                        sm.getString("baseModelMBean.nullAttribute"));
 
         String name = attribute.getName();
         Object value = attribute.getValue();
 
         if (name == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Attribute name is null"),
-                 "Attribute name is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullAttributeName")),
+                        sm.getString("baseModelMBean.nullAttributeName"));
 
         Object oldValue=null;
         //if( getAttMap.get(name) != null )
@@ -423,23 +411,23 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
                 t = e;
             if (t instanceof RuntimeException)
                 throw new RuntimeOperationsException
-                    ((RuntimeException) t, "Exception invoking method " + name);
+                    ((RuntimeException) t, sm.getString("baseModelMBean.invokeError", name));
             else if (t instanceof Error)
                 throw new RuntimeErrorException
-                    ((Error) t, "Error invoking method " + name);
+                    ((Error) t, sm.getString("baseModelMBean.invokeError", name));
             else
                 throw new MBeanException
-                    (e, "Exception invoking method " + name);
+                    (e, sm.getString("baseModelMBean.invokeError", name));
         } catch (Exception e) {
-            log.error("Exception invoking method " + name , e );
+            log.error(sm.getString("baseModelMBean.invokeError", name) , e );
             throw new MBeanException
-                (e, "Exception invoking method " + name);
+                (e, sm.getString("baseModelMBean.invokeError", name));
         }
         try {
             sendAttributeChangeNotification(new Attribute( name, oldValue),
                     attribute);
         } catch(Exception ex) {
-            log.error("Error sending notification " + name, ex);
+            log.error(sm.getString("baseModelMBean.notificationError", name), ex);
         }
         //attributes.put( name, value );
 //        if( source != null ) {
@@ -484,7 +472,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
             }
         }
 
-        return (getAttributes(names));
+        return getAttributes(names);
 
     }
 
@@ -496,6 +484,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
      * Get the instance handle of the object against which we execute
      * all methods in this ModelMBean management interface.
      *
+     * @return the backend managed object
      * @exception InstanceNotFoundException if the managed resource object
      *  cannot be found
      * @exception InvalidTargetObjectTypeException if the managed resource
@@ -511,8 +500,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
 
         if (resource == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Managed resource is null"),
-                 "Managed resource is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullResource")),
+                        sm.getString("baseModelMBean.nullResource"));
 
         return resource;
 
@@ -544,8 +533,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
     {
         if (resource == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Managed resource is null"),
-                 "Managed resource is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullResource")),
+                        sm.getString("baseModelMBean.nullResource"));
 
 //        if (!"objectreference".equalsIgnoreCase(type))
 //            throw new InvalidTargetObjectTypeException(type);
@@ -588,7 +577,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         throws IllegalArgumentException {
 
         if (listener == null)
-            throw new IllegalArgumentException("Listener is null");
+            throw new IllegalArgumentException(sm.getString("baseModelMBean.nullListener"));
         if (attributeBroadcaster == null)
             attributeBroadcaster = new BaseNotificationBroadcaster();
 
@@ -619,7 +608,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         throws ListenerNotFoundException {
 
         if (listener == null)
-            throw new IllegalArgumentException("Listener is null");
+            throw new IllegalArgumentException(sm.getString("baseModelMBean.nullListener"));
 
         // FIXME - currently this removes *all* notifications for this listener
         if (attributeBroadcaster != null) {
@@ -648,8 +637,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
 
         if (notification == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Notification is null"),
-                 "Notification is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullNotification")),
+                        sm.getString("baseModelMBean.nullNotification"));
         if (attributeBroadcaster == null)
             return; // This means there are no registered listeners
         if( log.isDebugEnabled() )
@@ -713,8 +702,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
 
         if (notification == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Notification is null"),
-                 "Notification is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullNotification")),
+                        sm.getString("baseModelMBean.nullNotification"));
         if (generalBroadcaster == null)
             return; // This means there are no registered listeners
         generalBroadcaster.sendNotification(notification);
@@ -739,8 +728,8 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
 
         if (message == null)
             throw new RuntimeOperationsException
-                (new IllegalArgumentException("Message is null"),
-                 "Message is null");
+                (new IllegalArgumentException(sm.getString("baseModelMBean.nullMessage")),
+                        sm.getString("baseModelMBean.nullMessage"));
         Notification notification = new Notification
             ("jmx.modelmbean.generic", this, 1, message);
         sendNotification(notification);
@@ -769,7 +758,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         throws IllegalArgumentException {
 
         if (listener == null)
-            throw new IllegalArgumentException("Listener is null");
+            throw new IllegalArgumentException(sm.getString("baseModelMBean.nullListener"));
 
         if( log.isDebugEnabled() ) log.debug("addNotificationListener " + listener);
 
@@ -802,8 +791,6 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
 
         // Acquire the set of application notifications
         MBeanNotificationInfo current[] = getMBeanInfo().getNotifications();
-        if (current == null)
-            current = new MBeanNotificationInfo[0];
         MBeanNotificationInfo response[] =
             new MBeanNotificationInfo[current.length + 2];
  //       Descriptor descriptor = null;
@@ -836,7 +823,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
 
         // Copy remaining notifications as reported by the application
         System.arraycopy(current, 0, response, 2, current.length);
-        return (response);
+        return response;
 
     }
 
@@ -855,7 +842,7 @@ public class BaseModelMBean implements DynamicMBean, MBeanRegistration, ModelMBe
         throws ListenerNotFoundException {
 
         if (listener == null)
-            throw new IllegalArgumentException("Listener is null");
+            throw new IllegalArgumentException(sm.getString("baseModelMBean.nullListener"));
 
         if (generalBroadcaster != null) {
             generalBroadcaster.removeNotificationListener(listener);

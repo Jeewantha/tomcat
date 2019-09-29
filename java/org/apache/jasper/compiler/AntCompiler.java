@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.ByteArrayOutputStream;
@@ -22,6 +21,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Map;
 import java.util.StringTokenizer;
 
 import org.apache.jasper.Constants;
@@ -118,7 +118,7 @@ public class AntCompiler extends Compiler {
      * Compile the servlet from .java file to .class file
      */
     @Override
-    protected void generateClass(String[] smap)
+    protected void generateClass(Map<String,SmapStratum> smaps)
         throws FileNotFoundException, JasperException, Exception {
 
         long t1 = 0;
@@ -197,7 +197,6 @@ public class AntCompiler extends Compiler {
         javac.setDebug(ctxt.getOptions().getClassDebugInfo());
         javac.setSrcdir(srcPath);
         javac.setTempdir(options.getScratchDir());
-        javac.setOptimize(! ctxt.getOptions().getClassDebugInfo() );
         javac.setFork(ctxt.getOptions().getFork());
         info.append("    srcDir=" + srcPath + "\n" );
 
@@ -250,7 +249,10 @@ public class AntCompiler extends Compiler {
 
         if (!ctxt.keepGenerated()) {
             File javaFile = new File(javaFileName);
-            javaFile.delete();
+            if (!javaFile.delete()) {
+                throw new JasperException(Localizer.getMessage(
+                        "jsp.warning.compiler.javafile.delete.fail", javaFile));
+            }
         }
 
         if (be != null) {
@@ -279,8 +281,8 @@ public class AntCompiler extends Compiler {
         }
 
         // JSR45 Support
-        if (! options.isSmapSuppressed()) {
-            SmapUtil.installSmap(smap);
+        if (!options.isSmapSuppressed()) {
+            SmapUtil.installSmap(smaps);
         }
     }
 
@@ -312,6 +314,7 @@ public class AntCompiler extends Compiler {
 
         /**
          * Construct the handler to capture the output of the given steam.
+         * @param wrapped The wrapped stream
          */
         public SystemLogHandler(PrintStream wrapped) {
             super(wrapped);
@@ -356,6 +359,7 @@ public class AntCompiler extends Compiler {
 
         /**
          * Stop capturing thread's output and return captured data as a String.
+         * @return the captured output
          */
         public static String unsetThread() {
             ByteArrayOutputStream baos = data.get();
@@ -373,6 +377,7 @@ public class AntCompiler extends Compiler {
 
         /**
          * Find PrintStream to which the output must be written to.
+         * @return the current stream
          */
         protected PrintStream findStream() {
             PrintStream ps = streams.get();

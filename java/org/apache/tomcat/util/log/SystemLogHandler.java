@@ -58,7 +58,7 @@ public class SystemLogHandler extends PrintStream {
 
 
     /**
-     * Thread <-> CaptureLog associations.
+     * Thread &lt;-&gt; CaptureLog associations.
      */
     private static final ThreadLocal<Stack<CaptureLog>> logs = new ThreadLocal<>();
 
@@ -121,6 +121,7 @@ public class SystemLogHandler extends PrintStream {
 
     /**
      * Find PrintStream to which the output must be written to.
+     * @return the print stream
      */
     protected PrintStream findStream() {
         Stack<CaptureLog> stack = logs.get();

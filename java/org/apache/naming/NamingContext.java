@@ -39,6 +39,7 @@ import javax.naming.OperationNotSupportedException;
 import javax.naming.Reference;
 import javax.naming.Referenceable;
 import javax.naming.spi.NamingManager;
+import javax.naming.spi.ObjectFactory;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -67,22 +68,27 @@ public class NamingContext implements Context {
 
 
     /**
-     * Builds a naming context using the given environment.
+     * Builds a naming context.
+     *
+     * @param env The environment to use to construct the naming context
+     * @param name The name of the associated Catalina Context
      */
-    public NamingContext(Hashtable<String,Object> env, String name)
-        throws NamingException {
+    public NamingContext(Hashtable<String,Object> env, String name) {
         this(env, name, new HashMap<String,NamingEntry>());
     }
 
 
     /**
-     * Builds a naming context using the given environment.
+     * Builds a naming context.
+     *
+     * @param env The environment to use to construct the naming context
+     * @param name The name of the associated Catalina Context
+     * @param bindings The initial bindings for the naming context
      */
     public NamingContext(Hashtable<String,Object> env, String name,
-            HashMap<String,NamingEntry> bindings) throws NamingException {
+            HashMap<String,NamingEntry> bindings) {
 
         this.env = new Hashtable<>();
-        // FIXME ? Could be put in the environment ?
         this.name = name;
         // Populating the environment hashtable
         if (env != null ) {
@@ -108,7 +114,7 @@ public class NamingContext implements Context {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm = StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(NamingContext.class);
 
 
     /**
@@ -678,8 +684,7 @@ public class NamingContext implements Context {
      * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Name composeName(Name name, Name prefix)
-        throws NamingException {
+    public Name composeName(Name name, Name prefix) throws NamingException {
         prefix = (Name) prefix.clone();
         return prefix.addAll(name);
     }
@@ -691,11 +696,9 @@ public class NamingContext implements Context {
      * @param name a name relative to this context
      * @param prefix the name of this context relative to one of its ancestors
      * @return the composition of prefix and name
-     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public String composeName(String name, String prefix)
-        throws NamingException {
+    public String composeName(String name, String prefix) {
         return prefix + "/" + name;
     }
 
@@ -707,11 +710,9 @@ public class NamingContext implements Context {
      * @param propName the name of the environment property to add; may not
      * be null
      * @param propVal the value of the property to add; may not be null
-     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Object addToEnvironment(String propName, Object propVal)
-        throws NamingException {
+    public Object addToEnvironment(String propName, Object propVal) {
         return env.put(propName, propVal);
     }
 
@@ -721,11 +722,9 @@ public class NamingContext implements Context {
      *
      * @param propName the name of the environment property to remove;
      * may not be null
-     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Object removeFromEnvironment(String propName)
-        throws NamingException {
+    public Object removeFromEnvironment(String propName){
         return env.remove(propName);
     }
 
@@ -738,11 +737,9 @@ public class NamingContext implements Context {
      * may be changed using addToEnvironment() and removeFromEnvironment().
      *
      * @return the environment of this context; never null
-     * @exception NamingException if a naming exception is encountered
      */
     @Override
-    public Hashtable<?,?> getEnvironment()
-        throws NamingException {
+    public Hashtable<?,?> getEnvironment() {
         return env;
     }
 
@@ -795,6 +792,21 @@ public class NamingContext implements Context {
     // ------------------------------------------------------ Protected Methods
 
 
+    private static final boolean GRAAL;
+
+    static {
+        boolean result = false;
+        try {
+            Class<?> nativeImageClazz = Class.forName("org.graalvm.nativeimage.ImageInfo");
+            result = Boolean.TRUE.equals(nativeImageClazz.getMethod("inImageCode").invoke(null));
+        } catch (ClassNotFoundException e) {
+            // Must be Graal
+        } catch (ReflectiveOperationException | IllegalArgumentException e) {
+            // Should never happen
+        }
+        GRAAL = result;
+    }
+
     /**
      * Retrieves the named object.
      *
@@ -836,13 +848,23 @@ public class NamingContext implements Context {
                     // Link relative to this context
                     return lookup(link.substring(1));
                 } else {
-                    return (new InitialContext(env)).lookup(link);
+                    return new InitialContext(env).lookup(link);
                 }
             } else if (entry.type == NamingEntry.REFERENCE) {
                 try {
-                    Object obj = NamingManager.getObjectInstance
-                        (entry.value, name, this, env);
-                    if(entry.value instanceof ResourceRef) {
+                    Object obj = null;
+                    if (!GRAAL) {
+                        obj = NamingManager.getObjectInstance(entry.value, name, this, env);
+                    } else {
+                        // NamingManager.getObjectInstance would simply return the reference here
+                        // Use the configured object factory to resolve it directly if possible
+                        // Note: This may need manual constructor reflection configuration
+                        Reference reference = (Reference) entry.value;
+                        Class<?> factoryClass = getClass().getClassLoader().loadClass(reference.getFactoryClassName());
+                        ObjectFactory factory = (ObjectFactory) factoryClass.newInstance();
+                        obj = factory.getObjectInstance(entry.value, name, this, env);
+                    }
+                    if (entry.value instanceof ResourceRef) {
                         boolean singleton = Boolean.parseBoolean(
                                     (String) ((ResourceRef) entry.value).get(
                                         "singleton").getContent());
@@ -855,9 +877,11 @@ public class NamingContext implements Context {
                 } catch (NamingException e) {
                     throw e;
                 } catch (Exception e) {
-                    log.warn(sm.getString
-                             ("namingContext.failResolvingReference"), e);
-                    throw new NamingException(e.getMessage());
+                    String msg = sm.getString("namingContext.failResolvingReference");
+                    log.warn(msg, e);
+                    NamingException ne = new NamingException(msg);
+                    ne.initCause(e);
+                    throw ne;
                 }
             } else {
                 return entry.value;
@@ -944,7 +968,7 @@ public class NamingContext implements Context {
 
 
     /**
-     * Returns true if writing is allowed on this context.
+     * @return <code>true</code> if writing is allowed on this context.
      */
     protected boolean isWritable() {
         return ContextAccessController.isWritable(name);
@@ -953,6 +977,9 @@ public class NamingContext implements Context {
 
     /**
      * Throws a naming exception is Context is not writable.
+     * @return <code>true</code> if the Context is writable
+     * @throws NamingException if the Context is not writable and
+     *  <code>exceptionOnFailedWrite</code> is <code>true</code>
      */
     protected boolean checkWritable() throws NamingException {
         if (isWritable()) {

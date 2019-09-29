@@ -17,17 +17,16 @@
 package org.apache.coyote.http11.upgrade;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 import javax.servlet.ServletInputStream;
 import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpUpgradeHandler;
 
+import org.apache.coyote.UpgradeToken;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SSLSupport;
-import org.apache.tomcat.util.net.SocketStatus;
+import org.apache.tomcat.util.net.SocketEvent;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
@@ -40,18 +39,23 @@ public class UpgradeProcessorExternal extends UpgradeProcessorBase {
     private final UpgradeServletOutputStream upgradeServletOutputStream;
 
 
-    public UpgradeProcessorExternal(SocketWrapperBase<?> wrapper, ByteBuffer leftOverInput,
-            HttpUpgradeHandler httpUpgradeHandler) {
-        super(wrapper, leftOverInput, httpUpgradeHandler);
-        this.upgradeServletInputStream = new UpgradeServletInputStream(wrapper);
-        this.upgradeServletOutputStream = new UpgradeServletOutputStream(wrapper);
+    public UpgradeProcessorExternal(SocketWrapperBase<?> wrapper,
+            UpgradeToken upgradeToken) {
+        super(upgradeToken);
+        this.upgradeServletInputStream = new UpgradeServletInputStream(this, wrapper);
+        this.upgradeServletOutputStream = new UpgradeServletOutputStream(this, wrapper);
 
-        wrapper.unRead(leftOverInput);
         /*
          * Leave timeouts in the hands of the upgraded protocol.
          */
         wrapper.setReadTimeout(INFINITE_TIMEOUT);
         wrapper.setWriteTimeout(INFINITE_TIMEOUT);
+    }
+
+
+    @Override
+    protected Log getLog() {
+        return log;
     }
 
 
@@ -80,12 +84,12 @@ public class UpgradeProcessorExternal extends UpgradeProcessorBase {
     // ------------------------------------------- Implemented Processor methods
 
     @Override
-    public final SocketState dispatch(SocketStatus status) {
-        if (status == SocketStatus.OPEN_READ) {
+    public final SocketState dispatch(SocketEvent status) {
+        if (status == SocketEvent.OPEN_READ) {
             upgradeServletInputStream.onDataAvailable();
-        } else if (status == SocketStatus.OPEN_WRITE) {
+        } else if (status == SocketEvent.OPEN_WRITE) {
             upgradeServletOutputStream.onWritePossible();
-        } else if (status == SocketStatus.STOP) {
+        } else if (status == SocketEvent.STOP) {
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("upgradeProcessor.stop"));
             }

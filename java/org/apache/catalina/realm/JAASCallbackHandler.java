@@ -90,7 +90,7 @@ public class JAASCallbackHandler implements CallbackHandler {
         this.realm = realm;
         this.username = username;
 
-        if (realm.hasMessageDigest()) {
+        if (password != null && realm.hasMessageDigest()) {
             this.password = realm.getCredentialHandler().mutate(password);
         }
         else {
@@ -110,8 +110,7 @@ public class JAASCallbackHandler implements CallbackHandler {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(JAASCallbackHandler.class);
 
     /**
      * The password to be authenticated with.

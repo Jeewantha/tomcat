@@ -37,7 +37,7 @@ import org.apache.catalina.tribes.util.StringManager;
  */
 public final class ReplicationStream extends ObjectInputStream {
 
-    protected static final StringManager sm = StringManager.getManager(ReplicationStream.class);
+    static final StringManager sm = StringManager.getManager(ReplicationStream.class);
 
     /**
      * The class loader we will use to resolve classes.
@@ -132,8 +132,10 @@ public final class ReplicationStream extends ObjectInputStream {
             classObjs[i] = cl;
         }
         try {
-            return Proxy.getProxyClass(hasNonPublicInterface ? nonPublicLoader
+            // @SuppressWarnings("deprecation") Java 9
+            Class<?> proxyClass = Proxy.getProxyClass(hasNonPublicInterface ? nonPublicLoader
                     : latestLoader, classObjs);
+            return proxyClass;
         } catch (IllegalArgumentException e) {
             throw new ClassNotFoundException(null, e);
         }

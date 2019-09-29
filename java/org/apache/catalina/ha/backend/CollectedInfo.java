@@ -20,7 +20,6 @@ package org.apache.catalina.ha.backend;
 
 /* for MBean to read ready and busy */
 
-import java.util.Iterator;
 import java.util.Set;
 
 import javax.management.MBeanServer;
@@ -28,15 +27,18 @@ import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 
 import org.apache.tomcat.util.modeler.Registry;
+import org.apache.tomcat.util.res.StringManager;
 
 /*
  * Listener to provider informations to mod_heartbeat.c
  * *msg_format = "v=%u&ready=%u&busy=%u"; (message to send).
- * send the muticast message using the format...
+ * send the multicast message using the format...
  * what about the bind(IP. port) only IP makes sense (for the moment).
  * BTW:v  = version :-)
  */
 public class CollectedInfo {
+
+    private static final StringManager sm = StringManager.getManager(CollectedInfo.class);
 
     /* Collect info via JMX */
     protected MBeanServer mBeanServer = null;
@@ -58,32 +60,43 @@ public class CollectedInfo {
         String onStr = "*:type=ThreadPool,*";
         ObjectName objectName = new ObjectName(onStr);
         Set<ObjectInstance> set = mBeanServer.queryMBeans(objectName, null);
-        Iterator<ObjectInstance> iterator = set.iterator();
-        while (iterator.hasNext()) {
-            ObjectInstance oi = iterator.next();
+        for (ObjectInstance oi : set) {
             objName = oi.getObjectName();
+            String subtype = objName.getKeyProperty("subType");
+            if (subtype != null && subtype.equals("SocketProperties")) {
+                objName = null;
+                continue;
+            }
             String name = objName.getKeyProperty("name");
+            name = name.replace("\"", "");
 
             /* Name are:
-             * http-8080
-             * jk-10.33.144.3-8009
-             * jk-jfcpc%2F10.33.144.3-8009
+             * ajp-nio-8009
+             * ajp-nio-127.0.0.1-8009
+             * ajp-nio-0:0:0:0:0:0:0:1-8009
+             * ajp-nio-10.36.116.209-8009
              */
             String [] elenames = name.split("-");
             String sport = elenames[elenames.length-1];
             iport = Integer.parseInt(sport);
-            String [] shosts = elenames[1].split("%2F");
-            shost = shosts[0];
+            if (elenames.length == 4)
+                shost = elenames[2];
 
             if (port==0 && host==null)
-                  break; /* Take the first one */
-            if (host==null && iport==port)
-                break; /* Only port done */
-            if (shost.compareTo(host) == 0)
-                break; /* Done port and host are the expected ones */
+                break; /* Done: take the first one */
+            if (iport==port) {
+                if (host == null)
+                    break; /* Done: return the first with the right port */
+                else if (shost != null && shost.compareTo(host) == 0)
+                    break; /* Done port and host are the expected ones */
+            }
+            objName = null;
+            shost = null;
         }
-        if (objName == null)
-            throw(new Exception("Can't find connector for " + host + ":" + port));
+        if (objName == null) {
+            throw new Exception(sm.getString("collectedInfo.noConnector",
+                    host, Integer.valueOf(port)));
+        }
         this.port = iport;
         this.host = shost;
 
@@ -91,7 +104,7 @@ public class CollectedInfo {
 
     public void refresh() throws Exception {
         if (mBeanServer == null || objName == null) {
-            throw(new Exception("Not initialized!!!"));
+            throw new Exception(sm.getString("collectedInfo.notInitialized"));
         }
         Integer imax = (Integer) mBeanServer.getAttribute(objName, "maxThreads");
 

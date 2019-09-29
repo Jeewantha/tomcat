@@ -18,11 +18,11 @@ package org.apache.coyote.http11.filters;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
-import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Response;
 import org.apache.coyote.http11.Http11OutputBuffer;
-import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.coyote.http11.HttpOutputBuffer;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
 /**
@@ -99,19 +99,30 @@ public class TesterOutputBuffer extends Http11OutputBuffer {
      * This class is an output buffer which will write data to an output
      * stream.
      */
-    protected class OutputStreamOutputBuffer implements OutputBuffer {
+    protected class OutputStreamOutputBuffer implements HttpOutputBuffer {
 
         @Override
-        public int doWrite(ByteChunk chunk) throws IOException {
-            int length = chunk.getLength();
-            outputStream.write(chunk.getBuffer(), chunk.getStart(), length);
-            byteCount += chunk.getLength();
-            return chunk.getLength();
+        public int doWrite(ByteBuffer chunk) throws IOException {
+            int length = chunk.remaining();
+            outputStream.write(chunk.array(), chunk.arrayOffset() + chunk.position(), length);
+            byteCount += length;
+            return length;
         }
 
         @Override
         public long getBytesWritten() {
             return byteCount;
+        }
+
+
+        @Override
+        public void flush() throws IOException {
+            // NO-OP: Unused
+        }
+
+        @Override
+        public void end() throws IOException {
+            // NO-OP: Unused
         }
     }
 }

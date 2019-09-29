@@ -22,13 +22,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.SecureRandom;
 
-import static org.junit.Assert.fail;
-
+import org.junit.Assert;
 import org.junit.Test;
 
+import org.apache.catalina.Context;
+import org.apache.catalina.Host;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Session;
 import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.core.StandardHost;
 
 /**
  * Named Benchmarks so it is not automatically executed as part of the unit
@@ -105,7 +107,7 @@ public class Benchmarks {
                 threads[i].join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
-                fail(e.getMessage());
+                Assert.fail(e.getMessage());
             }
         }
         long end = System.currentTimeMillis();
@@ -152,8 +154,8 @@ public class Benchmarks {
      * 16 threads - ~45,600ms
      */
     @Test
-    public void testManagerBaseCreateSession() {
-        doTestManagerBaseCreateSession(1, 1000000);
+    public void testManagerBaseCreateSession() throws LifecycleException {
+        doTestManagerBaseCreateSession(1, 100000);
         doTestManagerBaseCreateSession(2, 1000000);
         doTestManagerBaseCreateSession(4, 1000000);
         doTestManagerBaseCreateSession(16, 1000000);
@@ -164,16 +166,18 @@ public class Benchmarks {
 
 
     private void doTestManagerBaseCreateSession(int threadCount,
-            int iterCount) {
+            int iterCount) throws LifecycleException {
 
         // Create a default session manager
         StandardManager mgr = new StandardManager();
-        try {
-            mgr.startInternal();
-        } catch (LifecycleException e) {
-            // Ignore - this is expected
-        }
-        mgr.setContext(new StandardContext());
+        mgr.setPathname(null);
+        Host host = new StandardHost();
+        host.setName("unittest");
+        Context context = new StandardContext();
+        context.setPath("");
+        context.setParent(host);
+        mgr.setContext(context);
+        mgr.start();
         mgr.generateSessionId();
         while (mgr.sessionCreationTiming.size() <
                 ManagerBase.TIMING_STATS_CACHE_SIZE) {
@@ -201,7 +205,7 @@ public class Benchmarks {
                 threads[i].join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
-                fail(e.getMessage());
+                Assert.fail(e.getMessage());
             }
         }
         long end = System.currentTimeMillis();
@@ -286,7 +290,7 @@ public class Benchmarks {
                 threads[i].join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
-                fail(e.getMessage());
+                Assert.fail(e.getMessage());
             }
         }
         long end = System.currentTimeMillis();

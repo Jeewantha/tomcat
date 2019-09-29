@@ -106,11 +106,17 @@ public class ELParser {
         ELexpr = new ELNode.Nodes();
         curToken = null;
         prevToken = null;
+        int openBraces = 0;
         while (hasNext()) {
             curToken = nextToken();
             if (curToken instanceof Char) {
                 if (curToken.toChar() == '}') {
-                    break;
+                    openBraces--;
+                    if (openBraces < 0) {
+                        break;
+                    }
+                } else if (curToken.toChar() == '{') {
+                    openBraces++;
                 }
                 buf.append(curToken.toString());
             } else {
@@ -180,7 +186,7 @@ public class ELParser {
         int i = 0;
         int j = reservedWords.length;
         while (i < j) {
-            int k = (i + j) / 2;
+            int k = (i + j) >>> 1;
             int result = reservedWords[k].compareTo(id);
             if (result == 0) {
                 return true;
@@ -268,7 +274,6 @@ public class ELParser {
      * {@link #skipUntilEL()}.
      *
      * @param input Non-EL input to be escaped
-     * @param isDeferredSyntaxAllowedAsLiteral
      *
      * @return The escaped version of the input
      */

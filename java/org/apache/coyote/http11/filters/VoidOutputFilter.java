@@ -14,15 +14,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote.http11.filters;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
-import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Response;
+import org.apache.coyote.http11.HttpOutputBuffer;
 import org.apache.coyote.http11.OutputFilter;
-import org.apache.tomcat.util.buf.ByteChunk;
 
 /**
  * Void output filter, which silently swallows bytes written. Used with a 204
@@ -32,12 +31,14 @@ import org.apache.tomcat.util.buf.ByteChunk;
  */
 public class VoidOutputFilter implements OutputFilter {
 
+    private HttpOutputBuffer buffer = null;
+
 
     // --------------------------------------------------- OutputBuffer Methods
 
     @Override
-    public int doWrite(ByteChunk chunk) throws IOException {
-        return chunk.getLength();
+    public int doWrite(ByteBuffer chunk) throws IOException {
+        return chunk.remaining();
     }
 
 
@@ -49,50 +50,32 @@ public class VoidOutputFilter implements OutputFilter {
 
     // --------------------------------------------------- OutputFilter Methods
 
-
-    /**
-     * Some filters need additional parameters from the response. All the
-     * necessary reading can occur in that method, as this method is called
-     * after the response header processing is complete.
-     */
     @Override
     public void setResponse(Response response) {
         // NOOP: No need for parameters from response in this filter
     }
 
 
-    /**
-     * Set the next buffer in the filter pipeline.
-     */
     @Override
-    public void setBuffer(OutputBuffer buffer) {
-        // NO-OP
+    public void setBuffer(HttpOutputBuffer buffer) {
+        this.buffer = buffer;
     }
 
 
-    /**
-     * Make the filter ready to process the next request.
-     */
+    @Override
+    public void flush() throws IOException {
+        this.buffer.flush();
+    }
+
+
     @Override
     public void recycle() {
-        // NOOP: Nothing to recycle
+        buffer = null;
     }
 
 
-    /**
-     * End the current request. It is acceptable to write extra bytes using
-     * buffer.doWrite during the execution of this method.
-     *
-     * @return Should return 0 unless the filter does some content length
-     * delimitation, in which case the number is the amount of extra bytes or
-     * missing bytes, which would indicate an error.
-     * Note: It is recommended that extra bytes be swallowed by the filter.
-     */
     @Override
-    public long end()
-        throws IOException {
-        return 0;
+    public void  end() throws IOException {
+        buffer.end();
     }
-
-
 }

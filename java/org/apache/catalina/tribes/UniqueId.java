@@ -30,7 +30,7 @@ import org.apache.catalina.tribes.util.Arrays;
 public final class UniqueId implements Serializable{
     private static final long serialVersionUID = 1L;
 
-    protected final byte[] id;
+    final byte[] id;
 
     public UniqueId() {
         this(null);
@@ -71,7 +71,7 @@ public final class UniqueId implements Serializable{
     @Override
     public String toString() {
         StringBuilder buf = new StringBuilder("UniqueId");
-        buf.append(org.apache.catalina.tribes.util.Arrays.toString(id));
+        buf.append(Arrays.toString(id));
         return buf.toString();
     }
 

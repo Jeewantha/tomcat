@@ -17,18 +17,16 @@
 package org.apache.catalina.webresources;
 
 import java.io.InputStream;
-import java.util.Date;
 
 import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
-import org.apache.catalina.util.ConcurrentDateFormat;
 import org.apache.juli.logging.Log;
+import org.apache.tomcat.util.http.FastHttpDateFormat;
 import org.apache.tomcat.util.res.StringManager;
 
 public abstract class AbstractResource implements WebResource {
 
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(AbstractResource.class);
 
     private final WebResourceRoot root;
     private final String webAppPath;
@@ -57,8 +55,9 @@ public abstract class AbstractResource implements WebResource {
 
     @Override
     public final String getLastModifiedHttp() {
-        return ConcurrentDateFormat.formatRfc1123(new Date(getLastModified()));
+        return FastHttpDateFormat.formatDate(getLastModified());
     }
+
 
     @Override
     public final String getETag() {

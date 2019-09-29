@@ -38,28 +38,35 @@ public interface AccessLog {
      * the AccessLog.
      */
     public static final String REMOTE_ADDR_ATTRIBUTE =
-        "org.apache.catalina.AccessLog.RemoteAddr";
+            "org.apache.catalina.AccessLog.RemoteAddr";
 
     /**
      * Name of request attribute used to override remote host name recorded by
      * the AccessLog.
      */
     public static final String REMOTE_HOST_ATTRIBUTE =
-        "org.apache.catalina.AccessLog.RemoteHost";
+            "org.apache.catalina.AccessLog.RemoteHost";
 
     /**
      * Name of request attribute used to override the protocol recorded by the
      * AccessLog.
      */
     public static final String PROTOCOL_ATTRIBUTE =
-        "org.apache.catalina.AccessLog.Protocol";
+            "org.apache.catalina.AccessLog.Protocol";
+
+    /**
+     * Name of request attribute used to override the server name recorded by
+     * the AccessLog.
+     */
+    public static final String SERVER_NAME_ATTRIBUTE =
+            "org.apache.catalina.AccessLog.ServerName";
 
     /**
      * Name of request attribute used to override the server port recorded by
      * the AccessLog.
      */
     public static final String SERVER_PORT_ATTRIBUTE =
-        "org.apache.catalina.AccessLog.ServerPort";
+            "org.apache.catalina.AccessLog.ServerPort";
 
 
     /**
@@ -74,11 +81,10 @@ public interface AccessLog {
     public void log(Request request, Response response, long time);
 
     /**
-     * Should this valve set request attributes for IP address, Hostname,
+     * Should this valve set request attributes for IP address, hostname,
      * protocol and port used for the request? This are typically used in
      * conjunction with the {@link org.apache.catalina.valves.AccessLogValve}
      * which will otherwise log the original values.
-     * Default is <code>true</code>.
      *
      * The attributes set are:
      * <ul>

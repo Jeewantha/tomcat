@@ -18,6 +18,7 @@
 package javax.servlet.http;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Hashtable;
 import java.util.ResourceBundle;
 import java.util.StringTokenizer;
@@ -30,7 +31,7 @@ import javax.servlet.ServletInputStream;
  *                        with the default encoding and have been moved
  *                        to the request interfaces.
  */
-@SuppressWarnings("dep-ann") // Spec API does not use @Deprecated
+@Deprecated
 public class HttpUtils {
 
     private static final String LSTRING_FILE =
@@ -101,9 +102,7 @@ public class HttpUtils {
             String val = parseName(pair.substring(pos+1, pair.length()), sb);
             if (ht.containsKey(key)) {
                 String oldVals[] = ht.get(key);
-                valArray = new String[oldVals.length + 1];
-                for (int i = 0; i < oldVals.length; i++)
-                    valArray[i] = oldVals[i];
+                valArray = Arrays.copyOf(oldVals, oldVals.length + 1);
                 valArray[oldVals.length] = val;
             } else {
                 valArray = new String[1];

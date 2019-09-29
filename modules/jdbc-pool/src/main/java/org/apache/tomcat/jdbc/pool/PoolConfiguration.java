@@ -55,8 +55,8 @@ public interface PoolConfiguration {
     public int getAbandonWhenPercentageFull();
 
     /**
-     * Returns true if a fair queue is being used by the connection pool
-     * @return true if a fair waiting queue is being used
+     * Returns <code>true</code> if a fair queue is being used by the connection pool
+     * @return <code>true</code> if a fair waiting queue is being used
      */
     public boolean isFairQueue();
 
@@ -66,7 +66,7 @@ public interface PoolConfiguration {
      * This uses the {@link FairBlockingQueue} implementation for the list of the idle connections.
      * The default value is true.
      * This flag is required when you want to use asynchronous connection retrieval.
-     * @param fairQueue
+     * @param fairQueue <code>true</code> to use a fair queue
      */
     public void setFairQueue(boolean fairQueue);
 
@@ -74,7 +74,7 @@ public interface PoolConfiguration {
      * Property not used. Access is always allowed.
      * Access can be achieved by calling unwrap on the pooled connection. see {@link javax.sql.DataSource} interface
      * or call getConnection through reflection or cast the object as {@link javax.sql.PooledConnection}
-     * @return true
+     * @return <code>true</code>
      */
     public boolean isAccessToUnderlyingConnectionAllowed();
 
@@ -89,6 +89,7 @@ public interface PoolConfiguration {
      * Format of the string is [propertyName=property;] <br>
      * NOTE - The "user" and "password" properties will be passed explicitly, so they do not need to be included here.
      * The default value is null.
+     * @return the connection properties
      */
     public String getConnectionProperties();
 
@@ -108,7 +109,7 @@ public interface PoolConfiguration {
 
     /**
      * Overrides the database properties passed into the  {@link java.sql.Driver#connect(String, Properties)} method.
-     * @param dbProperties
+     * @param dbProperties The database properties
      */
     public void setDbProperties(Properties dbProperties);
 
@@ -341,14 +342,14 @@ public interface PoolConfiguration {
     /**
      * Sets the password to establish the connection with.
      * The password will be included as a database property with the name 'password'.
-     * @param password
+     * @param password The password
      * @see #getDbProperties()
      */
     public void setPassword(String password);
 
     /**
      * @see #getName()
-     * @return name
+     * @return the pool name
      */
     public String getPoolName();
 
@@ -361,7 +362,7 @@ public interface PoolConfiguration {
     /**
      * Sets the username used to establish the connection with
      * It will also be a property called 'user' in the database properties.
-     * @param username
+     * @param username The user name
      * @see #getDbProperties()
      */
     public void setUsername(String username);
@@ -500,7 +501,7 @@ public interface PoolConfiguration {
      * The SQL query that will be used to validate connections from this
      * pool before returning them to the caller or pool.
      * If specified, this query does not have to return any data,
-     * it just can't throw a SQLException.
+     * it just can't throw an SQLException.
      * The default value is null.
      * Example values are SELECT 1(mysql),
      * select 1 from dual(oracle),
@@ -513,7 +514,7 @@ public interface PoolConfiguration {
      * The SQL query that will be used to validate connections from this
      * pool before returning them to the caller or pool.
      * If specified, this query does not have to return any data,
-     * it just can't throw a SQLException.
+     * it just can't throw an SQLException.
      * The default value is null.
      * Example values are SELECT 1(mysql),
      * select 1 from dual(oracle),
@@ -532,6 +533,7 @@ public interface PoolConfiguration {
     /**
      * The timeout in seconds before a connection validation queries fail.
      * A value less than or equal to zero will disable this feature.  Defaults to -1.
+     * @param validationQueryTimeout The timeout value
      */
     public void setValidationQueryTimeout(int validationQueryTimeout);
 
@@ -559,6 +561,7 @@ public interface PoolConfiguration {
      * Sets the validator object
      * If this is a non null object, it will be used as a validator instead of the validationQuery
      * If this is null, remove the usage of the validator.
+     * @param validator The validator object
      */
     public void setValidator(Validator validator);
 
@@ -566,7 +569,7 @@ public interface PoolConfiguration {
      * avoid excess validation, only run validation at most at this frequency - time in milliseconds.
      * If a connection is due for validation, but has been validated previously
      * within this interval, it will not be validated again.
-     * The default value is 30000 (30 seconds).
+     * The default value is 3000 (3 seconds).
      * @return the validation interval in milliseconds
      */
     public long getValidationInterval();
@@ -575,7 +578,7 @@ public interface PoolConfiguration {
      * avoid excess validation, only run validation at most at this frequency - time in milliseconds.
      * If a connection is due for validation, but has been validated previously
      * within this interval, it will not be validated again.
-     * The default value is 30000 (30 seconds).
+     * The default value is 3000 (3 seconds).
      * @param validationInterval the validation interval in milliseconds
      */
     public void setValidationInterval(long validationInterval);
@@ -696,12 +699,13 @@ public interface PoolConfiguration {
     public void setUseEquals(boolean useEquals);
 
     /**
-     * Time in milliseconds to keep this connection alive even when used.
-     * When a connection is returned to the pool, the pool will check to see if the
-     * ((now - time-when-connected) &gt; maxAge) has been reached, and if so,
-     * it closes the connection rather than returning it to the pool.
+     * Time in milliseconds to keep this connection before reconnecting.
+     * When a connection is idle, returned to the pool or borrowed from the pool, the pool will
+     * check to see if the ((now - time-when-connected) &gt; maxAge) has been reached, and if so,
+     * it reconnects. Note that the age of idle connections will only be checked if
+     * {@link #getTimeBetweenEvictionRunsMillis()} returns a value greater than 0.
      * The default value is 0, which implies that connections will be left open and no
-     * age check will be done upon returning the connection to the pool.
+     * age checks will be done.
      * This is a useful setting for database sessions that leak memory as it ensures that the session
      * will have a finite life span.
      * @return the time in milliseconds a connection will be open for when used
@@ -709,12 +713,13 @@ public interface PoolConfiguration {
     public long getMaxAge();
 
     /**
-     * Time in milliseconds to keep this connection alive even when used.
-     * When a connection is returned to the pool, the pool will check to see if the
-     * ((now - time-when-connected) &gt; maxAge) has been reached, and if so,
-     * it closes the connection rather than returning it to the pool.
+     * Time in milliseconds to keep this connection before reconnecting.
+     * When a connection is idle, returned to the pool or borrowed from the pool, the pool will
+     * check to see if the ((now - time-when-connected) &gt; maxAge) has been reached, and if so,
+     * it reconnects. Note that the age of idle connections will only be checked if
+     * {@link #getTimeBetweenEvictionRunsMillis()} returns a value greater than 0.
      * The default value is 0, which implies that connections will be left open and no
-     * age check will be done upon returning the connection to the pool.
+     * age checks will be done.
      * This is a useful setting for database sessions that leak memory as it ensures that the session
      * will have a finite life span.
      * @param maxAge the time in milliseconds a connection will be open for when used
@@ -749,9 +754,9 @@ public interface PoolConfiguration {
     public void setSuspectTimeout(int seconds);
 
     /**
-     * Returns the time in seconds to pass before a connection is marked an abanoned suspect.
+     * Returns the time in seconds to pass before a connection is marked an abandoned suspect.
      * Any value lesser than or equal to 0 means the check is disabled.
-     * @return Returns the time in seconds to pass before a connection is marked an abanoned suspect.
+     * @return Returns the time in seconds to pass before a connection is marked an abandoned suspect.
      */
     public int getSuspectTimeout();
 
@@ -816,6 +821,7 @@ public interface PoolConfiguration {
 
     /**
      * @see PoolConfiguration#setCommitOnReturn(boolean)
+     * @return <code>true</code> if the pool should commit when a connection is returned to it
      */
     public boolean getCommitOnReturn();
 
@@ -830,20 +836,21 @@ public interface PoolConfiguration {
 
     /**
      * @see PoolConfiguration#setRollbackOnReturn(boolean)
+     * @return <code>true</code> if the pool should rollback when a connection is returned to it
      */
     public boolean getRollbackOnReturn();
 
     /**
-     * If set to true, the connection will be wrapped with facade that will disallow the connection to be used after
-     * {@link java.sql.Connection#close()} is called. If set to true, after {@link java.sql.Connection#close()} all calls except
+     * If set to <code>true</code>, the connection will be wrapped with facade that will disallow the connection to be used after
+     * {@link java.sql.Connection#close()} is called. If set to <code>true</code>, after {@link java.sql.Connection#close()} all calls except
      * {@link java.sql.Connection#close()} and {@link java.sql.Connection#isClosed()} will throw an exception.
-     * @param useDisposableConnectionFacade
+     * @param useDisposableConnectionFacade <code>true</code> to use a facade
      */
     public void setUseDisposableConnectionFacade(boolean useDisposableConnectionFacade);
     /**
-     * Returns true if this connection pool is configured to use a connection facade to prevent re-use of connection after
+     * Returns <code>true</code> if this connection pool is configured to use a connection facade to prevent re-use of connection after
      * {@link java.sql.Connection#close()} has been invoked
-     * @return true if {@link java.sql.Connection#close()} has been invoked.
+     * @return <code>true</code> if {@link java.sql.Connection#close()} has been invoked.
      */
     public boolean getUseDisposableConnectionFacade();
 
@@ -884,8 +891,23 @@ public interface PoolConfiguration {
     public void setIgnoreExceptionOnPreLoad(boolean ignoreExceptionOnPreLoad);
 
     /**
+     * @return <code>true</code> to ignore exceptions
      * @see PoolConfiguration#setIgnoreExceptionOnPreLoad(boolean)
      */
     public boolean isIgnoreExceptionOnPreLoad();
 
+    /**
+     * Set this to true if you wish to wrap statements in order to enable equals() and hashCode()
+     * methods to be called on the closed statements if any statement proxy is set.
+     * @param useStatementFacade set to <code>true</code> to wrap statements
+     */
+    public void setUseStatementFacade(boolean useStatementFacade);
+
+    /**
+     * Returns <code>true</code> if this connection pool is configured to wrap statements in order
+     * to enable equals() and hashCode() methods to be called on the closed statements if any
+     * statement proxy is set.
+     * @return <code>true</code> if the statements are wrapped
+     */
+    public boolean getUseStatementFacade();
 }

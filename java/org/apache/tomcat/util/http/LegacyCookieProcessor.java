@@ -18,13 +18,9 @@ package org.apache.tomcat.util.http;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.text.DateFormat;
 import java.text.FieldPosition;
-import java.text.SimpleDateFormat;
 import java.util.BitSet;
 import java.util.Date;
-import java.util.Locale;
-import java.util.TimeZone;
 
 import javax.servlet.http.Cookie;
 
@@ -44,7 +40,7 @@ import org.apache.tomcat.util.res.StringManager;
  * @author Costin Manolache
  * @author kevin seguin
  */
-public final class LegacyCookieProcessor implements CookieProcessor {
+public final class LegacyCookieProcessor extends CookieProcessorBase {
 
     private static final Log log = LogFactory.getLog(LegacyCookieProcessor.class);
 
@@ -62,26 +58,10 @@ public final class LegacyCookieProcessor implements CookieProcessor {
             '\t', ' ', '\"', '(', ')', ',', ':', ';', '<', '=', '>', '?', '@',
             '[', '\\', ']', '{', '}' };
 
-    private static final String COOKIE_DATE_PATTERN = "EEE, dd-MMM-yyyy HH:mm:ss z";
-    private static final ThreadLocal<DateFormat> COOKIE_DATE_FORMAT =
-        new ThreadLocal<DateFormat>() {
-        @Override
-        protected DateFormat initialValue() {
-            DateFormat df =
-                new SimpleDateFormat(COOKIE_DATE_PATTERN, Locale.US);
-            df.setTimeZone(TimeZone.getTimeZone("GMT"));
-            return df;
-        }
-    };
-
-    private static final String ANCIENT_DATE;
-
     static {
         for (char c : V0_SEPARATORS) {
             V0_SEPARATOR_FLAGS.set(c);
         }
-
-        ANCIENT_DATE = COOKIE_DATE_FORMAT.get().format(new Date(10000));
     }
 
     private final boolean STRICT_SERVLET_COMPLIANCE =
@@ -93,14 +73,11 @@ public final class LegacyCookieProcessor implements CookieProcessor {
 
     private boolean allowHttpSepsInV0 = false;
 
-    private boolean preserveCookieHeader = STRICT_SERVLET_COMPLIANCE;
-
     private boolean alwaysAddExpires = !STRICT_SERVLET_COMPLIANCE;
 
     private final BitSet httpSeparatorFlags = new BitSet(128);
 
     private final BitSet allowedWithoutQuotes = new BitSet(128);
-
 
     public LegacyCookieProcessor() {
         // BitSet elements will default to false
@@ -181,20 +158,10 @@ public final class LegacyCookieProcessor implements CookieProcessor {
             }
         }
         if (getForwardSlashIsSeparator() && !allowHttpSepsInV0) {
-            allowedWithoutQuotes.set('/');
-        } else {
             allowedWithoutQuotes.clear('/');
+        } else {
+            allowedWithoutQuotes.set('/');
         }
-    }
-
-
-    public boolean getPreserveCookieHeader() {
-        return preserveCookieHeader;
-    }
-
-
-    public void setPreserveCookieHeader(boolean preserveCookieHeader) {
-        this.preserveCookieHeader = preserveCookieHeader;
     }
 
 
@@ -210,9 +177,9 @@ public final class LegacyCookieProcessor implements CookieProcessor {
             httpSeparatorFlags.clear('/');
         }
         if (forwardSlashIsSeparator && !getAllowHttpSepsInV0()) {
-            allowedWithoutQuotes.set('/');
-        } else {
             allowedWithoutQuotes.clear('/');
+        } else {
+            allowedWithoutQuotes.set('/');
         }
     }
 
@@ -256,17 +223,7 @@ public final class LegacyCookieProcessor implements CookieProcessor {
                     log.debug("Cookies: Parsing b[]: " + cookieValue.toString());
                 }
                 ByteChunk bc = cookieValue.getByteChunk();
-                if (getPreserveCookieHeader()) {
-                    int len = bc.getLength();
-                    if (len > 0) {
-                        byte[] buf = new byte[len];
-                        System.arraycopy(bc.getBytes(), bc.getOffset(), buf, 0, len);
-                        processCookieHeader(buf, 0, len, serverCookies);
-                    }
-                } else {
-                    processCookieHeader(bc.getBytes(), bc.getOffset(), bc.getLength(),
-                            serverCookies);
-                }
+                processCookieHeader(bc.getBytes(), bc.getOffset(), bc.getLength(), serverCookies);
             }
 
             // search from the next position
@@ -366,6 +323,14 @@ public final class LegacyCookieProcessor implements CookieProcessor {
         if (cookie.isHttpOnly()) {
             buf.append("; HttpOnly");
         }
+
+        SameSiteCookies sameSiteCookiesValue = getSameSiteCookies();
+
+        if (!sameSiteCookiesValue.equals(SameSiteCookies.NONE)) {
+            buf.append("; SameSite=");
+            buf.append(sameSiteCookiesValue.getValue());
+        }
+
         return buf.toString();
     }
 
@@ -537,7 +502,7 @@ public final class LegacyCookieProcessor implements CookieProcessor {
                     break;
                 default:
                     if (version == 0 &&
-                                isV0Separator((char)bytes[pos]) &&
+                                !isV0Separator((char)bytes[pos]) &&
                                 getAllowHttpSepsInV0() ||
                             !isHttpSeparator((char)bytes[pos]) ||
                             bytes[pos] == '=') {
@@ -824,19 +789,25 @@ public final class LegacyCookieProcessor implements CookieProcessor {
             return;
         }
 
-        int src = bc.getStart();
-        int end = bc.getEnd();
-        int dest = src;
-        byte[] buffer = bc.getBuffer();
+        // Take a copy of the buffer so the original cookie header is not
+        // modified by this unescaping.
+        byte[] original = bc.getBuffer();
+        int len = bc.getLength();
 
-        while (src < end) {
-            if (buffer[src] == '\\' && src < end && buffer[src+1]  == '"') {
+        byte[] copy = new byte[len];
+        System.arraycopy(original, bc.getStart(), copy, 0, len);
+
+        int src = 0;
+        int dest = 0;
+
+        while (src < len) {
+            if (copy[src] == '\\' && src < len && copy[src+1]  == '"') {
                 src++;
             }
-            buffer[dest] = buffer[src];
+            copy[dest] = copy[src];
             dest ++;
             src ++;
         }
-        bc.setEnd(dest);
+        bc.setBytes(copy, 0, dest);
     }
 }

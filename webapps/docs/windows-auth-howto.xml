@@ -175,8 +175,10 @@ com.sun.security.jgss.krb5.accept {
   </ul>
   <p>The SPNEGO authenticator will work with any <a href="config/realm.html">
   Realm</a> but if used with the JNDI Realm, by default the JNDI Realm will use
-  the user&apos;s delegated credentials to connect to the Active Directory.
-  </p>
+  the user&apos;s delegated credentials to connect to the Active Directory. If
+  only the authenticated user name is required then the AuthenticatedUserRealm
+  may be used that will simply return a Principal based on the authenticated
+  user name that does not have any roles.</p>
   <p>The above steps have been tested on a Tomcat server running Windows Server
   2008 R2 64-bit Standard with an Oracle 1.6.0_24 64-bit JDK.</p>
   </subsection>
@@ -194,7 +196,7 @@ com.sun.security.jgss.krb5.accept {
   changes:</p>
   <ul>
   <li>The Linux server does not have to be part of the Windows domain.</li>
-  <li>The path to the keytab file in krb5.ini and jass.conf should be updated
+  <li>The path to the keytab file in krb5.ini and jaas.conf should be updated
       to reflect the path to the keytab file on the Linux server using Linux
       style file paths (e.g. /usr/local/tomcat/...).</li>
   </ul>
@@ -221,7 +223,7 @@ com.sun.security.jgss.krb5.accept {
   <subsection name="References">
   <p>Correctly configuring Kerberos authentication can be tricky. The following
   references may prove helpful. Advice is also always available from the
-  <a href="http://tomcat.apache.org/lists.html#tomcat-users">Tomcat users
+  <a href="https://tomcat.apache.org/lists.html#tomcat-users">Tomcat users
   mailing list</a>.</p>
   <ol>
   <li><a href="http://www.adopenstatic.com/cs/blogs/ken/archive/2006/10/19/512.aspx">
@@ -280,7 +282,7 @@ com.sun.security.jgss.krb5.accept {
 
   <subsection name="Jespa">
   <p>Full details of this solution can be found through the
-  <a href="http://www.ioplex.com/" rel="nofollow">project web site</a>The key
+  <a href="http://www.ioplex.com/" rel="nofollow">project web site.</a> The key
   features are:</p>
   <ul>
   <li>Pure Java solution</li>
@@ -296,7 +298,7 @@ com.sun.security.jgss.krb5.accept {
   They are:</p>
   <ol>
   <li>Configure IIS as a reverse proxy for Tomcat (see the
-  <a href="http://tomcat.apache.org/connectors-doc/webserver_howto/iis.html">
+  <a href="https://tomcat.apache.org/connectors-doc/webserver_howto/iis.html">
   IIS Web Server How-To)</a>.</li>
   <li>Configure IIS to use Windows authentication</li>
   <li>Configure Tomcat to use the authentication user information from IIS by
@@ -322,7 +324,7 @@ com.sun.security.jgss.krb5.accept {
   authentication. They are:</p>
   <ol>
   <li>Configure httpd as a reverse proxy for Tomcat (see the
-  <a href="http://tomcat.apache.org/connectors-doc/webserver_howto/apache.html">
+  <a href="https://tomcat.apache.org/connectors-doc/webserver_howto/apache.html">
   Apache httpd Web Server How-To)</a>.</li>
   <li>Configure httpd to use Windows authentication</li>
   <li>Configure Tomcat to use the authentication user information from httpd by

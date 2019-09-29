@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -35,14 +35,6 @@
 
     <attribute   name="dataSourceName"
           description="The JNDI named JDBC DataSource for your database"
-                 type="java.lang.String"/>
-
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
                  type="java.lang.String"/>
 
     <attribute   name="localDataSource"
@@ -91,7 +83,7 @@
   </mbean>
 
   <mbean         name="JAASRealm"
-          description="Implmentation of Realm that authenticates users via the Java Authentication and Authorization Service (JAAS)"
+          description="Implementation of Realm that authenticates users via the Java Authentication and Authorization Service (JAAS)"
                domain="Catalina"
                 group="Realm"
                  type="org.apache.catalina.realm.JAASRealm">
@@ -108,14 +100,6 @@
           description="Fully qualified class name of the managed object"
                  type="java.lang.String"
             writeable="false"/>
-
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
-                 type="java.lang.String"/>
 
     <attribute   name="roleClassNames"
           description="Comma-delimited list of javax.security.Principal classes that represent security roles"
@@ -176,14 +160,6 @@
 
     <attribute   name="connectionURL"
           description="The connection URL to use when trying to connect to the database"
-                 type="java.lang.String"/>
-
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
                  type="java.lang.String"/>
 
     <attribute   name="driverName"
@@ -279,14 +255,6 @@
 
     <attribute   name="contextFactory"
           description="The JNDI context factory for this Realm"
-                 type="java.lang.String"/>
-
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
                  type="java.lang.String"/>
 
     <attribute   name="protocol"
@@ -386,14 +354,6 @@
                  type="java.lang.String"
             writeable="false"/>
 
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
-                 type="java.lang.String"/>
-
     <attribute   name="pathname"
           description="The pathname of the XML file containing our database information"
                  type="java.lang.String"/>
@@ -433,14 +393,6 @@
                  type="java.lang.String"
             writeable="false"/>
 
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
-                 type="java.lang.String"/>
-
     <attribute   name="resourceName"
           description="The global JNDI name of the UserDatabase resource to use"
                  type="java.lang.String"/>
@@ -479,14 +431,6 @@
           description="Fully qualified class name of the managed object"
                  type="java.lang.String"
             writeable="false"/>
-
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
-                 type="java.lang.String"/>
 
     <attribute   name="realms"
           description="The set of realms that the combined realm is wrapping"
@@ -545,10 +489,6 @@
                  type="java.lang.String"
             writeable="false"/>
 
-    <attribute   name="digest"
-          description="Digest algorithm used in storing passwords in a non-plaintext format"
-                 type="java.lang.String"/>
-
     <attribute   name="failureCount"
           description="The number of times in a row a user has to fail authentication to be locked out. Defaults to 5."
                  type="int" />
@@ -556,10 +496,6 @@
     <attribute   name="lockOutTime"
           description="The time (in seconds) a user is locked out for after too many authentication failures. Defaults to 300 (5 minutes)."
                  type="int" />
-
-    <attribute   name="digestEncoding"
-          description="The digest encoding charset."
-                 type="java.lang.String"/>
 
     <attribute   name="realms"
           description="The set of realms that the lockout realm is wrapping"
@@ -581,6 +517,15 @@
       <parameter name="theRealm"
                  description="New Realm to add"
                  type="org.apache.catalina.Realm"/>
+    </operation>
+
+    <operation   name="isLocked"
+          description="Determine if the specified user is locked"
+               impact="ACTION"
+           returnType="boolean">
+      <parameter name="username"
+                 description="User to test for being locked"
+                 type="java.lang.String"/>
     </operation>
 
     <operation   name="unlock"

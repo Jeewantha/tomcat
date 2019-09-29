@@ -24,7 +24,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 
 import org.apache.catalina.core.StandardContext;
@@ -40,8 +39,6 @@ public class TestMaxConnections extends TomcatBaseTest {
     @Test
     public void testConnector() throws Exception {
         init();
-        Assume.assumeFalse("This feature is not available for NIO2 (BZ58103)",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Nio2"));
         ConnectThread[] t = new ConnectThread[10];
         for (int i=0; i<t.length; i++) {
             t[i] = new ConnectThread();
@@ -76,7 +73,7 @@ public class TestMaxConnections extends TomcatBaseTest {
         StandardContext root = (StandardContext) tomcat.addContext("", SimpleHttpClient.TEMP_DIR);
         root.setUnloadDelay(soTimeout);
         Tomcat.addServlet(root, "Simple", new SimpleServlet());
-        root.addServletMapping("/test", "Simple");
+        root.addServletMappingDecoded("/test", "Simple");
         tomcat.getConnector().setProperty("maxKeepAliveRequests", "1");
         tomcat.getConnector().setProperty("maxThreads", "10");
         tomcat.getConnector().setProperty("soTimeout", "20000");

@@ -14,29 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
-
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSetBase;
-
+import org.apache.tomcat.util.digester.RuleSet;
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a Realm definition
  * element.  This <code>RuleSet</code> supports Realms such as the
  * <code>CombinedRealm</code> that used nested Realms.</p>
  */
-public class RealmRuleSet extends RuleSetBase {
-
+public class RealmRuleSet implements RuleSet {
 
     private static final int MAX_NESTED_REALM_LEVELS = Integer.getInteger(
             "org.apache.catalina.startup.RealmRuleSet.MAX_NESTED_REALM_LEVELS",
             3).intValue();
 
-    // ----------------------------------------------------- Instance Variables
 
+    // ----------------------------------------------------- Instance Variables
 
     /**
      * The matching pattern prefix to use for recognizing our elements.
@@ -45,7 +40,6 @@ public class RealmRuleSet extends RuleSetBase {
 
 
     // ------------------------------------------------------------ Constructor
-
 
     /**
      * Construct an instance of this <code>RuleSet</code> with the default
@@ -64,13 +58,11 @@ public class RealmRuleSet extends RuleSetBase {
      *  trailing slash character)
      */
     public RealmRuleSet(String prefix) {
-        this.namespaceURI = null;
         this.prefix = prefix;
     }
 
 
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * <p>Add the set of Rule instances defined in this RuleSet to the
@@ -83,30 +75,21 @@ public class RealmRuleSet extends RuleSetBase {
      */
     @Override
     public void addRuleInstances(Digester digester) {
-
-        String pattern = prefix;
-
+        StringBuilder pattern = new StringBuilder(prefix);
         for (int i = 0; i < MAX_NESTED_REALM_LEVELS; i++) {
-
             if (i > 0) {
-                pattern += "/";
+                pattern.append('/');
             }
-            pattern += "Realm";
-
-            digester.addObjectCreate(pattern,
-                                     null, // MUST be specified in the element,
-                                     "className");
-            digester.addSetProperties(pattern);
-            if (i == 0) {
-                digester.addSetNext(pattern,
-                                    "setRealm",
-                                    "org.apache.catalina.Realm");
-            } else {
-                digester.addSetNext(pattern,
-                                    "addRealm",
-                                    "org.apache.catalina.Realm");
-            }
-            digester.addRuleSet(new CredentialHandlerRuleSet(pattern + "/"));
+            pattern.append("Realm");
+            addRuleInstances(digester, pattern.toString(), i == 0 ? "setRealm" : "addRealm");
         }
+    }
+
+    private void addRuleInstances(Digester digester, String pattern, String methodName) {
+        digester.addObjectCreate(pattern, null /* MUST be specified in the element */,
+                "className");
+        digester.addSetProperties(pattern);
+        digester.addSetNext(pattern, methodName, "org.apache.catalina.Realm");
+        digester.addRuleSet(new CredentialHandlerRuleSet(pattern + "/"));
     }
 }

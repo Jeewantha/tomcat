@@ -51,11 +51,11 @@
   <p>The native connectors supported with this Tomcat release are:</p>
     <ul>
       <li>JK 1.2.x with any of the supported servers. See
-      <a href="http://tomcat.apache.org/connectors-doc/">the JK docs</a>
+      <a href="https://tomcat.apache.org/connectors-doc/">the JK docs</a>
       for details.</li>
       <li>mod_proxy on Apache httpd 2.x (included by default in Apache HTTP
       Server 2.2), with AJP enabled: see
-      <a href="http://httpd.apache.org/docs/2.2/mod/mod_proxy_ajp.html">the
+      <a href="https://httpd.apache.org/docs/2.2/mod/mod_proxy_ajp.html">the
       httpd docs</a> for details.</li>
     </ul>
 
@@ -73,6 +73,18 @@
   support the following attributes:</p>
 
   <attributes>
+
+    <attribute name="ajpFlush" required="false">
+      <p>A boolean value which can be used to enable or disable sending
+      AJP flush messages to the fronting proxy whenever an explicit
+      flush happens. The default value is <code>true</code>.<br/>
+      An AJP flush message is a SEND_BODY_CHUNK packet with no body content.
+      Proxy implementations like mod_jk or mod_proxy_ajp will flush the
+      data buffered in the web server to the client when they receive
+      such a packet. Setting this to <code>false</code> can reduce
+      AJP packet traffic but might delay sending packets to the client.
+      At the end of the response, AJP does always flush to the client.</p>
+    </attribute>
 
     <attribute name="allowTrace" required="false">
       <p>A boolean value which can be used to enable or disable the TRACE
@@ -113,8 +125,10 @@
     <attribute name="maxPostSize" required="false">
       <p>The maximum size in bytes of the POST which will be handled by
       the container FORM URL parameter parsing. The limit can be disabled by
-      setting this attribute to a value less than zero.
-      If not specified, this attribute is set to 2097152 (2 megabytes).</p>
+      setting this attribute to a value less than zero. If not specified, this
+      attribute is set to 2097152 (2 megabytes). Note that the
+      <a href="filter.html#Failed_Request_Filter"><code>FailedRequestFilter</code></a>
+      can be used to reject requests that exceed this limit.</p>
     </attribute>
 
     <attribute name="maxSavePostSize" required="false">
@@ -134,9 +148,9 @@
 
     <attribute name="parseBodyMethods" required="false">
       <p>A comma-separated list of HTTP methods for which request
-      bodies will be parsed for request parameters identically
-      to POST. This is useful in RESTful applications that want to
-      support POST-style semantics for PUT requests.
+      bodies using <code>application/x-www-form-urlencoded</code> will be parsed
+      for request parameters identically to POST. This is useful in RESTful
+      applications that want to support POST-style semantics for PUT requests.
       Note that any setting other than <code>POST</code> causes Tomcat
       to behave in a way that goes against the intent of the servlet
       specification.
@@ -218,7 +232,7 @@
       calls to <code>request.isSecure()</code> to return <code>true</code>
       for requests received by this Connector. You would want this on an
       SSL Connector or a non SSL connector that is receiving data from a
-      SSL accelerator, like a crypto card, a SSL appliance or even a webserver.
+      SSL accelerator, like a crypto card, an SSL appliance or even a webserver.
       The default value is <code>false</code>.</p>
     </attribute>
 
@@ -372,18 +386,33 @@
       and connections are not counted.</p>
     </attribute>
 
+    <attribute name="maxCookieCount" required="false">
+      <p>The maximum number of cookies that are permitted for a request. A value
+      of less than zero means no limit. If not specified, a default value of 200
+      will be used.</p>
+    </attribute>
+
     <attribute name="maxThreads" required="false">
       <p>The maximum number of request processing threads to be created
       by this <strong>Connector</strong>, which therefore determines the
       maximum number of simultaneous requests that can be handled.  If
       not specified, this attribute is set to 200. If an executor is associated
       with this connector, this attribute is ignored as the connector will
-      execute tasks using the executor rather than an internal thread pool.</p>
+      execute tasks using the executor rather than an internal thread pool. Note
+      that if an executor is configured any value set for this attribute will be
+      recorded correctly but it will be reported (e.g. via JMX) as
+      <code>-1</code> to make clear that it is not used.</p>
     </attribute>
 
     <attribute name="minSpareThreads" required="false">
-      <p>The minimum number of threads always kept running. If not specified,
-      the default of <code>10</code> is used.</p>
+      <p>The minimum number of threads always kept running. This includes both
+      active and idle threads. If not specified, the default of <code>10</code>
+      is used. If an executor is associated with this connector, this attribute
+      is ignored as the connector will execute tasks using the executor rather
+      than an internal thread pool. Note that if an executor is configured any
+      value set for this attribute will be recorded correctly but it will be
+      reported (e.g. via JMX) as <code>-1</code> to make clear that it is not
+      used.</p>
     </attribute>
 
     <attribute name="packetSize" required="false">
@@ -422,8 +451,20 @@
       The default value is <code>5</code> (the value of the
       <code>java.lang.Thread.NORM_PRIORITY</code> constant). See the JavaDoc
       for the <code>java.lang.Thread</code> class for more details on what
-      this priority means.
-      </p>
+      this priority means.If an executor is associated
+      with this connector, this attribute is ignored as the connector will
+      execute tasks using the executor rather than an internal thread pool. Note
+      that if an executor is configured any value set for this attribute will be
+      recorded correctly but it will be reported (e.g. via JMX) as
+      <code>-1</code> to make clear that it is not used.</p>
+    </attribute>
+
+    <attribute name="throwOnFailure" required="false">
+      <p>If the Connector experiences an Exception during a Lifecycle transition
+      should the Exception be rethrown or logged? If not specified, the default
+      of <code>false</code> will be used. Note that the default can be changed
+      by the <code>org.apache.catalina.startup.EXIT_ON_INIT_FAILURE</code>
+      system property.</p>
     </attribute>
 
     <attribute name="tomcatAuthentication" required="false">
@@ -734,7 +775,7 @@
   directed the original request.</p>
 
   <p>For more information, see the
-  <a href="../proxy-howto.html">Proxy Support HOW-TO</a>.</p>
+  <a href="../proxy-howto.html">Proxy Support How-To</a>.</p>
 
   </subsection>
 
@@ -745,60 +786,60 @@
     <table class="defaultTable" style="text-align: center;">
       <tr>
         <th />
-        <th>Java Nio Connector<br />NIO</th>
-        <th>Java Nio2 Connector<br />NIO2</th>
-        <th>APR/native Connector<br />APR</th>
+        <th style="text-align: center;">Java Nio Connector<br />NIO</th>
+        <th style="text-align: center;">Java Nio2 Connector<br />NIO2</th>
+        <th style="text-align: center;">APR/native Connector<br />APR</th>
       </tr>
       <tr>
-        <th style="text-align: left;">Classname</th>
+        <th>Classname</th>
         <td><code class="noHighlight">AjpNioProtocol</code></td>
         <td><code class="noHighlight">AjpNio2Protocol</code></td>
         <td><code class="noHighlight">AjpAprProtocol</code></td>
       </tr>
       <tr>
-        <th style="text-align: left;">Tomcat Version</th>
+        <th>Tomcat Version</th>
         <td>7.x onwards</td>
         <td>8.x onwards</td>
         <td>5.5.x onwards</td>
       </tr>
       <tr>
-        <th style="text-align: left;">Support Polling</th>
+        <th>Support Polling</th>
         <td>YES</td>
         <td>YES</td>
         <td>YES</td>
       </tr>
       <tr>
-        <th style="text-align: left;">Polling Size</th>
+        <th>Polling Size</th>
         <td><code class="noHighlight">maxConnections</code></td>
         <td><code class="noHighlight">maxConnections</code></td>
         <td><code class="noHighlight">maxConnections</code></td>
       </tr>
       <tr>
-        <th style="text-align: left;">Read Request Headers</th>
+        <th>Read Request Headers</th>
         <td>Blocking</td>
         <td>Blocking</td>
         <td>Blocking</td>
       </tr>
       <tr>
-        <th style="text-align: left;">Read Request Body</th>
+        <th>Read Request Body</th>
         <td>Blocking</td>
         <td>Blocking</td>
         <td>Blocking</td>
       </tr>
       <tr>
-        <th style="text-align: left;">Write Response</th>
+        <th>Write Response Headers and Body</th>
         <td>Blocking</td>
         <td>Blocking</td>
         <td>Blocking</td>
       </tr>
       <tr>
-        <th style="text-align: left;">Wait for next Request</th>
+        <th>Wait for next Request</th>
         <td>Non Blocking</td>
         <td>Non Blocking</td>
         <td>Non Blocking</td>
       </tr>
       <tr>
-        <th style="text-align: left;">Max Connections</th>
+        <th>Max Connections</th>
         <td><code class="noHighlight">maxConnections</code></td>
         <td><code class="noHighlight">maxConnections</code></td>
         <td><code class="noHighlight">maxConnections</code></td>

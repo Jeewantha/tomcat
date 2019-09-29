@@ -101,8 +101,8 @@ public class FactoryCreateRule extends Rule {
             } catch (Exception e) {
                 // log message and error
                 if (digester.log.isInfoEnabled()) {
-                    digester.log.info("[FactoryCreateRule] Create exception ignored: " +
-                        ((e.getMessage() == null) ? e.getClass().getName() : e.getMessage()));
+                    digester.log.info(sm.getString("rule.createError",
+                        ((e.getMessage() == null) ? e.getClass().getName() : e.getMessage())));
                     if (digester.log.isDebugEnabled()) {
                         digester.log.debug("[FactoryCreateRule] Ignored exception:", e);
                     }
@@ -168,14 +168,12 @@ public class FactoryCreateRule extends Rule {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("FactoryCreateRule[");
         if (creationFactory != null) {
             sb.append("creationFactory=");
             sb.append(creationFactory);
         }
         sb.append("]");
-        return (sb.toString());
-
+        return sb.toString();
     }
 }

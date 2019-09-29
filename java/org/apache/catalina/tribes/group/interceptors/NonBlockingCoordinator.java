@@ -16,6 +16,11 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
+import java.net.ConnectException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.catalina.tribes.Channel;
@@ -113,8 +118,8 @@ import org.apache.juli.logging.LogFactory;
  * Maybe I'll do a state diagram :)
  * </p>
  * <h2>State Diagrams</h2>
- * <a href="http://people.apache.org/~fhanik/tribes/docs/leader-election-initiate-election.jpg">Initiate an election</a><br><br>
- * <a href="http://people.apache.org/~fhanik/tribes/docs/leader-election-message-arrives.jpg">Receive an election message</a><br><br>
+ * <a href="https://people.apache.org/~fhanik/tribes/docs/leader-election-initiate-election.jpg">Initiate an election</a><br><br>
+ * <a href="https://people.apache.org/~fhanik/tribes/docs/leader-election-message-arrives.jpg">Receive an election message</a><br><br>
  *
  * @version 1.0
  *
@@ -190,7 +195,7 @@ public class NonBlockingCoordinator extends ChannelInterceptorBase {
         synchronized (electionMutex) {
             Member local = getLocalMember(false);
             Member[] others = membership.getMembers();
-            fireInterceptorEvent(new CoordinationEvent(CoordinationEvent.EVT_START_ELECT,this,"Election initated"));
+            fireInterceptorEvent(new CoordinationEvent(CoordinationEvent.EVT_START_ELECT,this,"Election initiated"));
             if ( others.length == 0 ) {
                 this.viewId = new UniqueId(UUIDGenerator.randomUUID(false));
                 this.view = new Membership(local,AbsoluteOrder.comp, true);
@@ -287,13 +292,26 @@ public class NonBlockingCoordinator extends ChannelInterceptorBase {
     }
 
     protected boolean alive(Member mbr) {
-        return TcpFailureDetector.memberAlive(mbr,
-                                              COORD_ALIVE,
-                                              false,
-                                              false,
-                                              waitForCoordMsgTimeout,
-                                              waitForCoordMsgTimeout,
-                                              getOptionFlag());
+        return memberAlive(mbr, waitForCoordMsgTimeout);
+    }
+
+    protected boolean memberAlive(Member mbr, long conTimeout) {
+        //could be a shutdown notification
+        if ( Arrays.equals(mbr.getCommand(),Member.SHUTDOWN_PAYLOAD) ) return false;
+
+        try (Socket socket = new Socket()) {
+            InetAddress ia = InetAddress.getByAddress(mbr.getHost());
+            InetSocketAddress addr = new InetSocketAddress(ia, mbr.getPort());
+            socket.connect(addr, (int) conTimeout);
+            return true;
+        } catch (SocketTimeoutException sx) {
+            //do nothing, we couldn't connect
+        } catch (ConnectException cx) {
+            //do nothing, we couldn't connect
+        } catch (Exception x) {
+            log.error(sm.getString("nonBlockingCoordinator.memberAlive.failed"),x);
+        }
+        return false;
     }
 
     protected Membership mergeOnArrive(CoordinationMessage msg) {
@@ -745,8 +763,9 @@ public class NonBlockingCoordinator extends ChannelInterceptorBase {
     @Override
     public void fireInterceptorEvent(InterceptorEvent event) {
         if (event instanceof CoordinationEvent &&
-            ((CoordinationEvent)event).type == CoordinationEvent.EVT_CONF_RX)
+            ((CoordinationEvent)event).type == CoordinationEvent.EVT_CONF_RX) {
             log.info(event);
+        }
     }
 
     public static class CoordinationEvent implements InterceptorEvent {
@@ -813,16 +832,13 @@ public class NonBlockingCoordinator extends ChannelInterceptorBase {
 
         @Override
         public String toString() {
-            StringBuilder buf = new StringBuilder("CoordinationEvent[type=");
-            buf.append(type).append("\n\tLocal:");
             Member local = interceptor.getLocalMember(false);
-            buf.append(local!=null?local.getName():"").append("\n\tCoord:");
-            buf.append(coord!=null?coord.getName():"").append("\n\tView:");
-            buf.append(Arrays.toNameString(view!=null?view.getMembers():null)).append("\n\tSuggested View:");
-            buf.append(Arrays.toNameString(suggestedView!=null?suggestedView.getMembers():null)).append("\n\tMembers:");
-            buf.append(Arrays.toNameString(mbrs)).append("\n\tInfo:");
-            buf.append(info).append("]");
-            return buf.toString();
+            return sm.getString("nonBlockingCoordinator.report", Integer.valueOf(type),
+                    (local != null ? local.getName() : ""),
+                    (coord != null ? coord.getName() : ""),
+                    Arrays.toNameString(view != null ? view.getMembers() : null),
+                    Arrays.toNameString(suggestedView != null ? suggestedView.getMembers() : null),
+                    Arrays.toNameString(mbrs), info);
         }
     }
 

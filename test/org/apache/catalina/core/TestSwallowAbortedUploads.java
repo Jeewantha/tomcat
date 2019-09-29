@@ -35,14 +35,12 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-
 import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Wrapper;
+import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.SimpleHttpClient;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
@@ -94,9 +92,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Unlimited, swallow enabled");
         AbortedUploadClient client = new AbortedUploadClient();
         Exception ex = doAbortedUploadTest(client, false, true);
-        assertNull("Unlimited upload with swallow enabled generates client exception",
+        Assert.assertNull("Unlimited upload with swallow enabled generates client exception",
                    ex);
-        assertTrue("Unlimited upload with swallow enabled returns error status code",
+        Assert.assertTrue("Unlimited upload with swallow enabled returns error status code",
                    client.isResponse200());
         client.reset();
     }
@@ -106,9 +104,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Unlimited, swallow disabled");
         AbortedUploadClient client = new AbortedUploadClient();
         Exception ex = doAbortedUploadTest(client, false, false);
-        assertNull("Unlimited upload with swallow disabled generates client exception",
+        Assert.assertNull("Unlimited upload with swallow disabled generates client exception",
                    ex);
-        assertTrue("Unlimited upload with swallow disabled returns error status code",
+        Assert.assertTrue("Unlimited upload with swallow disabled returns error status code",
                    client.isResponse200());
         client.reset();
     }
@@ -118,9 +116,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Limited, swallow enabled");
         AbortedUploadClient client = new AbortedUploadClient();
         Exception ex = doAbortedUploadTest(client, true, true);
-        assertNull("Limited upload with swallow enabled generates client exception",
+        Assert.assertNull("Limited upload with swallow enabled generates client exception",
                    ex);
-        assertTrue("Limited upload with swallow enabled returns non-500 status code",
+        Assert.assertTrue("Limited upload with swallow enabled returns non-500 status code",
                    client.isResponse500());
         client.reset();
     }
@@ -130,7 +128,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Limited, swallow disabled");
         AbortedUploadClient client = new AbortedUploadClient();
         Exception ex = doAbortedUploadTest(client, true, false);
-        assertTrue("Limited upload with swallow disabled does not generate client exception",
+        Assert.assertTrue("Limited upload with swallow disabled does not generate client exception",
                    ex instanceof java.net.SocketException);
         client.reset();
     }
@@ -140,9 +138,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Aborted (OK), swallow enabled");
         AbortedPOSTClient client = new AbortedPOSTClient();
         Exception ex = doAbortedPOSTTest(client, HttpServletResponse.SC_OK, true);
-        assertNull("Unlimited upload with swallow enabled generates client exception",
+        Assert.assertNull("Unlimited upload with swallow enabled generates client exception",
                    ex);
-        assertTrue("Unlimited upload with swallow enabled returns error status code",
+        Assert.assertTrue("Unlimited upload with swallow enabled returns error status code",
                    client.isResponse200());
         client.reset();
     }
@@ -152,9 +150,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Aborted (OK), swallow disabled");
         AbortedPOSTClient client = new AbortedPOSTClient();
         Exception ex = doAbortedPOSTTest(client, HttpServletResponse.SC_OK, false);
-        assertNull("Unlimited upload with swallow disabled generates client exception",
+        Assert.assertNull("Unlimited upload with swallow disabled generates client exception",
                    ex);
-        assertTrue("Unlimited upload with swallow disabled returns error status code",
+        Assert.assertTrue("Unlimited upload with swallow disabled returns error status code",
                    client.isResponse200());
         client.reset();
     }
@@ -164,9 +162,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Aborted (413), swallow enabled");
         AbortedPOSTClient client = new AbortedPOSTClient();
         Exception ex = doAbortedPOSTTest(client, HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, true);
-        assertNull("Limited upload with swallow enabled generates client exception",
+        Assert.assertNull("Limited upload with swallow enabled generates client exception",
                    ex);
-        assertTrue("Limited upload with swallow enabled returns error status code",
+        Assert.assertTrue("Limited upload with swallow enabled returns error status code",
                    client.isResponse413());
         client.reset();
     }
@@ -176,7 +174,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Aborted (413), swallow disabled");
         AbortedPOSTClient client = new AbortedPOSTClient();
         Exception ex = doAbortedPOSTTest(client, HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, false);
-        assertTrue("Limited upload with swallow disabled does not generate client exception",
+        Assert.assertTrue("Limited upload with swallow disabled does not generate client exception",
                    ex instanceof java.net.SocketException);
         client.reset();
     }
@@ -231,7 +229,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         private static final String URI = "/uploadAborted";
         private static final String servletName = "uploadAborted";
         private static final int limitSize = 100;
-        private static final int hugeSize = 2000000;
+        private static final int hugeSize = 10000000;
 
         private Context context;
 
@@ -252,11 +250,15 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
             } else {
                 w.setMultipartConfigElement(new MultipartConfigElement(""));
             }
-            context.addServletMapping(URI, servletName);
+            context.addServletMappingDecoded(URI, servletName);
             context.setSwallowAbortedUploads(swallow);
 
+            Connector c = tomcat.getConnector();
+            c.setMaxPostSize(2 * hugeSize);
+            c.setProperty("maxSwallowSize", Integer.toString(hugeSize));
+
             tomcat.start();
-            setPort(tomcat.getConnector().getLocalPort());
+            setPort(c.getLocalPort());
         }
 
         private Exception doRequest(boolean limited, boolean swallow) {
@@ -293,7 +295,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
                         "ASCII");
 
                 request = new String[] { "POST http://localhost:" + getPort() + URI + " HTTP/1.1" + CRLF
-                        + "Host: localhost" + CRLF
+                        + "Host: localhost:" + getPort() + CRLF
                         + "Connection: close" + CRLF
                         + "Content-Type: multipart/form-data; boundary=" + boundary + CRLF
                         + "Content-Length: " + content.length() + CRLF
@@ -321,9 +323,9 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
 
         private static final long serialVersionUID = 1L;
 
-        private int status = 200;
+        private final int status;
 
-        public void setStatus(int status) {
+        public AbortedPOSTServlet(int status) {
             this.status = status;
         }
 
@@ -347,7 +349,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
 
         private static final String URI = "/uploadAborted";
         private static final String servletName = "uploadAborted";
-        private static final int hugeSize = 2000000;
+        private static final int hugeSize = 10000000;
 
         private Context context;
 
@@ -356,16 +358,18 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
 
             Tomcat tomcat = getTomcatInstance();
             context = tomcat.addContext("", TEMP_DIR);
-            AbortedPOSTServlet servlet = new AbortedPOSTServlet();
-            servlet.setStatus(status);
-            Tomcat.addServlet(context, servletName,
-                              servlet);
-            context.addServletMapping(URI, servletName);
+            AbortedPOSTServlet servlet = new AbortedPOSTServlet(status);
+            Tomcat.addServlet(context, servletName, servlet);
+            context.addServletMappingDecoded(URI, servletName);
             context.setSwallowAbortedUploads(swallow);
 
             tomcat.start();
 
-            setPort(tomcat.getConnector().getLocalPort());
+            Connector c = tomcat.getConnector();
+            c.setMaxPostSize(2 * hugeSize);
+            c.setProperty("maxSwallowSize", Integer.toString(hugeSize));
+
+            setPort(c.getLocalPort());
         }
 
         private Exception doRequest(int status, boolean swallow) {
@@ -384,7 +388,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
                 String content = new String(body);
 
                 request = new String[] { "POST http://localhost:" + getPort() + URI + " HTTP/1.1" + CRLF
-                        + "Host: localhost" + CRLF
+                        + "Host: localhost:" + getPort() + CRLF
                         + "Connection: close" + CRLF
                         + "Content-Length: " + content.length() + CRLF
                         + CRLF

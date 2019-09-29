@@ -28,8 +28,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpSession;
@@ -39,20 +42,24 @@ import org.apache.catalina.Globals;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Session;
+import org.apache.catalina.connector.ClientAbortException;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
+import org.apache.catalina.util.TLSUtil;
+import org.apache.coyote.ActionCode;
 import org.apache.coyote.RequestInfo;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.collections.SynchronizedStack;
+import org.apache.tomcat.util.net.IPv6Utils;
 
 
 /**
  * <p>Abstract implementation of the <b>Valve</b> interface that generates a web
  * server access log with the detailed line contents matching a configurable
  * pattern. The syntax of the available patterns is similar to that supported by
- * the <a href="http://httpd.apache.org/">Apache HTTP Server</a>
+ * the <a href="https://httpd.apache.org/">Apache HTTP Server</a>
  * <code>mod_log_config</code> module.</p>
  *
  * <p>Patterns for the logged message may include constant text or any of the
@@ -81,7 +88,14 @@ import org.apache.tomcat.util.collections.SynchronizedStack;
  * <li><b>%v</b> - Local server name
  * <li><b>%D</b> - Time taken to process the request, in millis
  * <li><b>%T</b> - Time taken to process the request, in seconds
+ * <li><b>%F</b> - Time taken to commit the response, in millis
  * <li><b>%I</b> - current Request thread name (can compare later with stacktraces)
+ * <li><b>%X</b> - Connection status when response is completed:
+ *   <ul>
+ *   <li><code>X</code> = Connection aborted before the response completed.</li>
+ *   <li><code>+</code> = Connection may be kept alive after the response is sent.</li>
+ *   <li><code>-</code> = Connection will be closed after the response is sent.</li>
+ *   </ul>
  * </ul>
  * <p>In addition, the caller can specify one of the following aliases for
  * commonly utilized patterns:</p>
@@ -95,7 +109,7 @@ import org.apache.tomcat.util.collections.SynchronizedStack;
  * There is also support to write information from the cookie, incoming
  * header, the Session or something else in the ServletRequest.<br>
  * It is modeled after the
- * <a href="http://httpd.apache.org/">Apache HTTP Server</a> log configuration
+ * <a href="https://httpd.apache.org/">Apache HTTP Server</a> log configuration
  * syntax:</p>
  * <ul>
  * <li><code>%{xxx}i</code> for incoming headers
@@ -137,14 +151,14 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     /**
      * The list of our time format types.
      */
-    private static enum FormatType {
+    private enum FormatType {
         CLF, SEC, MSEC, MSEC_FRAC, SDF
     }
 
     /**
      * The list of our port types.
      */
-    private static enum PortType {
+    private enum PortType {
         LOCAL, REMOTE
     }
 
@@ -160,6 +174,11 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      * enabled this component
      */
     protected boolean enabled = true;
+
+     /**
+     * Use IPv6 canonical representation format as defined by RFC 5952.
+     */
+    private boolean ipv6Canonical = false;
 
     /**
      * The pattern used to format our access log lines.
@@ -332,7 +351,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         private final Locale cacheDefaultLocale;
         private final DateFormatCache parent;
         protected final Cache cLFCache;
-        private final HashMap<String, Cache> formatCache = new HashMap<>();
+        private final Map<String, Cache> formatCache = new HashMap<>();
 
         protected DateFormatCache(int size, Locale loc, DateFormatCache parent) {
             cacheSize = size;
@@ -437,6 +456,9 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     protected AccessLogElement[] logElements = null;
 
     /**
+     * Should this valve set request attributes for IP address, hostname,
+     * protocol and port used for the request.
+     * Default is <code>false</code>.
      * @see #setRequestAttributesEnabled(boolean)
      */
     protected boolean requestAttributesEnabled = false;
@@ -456,15 +478,43 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      */
     private int maxLogMessageBufferSize = 256;
 
+    /**
+     * Does the configured log pattern include a known TLS attribute?
+     */
+    private boolean tlsAttributeRequired = false;
+
+
     // ------------------------------------------------------------- Properties
+
+    public int getMaxLogMessageBufferSize() {
+        return maxLogMessageBufferSize;
+    }
+
+
+    public void setMaxLogMessageBufferSize(int maxLogMessageBufferSize) {
+        this.maxLogMessageBufferSize = maxLogMessageBufferSize;
+    }
+
+
+    public boolean getIpv6Canonical() {
+        return ipv6Canonical;
+    }
+
+
+    public void setIpv6Canonical(boolean ipv6Canonical) {
+        this.ipv6Canonical = ipv6Canonical;
+    }
+
 
     /**
      * {@inheritDoc}
+     * Default is <code>false</code>.
      */
     @Override
     public void setRequestAttributesEnabled(boolean requestAttributesEnabled) {
         this.requestAttributesEnabled = requestAttributesEnabled;
     }
+
 
     /**
      * {@inheritDoc}
@@ -475,7 +525,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     }
 
     /**
-     * @return Returns the enabled.
+     * @return the enabled flag.
      */
     public boolean getEnabled() {
         return enabled;
@@ -490,10 +540,10 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     }
 
     /**
-     * Return the format pattern.
+     * @return the format pattern.
      */
     public String getPattern() {
-        return (this.pattern);
+        return this.pattern;
     }
 
 
@@ -519,6 +569,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      * Return whether the attribute name to look for when
      * performing conditional logging. If null, every
      * request is logged.
+     * @return the attribute name
      */
     public String getCondition() {
         return condition;
@@ -540,6 +591,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      * Return whether the attribute name to look for when
      * performing conditional logging. If null, every
      * request is logged.
+     * @return the attribute name
      */
     public String getConditionUnless() {
         return getCondition();
@@ -560,6 +612,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      * Return whether the attribute name to look for when
      * performing conditional logging. If null, every
      * request is logged.
+     * @return the attribute name
      */
     public String getConditionIf() {
         return conditionIf;
@@ -579,6 +632,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     /**
      * Return the locale used to format timestamps in log entries and in
      * log file name suffix.
+     * @return the locale
      */
     public String getLocale() {
         return localeName;
@@ -613,6 +667,14 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     @Override
     public void invoke(Request request, Response response) throws IOException,
             ServletException {
+        if (tlsAttributeRequired) {
+            // The log pattern uses TLS attributes. Ensure these are populated
+            // before the request is processed because with NIO2 it is possible
+            // for the connection to be closed (and the TLS info lost) before
+            // the access log requests the TLS info. Requesting it now causes it
+            // to be cached in the request.
+            request.getAttribute(Globals.CERTIFICATES_ATTR);
+        }
         getNext().invoke(request, response);
     }
 
@@ -671,8 +733,8 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      * second since a new Date was created, this method simply gives out the
      * same Date again so that the system doesn't spend time creating Date
      * objects unnecessarily.
-     *
-     * @return Date
+     * @param systime The time
+     * @return the date object
      */
     private static Date getDate(long systime) {
         Date date = localDate.get();
@@ -682,7 +744,10 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
 
 
     /**
-     * Find a locale by name
+     * Find a locale by name.
+     * @param name The locale name
+     * @param fallback Fallback locale if the name is not found
+     * @return the locale object
      */
     protected static Locale findLocale(String name, Locale fallback) {
         if (name == null || name.isEmpty()) {
@@ -690,7 +755,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         } else {
             for (Locale l: Locale.getAvailableLocales()) {
                 if (name.equals(l.toString())) {
-                    return(l);
+                    return l;
                 }
             }
         }
@@ -756,9 +821,9 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
      */
     protected static class LocalAddrElement implements AccessLogElement {
 
-        private static final String LOCAL_ADDR_VALUE;
+        private final String localAddrValue;
 
-        static {
+        public LocalAddrElement(boolean ipv6Canonical) {
             String init;
             try {
                 init = InetAddress.getLocalHost().getHostAddress();
@@ -766,13 +831,18 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
                 ExceptionUtils.handleThrowable(e);
                 init = "127.0.0.1";
             }
-            LOCAL_ADDR_VALUE = init;
+
+            if (ipv6Canonical) {
+                localAddrValue = IPv6Utils.canonize(init);
+            } else {
+                localAddrValue = init;
+            }
         }
 
         @Override
         public void addElement(CharArrayWriter buf, Date date, Request request,
                 Response response, long time) {
-            buf.append(LOCAL_ADDR_VALUE);
+            buf.append(localAddrValue);
         }
     }
 
@@ -783,16 +853,22 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         @Override
         public void addElement(CharArrayWriter buf, Date date, Request request,
                 Response response, long time) {
+            String value = null;
             if (requestAttributesEnabled) {
                 Object addr = request.getAttribute(REMOTE_ADDR_ATTRIBUTE);
                 if (addr == null) {
-                    buf.append(request.getRemoteAddr());
+                    value = request.getRemoteAddr();
                 } else {
-                    buf.append(addr.toString());
+                    value = addr.toString();
                 }
             } else {
-                buf.append(request.getRemoteAddr());
+                value = request.getRemoteAddr();
             }
+
+            if (ipv6Canonical) {
+                value = IPv6Utils.canonize(value);
+            }
+            buf.append(value);
         }
     }
 
@@ -815,6 +891,10 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
             }
             if (value == null || value.length() == 0) {
                 value = "-";
+            }
+
+            if (ipv6Canonical) {
+                value = IPv6Utils.canonize(value);
             }
             buf.append(value);
         }
@@ -999,17 +1079,22 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
             if (usesBegin) {
                 timestamp -= time;
             }
-            switch (type) {
-            case CLF:
+            /*  Implementation note: This is deliberately not implemented using
+             *  switch. If a switch is used the compiler (at least the Oracle
+             *  one) will use a synthetic class to implement the switch. The
+             *  problem is that this class needs to be pre-loaded when using a
+             *  SecurityManager and the name of that class will depend on any
+             *  anonymous inner classes and any other synthetic classes. As such
+             *  the name is not constant and keeping the pre-loading up to date
+             *  as the name changes is error prone.
+             */
+            if (type == FormatType.CLF) {
                 buf.append(localDateCache.get().getFormat(timestamp));
-                break;
-            case SEC:
+            } else if (type == FormatType.SEC) {
                 buf.append(Long.toString(timestamp / 1000));
-                break;
-            case MSEC:
+            } else if (type == FormatType.MSEC) {
                 buf.append(Long.toString(timestamp));
-                break;
-            case MSEC_FRAC:
+            } else if (type == FormatType.MSEC_FRAC) {
                 frac = timestamp % 1000;
                 if (frac < 100) {
                     if (frac < 10) {
@@ -1020,8 +1105,8 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
                     }
                 }
                 buf.append(Long.toString(frac));
-                break;
-            case SDF:
+            } else {
+                // FormatType.SDF
                 String temp = localDateCache.get().getFormat(format, locale, timestamp);
                 if (usesMsecs) {
                     frac = timestamp % 1000;
@@ -1039,7 +1124,6 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
                     temp = temp.replace(msecPattern, Long.toString(frac));
                 }
                 buf.append(temp);
-                break;
             }
         }
     }
@@ -1155,7 +1239,7 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         private final boolean conversion;
 
         /**
-         * if conversion is true, write '-' instead of 0 - %b
+         * @param conversion <code>true</code> to write '-' instead of 0 - %b.
          */
         public ByteSentElement(boolean conversion) {
             this.conversion = conversion;
@@ -1209,8 +1293,8 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         private final boolean millis;
 
         /**
-         * if millis is true, write time in millis - %D
-         * if millis is false, write time in seconds - %T
+         * @param millis <code>true</code>, write time in millis - %D,
+         * if <code>false</code>, write time in seconds - %T
          */
         public ElapsedTimeElement(boolean millis) {
             this.millis = millis;
@@ -1306,11 +1390,28 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     /**
      * write local server name - %v
      */
-    protected static class LocalServerNameElement implements AccessLogElement {
+    protected class LocalServerNameElement implements AccessLogElement {
         @Override
         public void addElement(CharArrayWriter buf, Date date, Request request,
                 Response response, long time) {
-            buf.append(request.getServerName());
+            String value = null;
+            if (requestAttributesEnabled) {
+                Object serverName = request.getAttribute(SERVER_NAME_ATTRIBUTE);
+                if (serverName != null) {
+                    value = serverName.toString();
+                }
+            }
+            if (value == null || value.length() == 0) {
+                value = request.getServerName();
+            }
+            if (value == null || value.length() == 0) {
+                value = "-";
+            }
+
+            if (ipv6Canonical) {
+                value = IPv6Utils.canonize(value);
+            }
+            buf.append(value);
         }
     }
 
@@ -1475,9 +1576,51 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         }
     }
 
+    /**
+     * Write connection status when response is completed - %X
+     */
+    protected static class ConnectionStatusElement implements AccessLogElement {
+        @Override
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            if (response != null && request != null) {
+                boolean statusFound = false;
+
+                // Check whether connection IO is in "not allowed" state
+                AtomicBoolean isIoAllowed = new AtomicBoolean(false);
+                request.getCoyoteRequest().action(ActionCode.IS_IO_ALLOWED, isIoAllowed);
+                if (!isIoAllowed.get()) {
+                    buf.append('X');
+                    statusFound = true;
+                } else {
+                    // Check for connection aborted cond
+                    if (response.isError()) {
+                        Throwable ex = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+                        if (ex instanceof ClientAbortException) {
+                            buf.append('X');
+                            statusFound = true;
+                        }
+                    }
+                }
+
+                // If status is not found yet, cont to check whether connection is keep-alive or close
+                if (!statusFound) {
+                    String connStatus = response.getHeader(org.apache.coyote.http11.Constants.CONNECTION);
+                    if (org.apache.coyote.http11.Constants.CLOSE.equalsIgnoreCase(connStatus)) {
+                        buf.append('-');
+                    } else {
+                        buf.append('+');
+                    }
+                }
+            } else {
+                // Unknown connection status
+                buf.append('?');
+            }
+        }
+    }
 
     /**
-     * parse pattern string and create the array of AccessLogElement
+     * Parse pattern string and create the array of AccessLogElement.
+     * @return the log elements array
      */
     protected AccessLogElement[] createLogElements() {
         List<AccessLogElement> list = new ArrayList<>();
@@ -1526,7 +1669,10 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     }
 
     /**
-     * create an AccessLogElement implementation which needs an element name
+     * Create an AccessLogElement implementation which needs an element name.
+     * @param name Header name
+     * @param pattern char in the log pattern
+     * @return the log element
      */
     protected AccessLogElement createAccessLogElement(String name, char pattern) {
         switch (pattern) {
@@ -1539,6 +1685,9 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
         case 'p':
             return new PortElement(name);
         case 'r':
+            if (TLSUtil.isTLSRequestAttribute(name)) {
+                tlsAttributeRequired = true;
+            }
             return new RequestAttributeElement(name);
         case 's':
             return new SessionAttributeElement(name);
@@ -1550,14 +1699,16 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
     }
 
     /**
-     * create an AccessLogElement implementation
+     * Create an AccessLogElement implementation.
+     * @param pattern char in the log pattern
+     * @return the log element
      */
     protected AccessLogElement createAccessLogElement(char pattern) {
         switch (pattern) {
         case 'a':
             return new RemoteAddrElement();
         case 'A':
-            return new LocalAddrElement();
+            return new LocalAddrElement(ipv6Canonical);
         case 'b':
             return new ByteSentElement(true);
         case 'B':
@@ -1596,6 +1747,8 @@ public abstract class AbstractAccessLogValve extends ValveBase implements Access
             return new LocalServerNameElement();
         case 'I':
             return new ThreadNameElement();
+        case 'X':
+            return new ConnectionStatusElement();
         default:
             return new StringElement("???" + pattern + "???");
         }

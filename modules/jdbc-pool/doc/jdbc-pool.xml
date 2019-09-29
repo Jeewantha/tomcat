@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -36,7 +36,7 @@
 <section name="Introduction">
 
   <p>The <strong>JDBC Connection Pool <code>org.apache.tomcat.jdbc.pool</code></strong>
-  is a replacement or an alternative to the <a href="http://commons.apache.org/dbcp/">Apache Commons DBCP</a>
+  is a replacement or an alternative to the <a href="https://commons.apache.org/dbcp/">Apache Commons DBCP</a>
   connection pool.</p>
 
   <p>So why do we need a new connection pool?</p>
@@ -119,7 +119,7 @@
   <subsection name="Additional features">
     <p>The Tomcat connection pool offers a few additional features over what most other pools let you do:</p>
     <ul>
-      <li><code>initSQL</code> - the ability to run a SQL statement exactly once, when the connection is created</li>
+      <li><code>initSQL</code> - the ability to run an SQL statement exactly once, when the connection is created</li>
       <li><code>validationInterval</code> - in addition to running validations on connections, avoid running them too frequently.</li>
       <li><code>jdbcInterceptors</code> - flexible and pluggable interceptors to create any customizations around the pool,
           the query execution and the result set handling. More on this in the advanced section.</li>
@@ -128,7 +128,7 @@
   </subsection>
   <subsection name="Inside the Apache Tomcat Container">
     <p>
-      The Tomcat Connection pool is configured as a resource described in <a href="http://tomcat.apache.org/tomcat-8.0-doc/jndi-datasource-examples-howto.html" target="_blank">The Tomcat JDBC documentation</a>
+      The Tomcat Connection pool is configured as a resource described in <a href="http://tomcat.apache.org/tomcat-9.0-doc/jndi-datasource-examples-howto.html" target="_blank">The Tomcat JDBC documentation</a>
       With the only difference being that you have to specify the <code>factory</code> attribute and set the value to
       <code>org.apache.tomcat.jdbc.pool.DataSourceFactory</code>
     </p>
@@ -277,8 +277,6 @@
     <attribute name="testOnBorrow" required="false">
       <p>(boolean) The indication of whether objects will be validated before being borrowed from the pool.
          If the object fails to validate, it will be dropped from the pool, and we will attempt to borrow another.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code>
-         or <code>validatorClassName</code> parameter must be set to a non-null string.
          In order to have a more efficient validation, see <code>validationInterval</code>.
          Default value is <code>false</code>
       </p>
@@ -287,16 +285,12 @@
     <attribute name="testOnConnect" required="false">
       <p>(boolean) The indication of whether objects will be validated when a connection is first created.
          If an object fails to validate, it will be throw <code>SQLException</code>.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code>, <code>initSQL</code>
-         or <code>validatorClassName</code> parameter must be set to a non-null string.
          Default value is <code>false</code>
       </p>
     </attribute>
 
     <attribute name="testOnReturn" required="false">
       <p>(boolean) The indication of whether objects will be validated before being returned to the pool.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code>
-         or <code>validatorClassName</code> parameter must be set to a non-null string.
          The default value is <code>false</code>.
       </p>
     </attribute>
@@ -304,8 +298,6 @@
     <attribute name="testWhileIdle" required="false">
       <p>(boolean) The indication of whether objects will be validated by the idle object evictor (if any).
          If an object fails to validate, it will be dropped from the pool.
-         NOTE - for a true value to have any effect, the <code>validationQuery</code>
-         or <code>validatorClassName</code> parameter must be set to a non-null string.
          The default value is <code>false</code> and this property has to be set in order for the
          pool cleaner/test thread is to run (also see <code>timeBetweenEvictionRunsMillis</code>)
       </p>
@@ -315,6 +307,7 @@
       <p>(String) The SQL query that will be used to validate connections from this pool before returning them to the caller.
          If specified, this query does not have to return any data, it just can't throw a <code>SQLException</code>.
          The default value is <code>null</code>.
+         If not specified, connections will be validation by the isValid() method.
          Example values are <code>SELECT 1</code>(mysql), <code>select 1 from dual</code>(oracle), <code>SELECT 1</code>(MS Sql Server)
       </p>
     </attribute>
@@ -342,7 +335,7 @@
     <attribute name="timeBetweenEvictionRunsMillis" required="false">
       <p>(int) The number of milliseconds to sleep between runs of the idle connection validation/cleaner thread.
          This value should not be set under 1 second. It dictates how often we check for idle, abandoned connections, and how often
-         we validate idle connections.
+         we validate idle connections. This value will be overridden by <code>maxAge</code> if the latter is non-zero and lower.
          The default value is <code>5000</code> (5 seconds). <br/>
       </p>
     </attribute>
@@ -414,7 +407,7 @@
       <p>(String) A semicolon separated list of classnames extending
          <code>org.apache.tomcat.jdbc.pool.JdbcInterceptor</code> class.
          See <a href="#Configuring_JDBC_interceptors">Configuring JDBC interceptors</a>
-         below for more detailed description of syntaz and examples.
+         below for more detailed description of syntax and examples.
       </p>
       <p>
          These interceptors will be inserted as an interceptor into the chain
@@ -437,7 +430,7 @@
     <attribute name="validationInterval" required="false">
       <p>(long) avoid excess validation, only run validation at most at this frequency - time in milliseconds.
          If a connection is due for validation, but has been validated previously within this interval, it will not be validated again.
-         The default value is <code>30000</code> (30 seconds).</p>
+         The default value is <code>3000</code> (3 seconds).</p>
     </attribute>
 
     <attribute name="jmxEnabled" required="false">
@@ -470,11 +463,22 @@
     </attribute>
 
     <attribute name="maxAge" required="false">
-      <p>(long) Time in milliseconds to keep this connection. When a connection is returned to the pool,
-         the pool will check to see if the <code>now - time-when-connected > maxAge</code> has been reached,
-         and if so, it closes the connection rather than returning it to the pool.
-         The default value is <code>0</code>, which implies that connections will be left open and no age check
-         will be done upon returning the connection to the pool.</p>
+      <p>(long) Time in milliseconds to keep a connection before recreating it.
+         When a connection is borrowed from the pool, the pool will check to see
+         if the <code>now - time-when-connected > maxAge</code> has been reached
+         , and if so, it reconnects before borrow it. When a connection is
+         returned to the pool, the pool will check to see if the
+         <code>now - time-when-connected > maxAge</code> has been reached, and
+         if so, it tries to reconnect.
+         When a connection is idle and <code>timeBetweenEvictionRunsMillis</code> is
+         greater than zero, the pool will periodically check to see if the
+         <code>now - time-when-connected > maxAge</code> has been reached, and
+         if so, it tries to reconnect.
+         Setting <code>maxAge</code> to a value lower than <code>timeBetweenEvictionRunsMillis</code>
+         will override it (so idle connection validation/cleaning will run more frequently).
+         The default value is <code>0</code>, which implies that connections
+         will be left open and no age check will be done upon borrowing from the
+         pool, returning the connection to the pool or when checking idle connections.</p>
     </attribute>
 
     <attribute name="useEquals" required="false">
@@ -552,6 +556,13 @@
          The default value is <code>false</code>.
       </p>
     </attribute>
+    <attribute name="useStatementFacade" required="false">
+      <p>(boolean) Set this to true if you wish to wrap statements in order to
+         enable <code>equals()</code> and <code>hashCode()</code> methods to be
+         called on the closed statements if any statement proxy is set.
+         Default value is <code>true</code>.
+      </p>
+    </attribute>
 
   </attributes>
   </subsection>
@@ -565,7 +576,7 @@
     </p>
     <p>Further interceptors will be added to the core of the pool as the need arises. Contributions are always welcome!</p>
     <p>Interceptors are of course not limited to just <code>java.sql.Connection</code> but can be used to wrap any
-    of the results from a method invokation as well. You could build query performance analyzer that provides JMX notifications when a
+    of the results from a method invocation as well. You could build query performance analyzer that provides JMX notifications when a
     query is running longer than the expected time.</p>
   </subsection>
   <subsection name="Configuring JDBC interceptors">
@@ -694,6 +705,7 @@
       </attribute>
       <attribute name="maxQueries" required="false">
         <p>(int as String) The maximum number of queries to keep track of in order to preserve memory space.
+           A value less than or equal to 0 will disable this feature.
            The default value is <code>1000</code>.
         </p>
       </attribute>
@@ -745,7 +757,7 @@
 </section>
 
 <section name="Code Example">
-  <p>Other examples of Tomcat configuration for JDBC usage can be found <a href="http://tomcat.apache.org/tomcat-8.0-doc/jndi-datasource-examples-howto.html">in the Tomcat documentation</a>. </p>
+  <p>Other examples of Tomcat configuration for JDBC usage can be found <a href="https://tomcat.apache.org/tomcat-9.0-doc/jndi-datasource-examples-howto.html">in the Tomcat documentation</a>. </p>
   <subsection name="Plain Ol' Java">
     <p>Here is a simple example of how to create and use a data source.</p>
 <source><![CDATA[  import java.sql.Connection;
@@ -882,7 +894,7 @@
 <source><![CDATA[  public Object invoke(Object proxy, Method method, Object[] args) throws Throwable]]></source>
     <p>
        method to get invoked. The <code>Method method</code> is the actual method invoked, and <code>Object[] args</code> are the arguments.
-       To look at a very simple example, where we demonstrate how to make the invokation to <code>java.sql.Connection.close()</code> a noop
+       To look at a very simple example, where we demonstrate how to make the invocation to <code>java.sql.Connection.close()</code> a noop
        if the connection has been closed
     </p>
 <source><![CDATA[  if (CLOSE_VAL==method.getName()) {
@@ -952,7 +964,7 @@
 
 <section name="Building">
   <p>We build the JDBC pool code with 1.6, but it is backwards compatible down to 1.5 for runtime environment. For unit test, we use 1.6 and higher</p>
-  <p>Other examples of Tomcat configuration for JDBC usage can be found <a href="http://tomcat.apache.org/tomcat-8.0-doc/jndi-datasource-examples-howto.html">in the Tomcat documentation</a>. </p>
+  <p>Other examples of Tomcat configuration for JDBC usage can be found <a href="https://tomcat.apache.org/tomcat-9.0-doc/jndi-datasource-examples-howto.html">in the Tomcat documentation</a>. </p>
   <subsection name="Building from source">
     <p>Building is pretty simple. The pool has a dependency on <code>tomcat-juli.jar</code> and in case you want the <code>SlowQueryReportJmx</code></p>
 <source><![CDATA[  javac -classpath tomcat-juli.jar \
@@ -961,7 +973,7 @@
         org/apache/tomcat/jdbc/pool/interceptor/*.java \
         org/apache/tomcat/jdbc/pool/jmx/*.java]]></source>
     <p>
-       A build file can be found in the Tomcat <a href="http://svn.apache.org/viewvc/tomcat/trunk/modules/jdbc-pool/">source repository</a>.
+       A build file can be found in the Tomcat <a href="https://svn.apache.org/viewvc/tomcat/trunk/modules/jdbc-pool/">source repository</a>.
     </p>
     <p>
       As a convenience, a build file is also included where a simple build command will generate all files needed.

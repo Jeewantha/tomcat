@@ -235,36 +235,26 @@ public class FileMessageFactory {
      */
     public boolean writeMessage(FileMessage msg)
             throws IllegalArgumentException, IOException {
-        if (!openForWrite)
-            throw new IllegalArgumentException(
-                    "Can't write message, this factory is reading.");
+        if (!openForWrite) {
+            throw new IllegalArgumentException(sm.getString("fileMessageFactory.cannotWrite"));
+        }
         if (log.isDebugEnabled())
             log.debug("Message " + msg + " data " + HexUtils.toHexString(msg.getData())
                     + " data length " + msg.getDataLength() + " out " + out);
 
         if (msg.getMessageNumber() <= lastMessageProcessed.get()) {
             // Duplicate of message already processed
-            log.warn("Receive Message again -- Sender ActTimeout too short [ name: "
-                    + msg.getContextName()
-                    + " war: "
-                    + msg.getFileName()
-                    + " data: "
-                    + HexUtils.toHexString(msg.getData())
-                    + " data length: " + msg.getDataLength() + " ]");
+            log.warn(sm.getString("fileMessageFactory.duplicateMessage", msg.getContextName(), msg.getFileName(),
+                    HexUtils.toHexString(msg.getData()), Integer.valueOf(msg.getDataLength())));
             return false;
         }
 
         FileMessage previous =
             msgBuffer.put(Long.valueOf(msg.getMessageNumber()), msg);
-        if (previous !=null) {
+        if (previous != null) {
             // Duplicate of message not yet processed
-            log.warn("Receive Message again -- Sender ActTimeout too short [ name: "
-                    + msg.getContextName()
-                    + " war: "
-                    + msg.getFileName()
-                    + " data: "
-                    + HexUtils.toHexString(msg.getData())
-                    + " data length: " + msg.getDataLength() + " ]");
+            log.warn(sm.getString("fileMessageFactory.duplicateMessage", msg.getContextName(), msg.getFileName(),
+                    HexUtils.toHexString(msg.getData()), Integer.valueOf(msg.getDataLength())));
             return false;
         }
 
@@ -310,12 +300,12 @@ public class FileMessageFactory {
         if (in != null)
             try {
                 in.close();
-            } catch (Exception ignore) {
+            } catch (IOException ignore) {
             }
         if (out != null)
             try {
                 out.close();
-            } catch (Exception ignore) {
+            } catch (IOException ignore) {
             }
         in = null;
         out = null;
@@ -333,24 +323,22 @@ public class FileMessageFactory {
      * asked to do. Invoked by readMessage/writeMessage before those methods
      * proceed.
      *
-     * @param openForWrite
-     *            boolean
-     * @throws IllegalArgumentException
+     * @param openForWrite The value to check
+     * @throws IllegalArgumentException if the state is not the expected one
      */
     protected void checkState(boolean openForWrite)
             throws IllegalArgumentException {
         if (this.openForWrite != openForWrite) {
             cleanup();
-            if (openForWrite)
-                throw new IllegalArgumentException(
-                        "Can't write message, this factory is reading.");
-            else
-                throw new IllegalArgumentException(
-                        "Can't read message, this factory is writing.");
+            if (openForWrite) {
+                throw new IllegalArgumentException(sm.getString("fileMessageFactory.cannotWrite"));
+            } else {
+                throw new IllegalArgumentException(sm.getString("fileMessageFactory.cannotRead"));
+            }
         }
         if (this.closed) {
             cleanup();
-            throw new IllegalArgumentException("Factory has been closed.");
+            throw new IllegalArgumentException(sm.getString("fileMessageFactory.closed"));
         }
     }
 
@@ -360,14 +348,13 @@ public class FileMessageFactory {
      * @param args
      *            String[], args[0] - read from filename, args[1] write to
      *            filename
-     * @throws Exception
+     * @throws Exception An error occurred
+     * @deprecated
      */
+    @Deprecated
     public static void main(String[] args) throws Exception {
-
-        System.out
-                .println("Usage: FileMessageFactory fileToBeRead fileToBeWritten");
-        System.out
-                .println("Usage: This will make a copy of the file on the local file system");
+        System.out.println("Usage: FileMessageFactory fileToBeRead fileToBeWritten");
+        System.out.println("Usage: This will make a copy of the file on the local file system");
         FileMessageFactory read = getInstance(new File(args[0]), false);
         FileMessageFactory write = getInstance(new File(args[1]), true);
         FileMessage msg = new FileMessage(null, args[0], args[0]);
@@ -397,7 +384,9 @@ public class FileMessageFactory {
             int timeIdle = (int) ((timeNow - creationTime) / 1000L);
             if (timeIdle > maxValidTime) {
                 cleanup();
-                if (file.exists()) file.delete();
+                if (file.exists() && !file.delete()) {
+                    log.warn(sm.getString("fileMessageFactory.deleteFail", file));
+                }
                 return false;
             }
         }

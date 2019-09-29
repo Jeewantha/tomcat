@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -152,7 +152,7 @@
           description="The context path for this Context"
                  type="java.lang.String"/>
       <parameter name="docBase"
-          description="Document base directory (or WAR) for ths Context"
+          description="Document base directory (or WAR) for this Context"
                  type="java.lang.String"/>
     </operation>
 

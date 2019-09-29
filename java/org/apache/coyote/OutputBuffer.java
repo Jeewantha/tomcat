@@ -17,14 +17,13 @@
 package org.apache.coyote;
 
 import java.io.IOException;
-
-import org.apache.tomcat.util.buf.ByteChunk;
+import java.nio.ByteBuffer;
 
 /**
  * Output buffer.
  *
  * This class is used internally by the protocol implementation. All writes from
- * higher level code should happen via Resonse.doWrite().
+ * higher level code should happen via Response.doWrite().
  *
  * @author Remy Maucherat
  */
@@ -40,7 +39,7 @@ public interface OutputBuffer {
      *
      * @throws IOException an underlying I/O error occurred
      */
-    public int doWrite(ByteChunk chunk) throws IOException;
+    public int doWrite(ByteBuffer chunk) throws IOException;
 
 
     /**

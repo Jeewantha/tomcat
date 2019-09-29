@@ -35,9 +35,6 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
 
     public Http11AprProtocol() {
         super(new AprEndpoint());
-        Http11ConnectionHandler cHandler = new Http11ConnectionHandler(this);
-        setHandler(cHandler);
-        ((AprEndpoint) getEndpoint()).setHandler(cHandler);
     }
 
 
@@ -57,9 +54,6 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
     public int getSendfileSize() { return ((AprEndpoint)getEndpoint()).getSendfileSize(); }
     public void setSendfileSize(int sendfileSize) { ((AprEndpoint)getEndpoint()).setSendfileSize(sendfileSize); }
 
-    public void setSendfileThreadCount(int sendfileThreadCount) { ((AprEndpoint)getEndpoint()).setSendfileThreadCount(sendfileThreadCount); }
-    public int getSendfileThreadCount() { return ((AprEndpoint)getEndpoint()).getSendfileThreadCount(); }
-
     public boolean getDeferAccept() { return ((AprEndpoint)getEndpoint()).getDeferAccept(); }
     public void setDeferAccept(boolean deferAccept) { ((AprEndpoint)getEndpoint()).setDeferAccept(deferAccept); }
 
@@ -69,25 +63,9 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
     @Override
     protected String getNamePrefix() {
         if (isSSLEnabled()) {
-            return ("https-apr");
+            return "https-openssl-apr";
         } else {
-            return ("http-apr");
-        }
-    }
-
-
-    // --------------------  Connection handler --------------------
-
-    protected static class Http11ConnectionHandler
-            extends AbstractHttp11ConnectionHandler<Long> {
-
-        Http11ConnectionHandler(Http11AprProtocol proto) {
-            super(proto);
-        }
-
-        @Override
-        protected Log getLog() {
-            return log;
+            return "http-apr";
         }
     }
 }

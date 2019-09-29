@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -34,7 +34,7 @@
                 writeable="false"/>
 
      <attribute name="filterInitParameterMap"
-                description="Return the initiaization parameters associated with this filter"
+                description="Return the initialization parameters associated with this filter"
                 type="java.util.Map"
                 writeable="false" />
 
@@ -82,8 +82,8 @@
                description="Object names of all children"
                type="[Ljavax.management.ObjectName;"/>
 
-    <attribute name="clearReferencesStatic"
-               description="Should Tomcat attempt to null out any static or final fields from loaded classes when a web application is stopped as a work around for apparent garbage collection bugs and application coding errors?"
+    <attribute name="clearReferencesRmiTargets"
+               description="Should Tomcat look for memory leaks in RMI Targets and clear them if found as a work around for application coding errors?"
                type="boolean"/>
 
     <attribute name="clearReferencesStopThreads"
@@ -92,6 +92,10 @@
 
     <attribute name="clearReferencesStopTimerThreads"
                description="Should Tomcat attempt to terminate TimerThreads that have been started by the web application? Advisable to be used only in a development environment."
+               type="boolean"/>
+
+    <attribute name="clearReferencesThreadLocals"
+               description="Should Tomcat attempt to clear ThreadLocal variables that have been populated with classes loaded by the web application?"
                type="boolean"/>
 
     <attribute name="configFile"
@@ -123,11 +127,6 @@
                description=""
                type="boolean"/>
 
-    <attribute name="deploymentDescriptor"
-               description="String deployment descriptor "
-               type="java.lang.String"
-               writeable="false" />
-
     <attribute name="displayName"
                description="The display name of this web application"
                type="java.lang.String"/>
@@ -150,8 +149,8 @@
                type="boolean" />
 
     <attribute name="instanceManager"
-               description="Object that creates and destroys servlets, filters, and listeners. Include dependency injection and postConstruct/preDestory handling"
-               type="org.apache.catalina.instanceManagement.InstanceManager" />
+               description="Object that creates and destroys servlets, filters, and listeners. Include dependency injection and postConstruct/preDestroy handling"
+               type="org.apache.tomcat.InstanceManager" />
 
     <attribute name="javaVMs"
                description="The Java virtual machines on which this module is running"
@@ -176,6 +175,14 @@
     <attribute name="manager"
                description="Associated manager."
                type="org.apache.catalina.Manager" />
+
+    <attribute name="mapperContextRootRedirectEnabled"
+               description="Should the Mapper be used for context root redirects"
+               type="boolean" />
+
+    <attribute name="mapperDirectoryRedirectEnabled"
+               description="Should the Mapper be used for directory redirects"
+               type="boolean" />
 
     <attribute name="namingContextListener"
                description="Associated naming context listener."
@@ -261,11 +268,6 @@
                description="The J2EE Server this module is deployed on"
                type="java.lang.String"/>
 
-    <attribute name="servlets"
-               description="JSR77 list of servlets"
-               type="[Ljava.lang.String;"
-               writeable="false"/>
-
     <attribute name="sessionCookieName"
                description="The name to use for session cookies.'null' indicates that the name is controlled by the application."
                type="java.lang.String"/>
@@ -290,12 +292,6 @@
     <attribute name="startupTime"
                description="Time (in milliseconds) it took to start this context"
                type="long"/>
-
-    <attribute name="stateManageable"
-               description="State management support for this managed object"
-               is="true"
-               type="boolean"
-               writeable="false" />
 
     <attribute name="stateName"
                description="The name of the LifecycleState that this component is currently in"
@@ -329,6 +325,10 @@
     <attribute name="useNaming"
                description="Create a JNDI naming context for this application?"
                is="true"
+               type="boolean"/>
+
+    <attribute name="useRelativeRedirects"
+               description="When generating location headers for 302 responses, should a relative URI be used?"
                type="boolean"/>
 
     <attribute name="webappVersion"
@@ -380,15 +380,6 @@
                  type="java.lang.String"/>
       <parameter name="name"
                  description="Name of the child to be added"
-                 type="java.lang.String"/>
-    </operation>
-
-    <operation name="addInstanceListener"
-               description="Add the classname of an InstanceListener to be added to each Wrapper appended to this Context."
-               impact="ACTION"
-               returnType="void">
-      <parameter name="listener"
-                 description="Java class name of an InstanceListener class"
                  type="java.lang.String"/>
     </operation>
 
@@ -605,12 +596,6 @@
                returnType="[Ljava.lang.String;">
     </operation>
 
-    <operation name="findInstanceListeners"
-               description="Return the set of InstanceListener classes that will be added to newly created Wrappers automatically."
-               impact="INFO"
-               returnType="[Ljava.lang.String;">
-    </operation>
-
     <operation name="findLifecycleListenerNames"
                description="Return the set of lifecycle listener class names configured for this application."
                impact="INFO"
@@ -753,7 +738,7 @@
     </operation>
 
     <operation name="reload"
-               description="Reload the webapplication"
+               description="Reload the web application"
                impact="ACTION"
                returnType="void">
     </operation>
@@ -782,15 +767,6 @@
                returnType="void">
       <parameter name="name"
                  description="Name of the existing child Container to be removed"
-                 type="java.lang.String"/>
-    </operation>
-
-    <operation name="removeInstanceListener"
-               description="Remove the application parameter with the specified name from the set for this application."
-               impact="ACTION"
-               returnType="void">
-      <parameter name="listener"
-                 description="Class name of an InstanceListener class to be removed"
                  type="java.lang.String"/>
     </operation>
 
@@ -1333,11 +1309,30 @@
                type="java.lang.Object"/>
 
     <attribute name="port"
-               description="TCP port for shutdown messages"
+               description="TCP port (excluding any offset) for shutdown messages"
                type="int"/>
+
+    <attribute name="portOffset"
+               description="The offset applied to port and to the port attributes of any nested connectors"
+               type="int"/>
+
+    <attribute name="portWithOffset"
+               description="Actual TCP port (including any offset) for shutdown messages"
+               type="int"
+               writeable="false"/>
 
     <attribute name="serverInfo"
                description="Tomcat server release identifier"
+               type="java.lang.String"
+               writeable="false"/>
+
+    <attribute name="serverBuilt"
+               description="Tomcat server built timestamp"
+               type="java.lang.String"
+               writeable="false"/>
+
+    <attribute name="serverNumber"
+               description="Tomcat server's version number"
                type="java.lang.String"
                writeable="false"/>
 
@@ -1622,15 +1617,9 @@
 
     <attribute name="singleThreadModel"
                description="Does this servlet implement the SingleThreadModel interface?"
-               type="boolean"
+               type="java.lang.Boolean"
                is="true"
                writeable="false" />
-
-    <attribute name="stateManageable"
-               description="State management support for this managed object"
-               is="true"
-               type="boolean"
-               writeable="false"/>
 
     <attribute name="stateName"
                description="The name of the LifecycleState that this component is currently in"
@@ -1689,11 +1678,11 @@
     </operation>
 
     <operation name="findInitParameter"
-               description="Add a mapping associated with the Wrapper."
+               description="Return the value of an initialization parameter"
                impact="ACTION"
-               returnType="void">
-      <parameter name="mapping"
-                 description="The new wrapper mapping"
+               returnType="java.lang.String">
+      <parameter name="name"
+                 description="The name of the initialization parameter"
                  type="java.lang.String"/>
     </operation>
 
@@ -1720,7 +1709,7 @@
                impact="ACTION"
                returnType="java.lang.String">
       <parameter name="name"
-                 description="Security role reference used within this servle"
+                 description="Security role reference used within this servlet"
                  type="java.lang.String"/>
     </operation>
 
@@ -1762,7 +1751,7 @@
                impact="ACTION"
                returnType="void">
       <parameter name="name"
-                 description="Security role used within this servlet to be removeds"
+                 description="Security role used within this servlet to be removed"
                  type="java.lang.String"/>
     </operation>
 

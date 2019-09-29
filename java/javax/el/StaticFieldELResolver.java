@@ -23,6 +23,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Iterator;
+import java.util.Objects;
 
 /**
  * @since EL 3.0
@@ -31,10 +32,7 @@ public class StaticFieldELResolver extends ELResolver {
 
     @Override
     public Object getValue(ELContext context, Object base, Object property) {
-
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base instanceof ELClass && property instanceof String) {
             context.setPropertyResolved(base, property);
@@ -49,8 +47,8 @@ public class StaticFieldELResolver extends ELResolver {
                         Modifier.isPublic(modifiers)) {
                     return field.get(null);
                 }
-            } catch (IllegalArgumentException | IllegalAccessException
-                    | NoSuchFieldException | SecurityException e) {
+            } catch (IllegalArgumentException | IllegalAccessException |
+                    NoSuchFieldException | SecurityException e) {
                 exception = e;
             }
             String msg = Util.message(context, "staticFieldELResolver.notFound",
@@ -68,10 +66,7 @@ public class StaticFieldELResolver extends ELResolver {
     @Override
     public void setValue(ELContext context, Object base, Object property,
             Object value) {
-
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base instanceof ELClass && property instanceof String) {
             Class<?> clazz = ((ELClass) base).getKlass();
@@ -87,10 +82,7 @@ public class StaticFieldELResolver extends ELResolver {
     @Override
     public Object invoke(ELContext context, Object base, Object method,
             Class<?>[] paramTypes, Object[] params) {
-
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base instanceof ELClass && method instanceof String) {
             context.setPropertyResolved(base, method);
@@ -109,13 +101,12 @@ public class StaticFieldELResolver extends ELResolver {
 
                 try {
                     result = match.newInstance(parameters);
-                } catch (IllegalArgumentException | IllegalAccessException |
-                        InstantiationException e) {
-                    throw new ELException(e);
                 } catch (InvocationTargetException e) {
                     Throwable cause = e.getCause();
                     Util.handleThrowable(cause);
                     throw new ELException(cause);
+                } catch (ReflectiveOperationException e) {
+                    throw new ELException(e);
                 }
                 return result;
 
@@ -151,9 +142,7 @@ public class StaticFieldELResolver extends ELResolver {
 
     @Override
     public Class<?> getType(ELContext context, Object base, Object property) {
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base instanceof ELClass && property instanceof String) {
             context.setPropertyResolved(base, property);
@@ -186,9 +175,7 @@ public class StaticFieldELResolver extends ELResolver {
 
     @Override
     public boolean isReadOnly(ELContext context, Object base, Object property) {
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base instanceof ELClass && property instanceof String) {
             context.setPropertyResolved(base, property);

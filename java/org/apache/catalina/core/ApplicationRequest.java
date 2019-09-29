@@ -57,11 +57,13 @@ class ApplicationRequest extends ServletRequestWrapper {
       RequestDispatcher.INCLUDE_SERVLET_PATH,
       RequestDispatcher.INCLUDE_PATH_INFO,
       RequestDispatcher.INCLUDE_QUERY_STRING,
+      RequestDispatcher.INCLUDE_MAPPING,
       RequestDispatcher.FORWARD_REQUEST_URI,
       RequestDispatcher.FORWARD_CONTEXT_PATH,
       RequestDispatcher.FORWARD_SERVLET_PATH,
       RequestDispatcher.FORWARD_PATH_INFO,
-      RequestDispatcher.FORWARD_QUERY_STRING };
+      RequestDispatcher.FORWARD_QUERY_STRING,
+      RequestDispatcher.FORWARD_MAPPING};
 
 
     // ----------------------------------------------------------- Constructors
@@ -102,7 +104,7 @@ class ApplicationRequest extends ServletRequestWrapper {
     public Object getAttribute(String name) {
 
         synchronized (attributes) {
-            return (attributes.get(name));
+            return attributes.get(name);
         }
 
     }

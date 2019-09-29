@@ -87,7 +87,7 @@ public class AccessLogValve extends AbstractAccessLogValve {
     /**
      * The prefix that is added to log file filenames.
      */
-    protected String prefix = "access_log";
+    protected volatile String prefix = "access_log";
 
 
     /**
@@ -111,7 +111,7 @@ public class AccessLogValve extends AbstractAccessLogValve {
     /**
      * The suffix that is added to log file filenames.
      */
-    protected String suffix = "";
+    protected volatile String suffix = "";
 
 
     /**
@@ -154,16 +154,33 @@ public class AccessLogValve extends AbstractAccessLogValve {
      * system default character set will be used. An empty string will be
      * treated as <code>null</code> when this property is assigned.
      */
-    protected String encoding = null;
+    protected volatile String encoding = null;
+
+    /**
+     * The number of days to retain the access log files before they are
+     * removed.
+     */
+    private int maxDays = -1;
+    private volatile boolean checkForOldLogs = false;
 
     // ------------------------------------------------------------- Properties
 
 
+    public int getMaxDays() {
+        return maxDays;
+    }
+
+
+    public void setMaxDays(int maxDays) {
+        this.maxDays = maxDays;
+    }
+
+
     /**
-     * Return the directory in which we create log files.
+     * @return the directory in which we create log files.
      */
     public String getDirectory() {
-        return (directory);
+        return directory;
     }
 
 
@@ -178,6 +195,7 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
     /**
      * Check for file existence before logging.
+     * @return <code>true</code> if file existence is checked first
      */
     public boolean isCheckExists() {
 
@@ -199,10 +217,10 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
 
     /**
-     * Return the log file prefix.
+     * @return the log file prefix.
      */
     public String getPrefix() {
-        return (prefix);
+        return prefix;
     }
 
 
@@ -217,7 +235,9 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
 
     /**
-     * Should we rotate the logs
+     * Should we rotate the access log.
+     *
+     * @return <code>true</code> if the access log should be rotated
      */
     public boolean isRotatable() {
         return rotatable;
@@ -225,9 +245,9 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
 
     /**
-     * Set the value is we should we rotate the logs
+     * Configure whether the access log should be rotated.
      *
-     * @param rotatable true is we should rotate.
+     * @param rotatable true if the log should be rotated
      */
     public void setRotatable(boolean rotatable) {
         this.rotatable = rotatable;
@@ -236,7 +256,9 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
     /**
      * Should we defer inclusion of the date stamp in the file
-     * name until rotate time
+     * name until rotate time.
+     * @return <code>true</code> if the logs file names are time stamped
+     *  only when they are rotated
      */
     public boolean isRenameOnRotate() {
         return renameOnRotate;
@@ -255,7 +277,8 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
 
     /**
-     * Is the logging buffered
+     * Is the logging buffered. Usually buffering can increase performance.
+     * @return <code>true</code> if the logging uses a buffer
      */
     public boolean isBuffered() {
         return buffered;
@@ -265,7 +288,7 @@ public class AccessLogValve extends AbstractAccessLogValve {
     /**
      * Set the value if the logging should be buffered
      *
-     * @param buffered true if buffered.
+     * @param buffered <code>true</code> if buffered.
      */
     public void setBuffered(boolean buffered) {
         this.buffered = buffered;
@@ -273,10 +296,10 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
 
     /**
-     * Return the log file suffix.
+     * @return the log file suffix.
      */
     public String getSuffix() {
-        return (suffix);
+        return suffix;
     }
 
 
@@ -290,7 +313,7 @@ public class AccessLogValve extends AbstractAccessLogValve {
     }
 
     /**
-     *  Return the date format date based log rotation.
+     * @return the date format date based log rotation.
      */
     public String getFileDateFormat() {
         return fileDateFormat;
@@ -298,7 +321,8 @@ public class AccessLogValve extends AbstractAccessLogValve {
 
 
     /**
-     *  Set the date format date based log rotation.
+     * Set the date format date based log rotation.
+     * @param fileDateFormat The format for the file timestamp
      */
     public void setFileDateFormat(String fileDateFormat) {
         String newFormat;
@@ -351,6 +375,50 @@ public class AccessLogValve extends AbstractAccessLogValve {
                 buffered) {
             writer.flush();
         }
+
+        int maxDays = this.maxDays;
+        String prefix = this.prefix;
+        String suffix = this.suffix;
+
+        if (rotatable && checkForOldLogs && maxDays > 0) {
+            long deleteIfLastModifiedBefore =
+                    System.currentTimeMillis() - (maxDays * 24L * 60 * 60 * 1000);
+            File dir = getDirectoryFile();
+            if (dir.isDirectory()) {
+                String[] oldAccessLogs = dir.list();
+
+                if (oldAccessLogs != null) {
+                    for (String oldAccessLog : oldAccessLogs) {
+                        boolean match = false;
+
+                        if (prefix != null && prefix.length() > 0) {
+                            if (!oldAccessLog.startsWith(prefix)) {
+                                continue;
+                            }
+                            match = true;
+                        }
+
+                        if (suffix != null && suffix.length() > 0) {
+                            if (!oldAccessLog.endsWith(suffix)) {
+                                continue;
+                            }
+                            match = true;
+                        }
+
+                        if (match) {
+                            File file = new File(dir, oldAccessLog);
+                            if (file.isFile() && file.lastModified() < deleteIfLastModifiedBefore) {
+                                if (!file.delete()) {
+                                    log.warn(sm.getString(
+                                            "accessLogValve.deleteFail", file.getAbsolutePath()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            checkForOldLogs = false;
+        }
     }
 
     /**
@@ -386,7 +454,6 @@ public class AccessLogValve extends AbstractAccessLogValve {
      * old log file name up once again. Intended to be called by a JMX
      * agent.
      *
-     *
      * @param newFileName The file name to move the log file entry to
      * @return true if a file was rotated with no error
      */
@@ -417,6 +484,15 @@ public class AccessLogValve extends AbstractAccessLogValve {
     // -------------------------------------------------------- Private Methods
 
 
+    private File getDirectoryFile() {
+        File dir = new File(directory);
+        if (!dir.isAbsolute()) {
+            dir = new File(getContainer().getCatalinaBase(), directory);
+        }
+        return dir;
+    }
+
+
     /**
      * Create a File object based on the current log file name.
      * Directories are created as needed but the underlying file
@@ -426,12 +502,8 @@ public class AccessLogValve extends AbstractAccessLogValve {
      * @return the log file object
      */
     private File getLogFile(boolean useDateStamp) {
-
         // Create the directory if necessary
-        File dir = new File(directory);
-        if (!dir.isAbsolute()) {
-            dir = new File(getContainer().getCatalinaBase(), directory);
-        }
+        File dir = getDirectoryFile();
         if (!dir.mkdirs() && !dir.isDirectory()) {
             log.error(sm.getString("accessLogValve.openDirFail", dir));
         }
@@ -586,6 +658,10 @@ public class AccessLogValve extends AbstractAccessLogValve {
             currentLogFile = null;
             log.error(sm.getString("accessLogValve.openFail", pathname), e);
         }
+        // Rotating a log file will always trigger a new file to be opened so
+        // when a new file is opened, check to see if any old files need to be
+        // removed.
+        checkForOldLogs = true;
     }
 
     /**

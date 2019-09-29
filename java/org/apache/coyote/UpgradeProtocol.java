@@ -22,14 +22,14 @@ import org.apache.tomcat.util.net.SocketWrapperBase;
 public interface UpgradeProtocol {
 
     /**
-     * @param isSecure Is this for a connector that is configured to support
-     *                 TLS. Some protocols (e.g. HTTP/2) only support HTTP
-     *                 upgrade over non-secure connections.
+     * @param isSSLEnabled Is this for a connector that is configured to support
+     *                     TLS. Some protocols (e.g. HTTP/2) only support HTTP
+     *                     upgrade over non-secure connections.
      * @return The name that clients will use to request an upgrade to this
      *         protocol via an HTTP/1.1 upgrade request or <code>null</code> if
      *         upgrade via an HTTP/1.1 upgrade request is not supported.
      */
-    public String getHttpUpgradeName(boolean isSecure);
+    public String getHttpUpgradeName(boolean isSSLEnabled);
 
     /**
      * @return The byte sequence as listed in the IANA registry for this
@@ -70,13 +70,14 @@ public interface UpgradeProtocol {
 
 
     /**
+     * @param socketWrapper The socket
      * @param adapter The Adapter to use to configure the new upgrade handler
      * @param request A copy (may be incomplete) of the request that triggered
      *                the upgrade
      *
      * @return An instance of the HTTP upgrade handler for this protocol
      */
-    public InternalHttpUpgradeHandler getInteralUpgradeHandler(Adapter adapter, Request request);
+    public InternalHttpUpgradeHandler getInternalUpgradeHandler(SocketWrapperBase<?> socketWrapper, Adapter adapter, Request request);
 
 
     /**

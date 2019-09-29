@@ -17,6 +17,7 @@
 package org.apache.catalina.ssi;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashSet;
@@ -24,10 +25,12 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
 
-import org.apache.catalina.util.RequestUtil;
 import org.apache.catalina.util.Strftime;
 import org.apache.catalina.util.URLEncoder;
+import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.Escape;
 
 /**
  * Allows the different SSICommand implementations to share data/talk to each
@@ -40,10 +43,16 @@ import org.apache.catalina.util.URLEncoder;
  * @author David Becker
  */
 public class SSIMediator {
+    private static final StringManager sm = StringManager.getManager(SSIMediator.class);
+
+    protected static final String ENCODING_NONE = "none";
+    protected static final String ENCODING_ENTITY = "entity";
+    protected static final String ENCODING_URL = "url";
+
     protected static final String DEFAULT_CONFIG_ERR_MSG = "[an error occurred while processing this directive]";
     protected static final String DEFAULT_CONFIG_TIME_FMT = "%A, %d-%b-%Y %T %Z";
     protected static final String DEFAULT_CONFIG_SIZE_FMT = "abbrev";
-    protected static final URLEncoder urlEncoder;
+
     protected String configErrMsg = DEFAULT_CONFIG_ERR_MSG;
     protected String configTimeFmt = DEFAULT_CONFIG_TIME_FMT;
     protected String configSizeFmt = DEFAULT_CONFIG_SIZE_FMT;
@@ -52,22 +61,7 @@ public class SSIMediator {
     protected final long lastModifiedDate;
     protected Strftime strftime;
     protected final SSIConditionalState conditionalState = new SSIConditionalState();
-    static {
-        //We try to encode only the same characters that apache does
-        urlEncoder = new URLEncoder();
-        urlEncoder.addSafeCharacter(',');
-        urlEncoder.addSafeCharacter(':');
-        urlEncoder.addSafeCharacter('-');
-        urlEncoder.addSafeCharacter('_');
-        urlEncoder.addSafeCharacter('.');
-        urlEncoder.addSafeCharacter('*');
-        urlEncoder.addSafeCharacter('/');
-        urlEncoder.addSafeCharacter('!');
-        urlEncoder.addSafeCharacter('~');
-        urlEncoder.addSafeCharacter('\'');
-        urlEncoder.addSafeCharacter('(');
-        urlEncoder.addSafeCharacter(')');
-    }
+    protected  int lastMatchCount = 0;
 
 
     public SSIMediator(SSIExternalResolver ssiExternalResolver,
@@ -166,7 +160,7 @@ public class SSIMediator {
 
 
     public String getVariableValue(String variableName) {
-        return getVariableValue(variableName, "none");
+        return getVariableValue(variableName, ENCODING_NONE);
     }
 
 
@@ -201,6 +195,8 @@ public class SSIMediator {
     /**
      * Applies variable substitution to the specified String and returns the
      * new resolved string.
+     * @param val The value which should be checked
+     * @return the value after variable substitution
      */
     public String substituteVariables(String val) {
         // If it has no references or HTML entities then no work
@@ -293,15 +289,15 @@ public class SSIMediator {
 
     protected String encode(String value, String encoding) {
         String retVal = null;
-        if (encoding.equalsIgnoreCase("url")) {
-            retVal = urlEncoder.encode(value);
-        } else if (encoding.equalsIgnoreCase("none")) {
+        if (encoding.equalsIgnoreCase(ENCODING_URL)) {
+            retVal = URLEncoder.DEFAULT.encode(value, StandardCharsets.UTF_8);
+        } else if (encoding.equalsIgnoreCase(ENCODING_NONE)) {
             retVal = value;
-        } else if (encoding.equalsIgnoreCase("entity")) {
-            retVal = RequestUtil.filter(value);
+        } else if (encoding.equalsIgnoreCase(ENCODING_ENTITY)) {
+            retVal = Escape.htmlElementContent(value);
         } else {
             //This shouldn't be possible
-            throw new IllegalArgumentException("Unknown encoding: " + encoding);
+            throw new IllegalArgumentException(sm.getString("ssiMediator.unknownEncoding", encoding));
         }
         return retVal;
     }
@@ -344,6 +340,26 @@ public class SSIMediator {
             setVariableValue("LAST_MODIFIED", null);
             ssiExternalResolver.setVariableValue(className + ".LAST_MODIFIED",
                     retVal);
+        }
+    }
+
+
+    protected void clearMatchGroups() {
+        for (int i = 1; i <= lastMatchCount; i++) {
+            setVariableValue(Integer.toString(i), "");
+        }
+        lastMatchCount = 0;
+    }
+
+
+    protected void populateMatchGroups(Matcher matcher) {
+        lastMatchCount = matcher.groupCount();
+        // $0 is not used
+        if (lastMatchCount == 0) {
+            return;
+        }
+        for (int i = 1; i <= lastMatchCount; i++) {
+            setVariableValue(Integer.toString(i), matcher.group(i));
         }
     }
 }

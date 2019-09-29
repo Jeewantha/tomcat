@@ -53,8 +53,8 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
     private String storeRegistry = null;
     private ObjectName oname = null;
 
-    /*
-     * register StoreRegistry after Start the complete Server
+    /**
+     * Register StoreRegistry after Start the complete Server.
      *
      * @see org.apache.catalina.LifecycleListener#lifecycleEvent(org.apache.catalina.LifecycleEvent)
      */
@@ -75,26 +75,22 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
      }
 
     /**
-     * create StoreConfig MBean and load StoreRgistry MBeans name is
-     * <i>Catalina:type=StoreConfig </i>
+     * Create StoreConfig MBean and load StoreRegistry MBeans name is
+     * <code>Catalina:type=StoreConfig</code>.
+     * @param server The Server instance
      */
     protected void createMBean(Server server) {
         StoreLoader loader = new StoreLoader();
         try {
             Class<?> clazz = Class.forName(getStoreConfigClass(), true, this
                     .getClass().getClassLoader());
-            storeConfig = (IStoreConfig) clazz.newInstance();
-            if (null == getStoreRegistry())
-                // default Loading
-                loader.load();
-            else
-                // load a special file registry (url)
-                loader.load(getStoreRegistry());
+            storeConfig = (IStoreConfig) clazz.getConstructor().newInstance();
+            loader.load(getStoreRegistry());
             // use the loader Registry
             storeConfig.setRegistry(loader.getRegistry());
             storeConfig.setServer(server);
         } catch (Exception e) {
-            log.error("createMBean load", e);
+            log.error(sm.getString("storeConfigListener.loadError"), e);
             return;
         }
         try {
@@ -102,16 +98,16 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
             oname = new ObjectName("Catalina:type=StoreConfig" );
             registry.registerComponent(storeConfig, oname, "StoreConfig");
         } catch (Exception ex) {
-            log.error("createMBean register MBean", ex);
+            log.error(sm.getString("storeConfigListener.registerError"), ex);
         }
     }
 
     /**
-     * Create a ManagedBean (StoreConfig)
+     * Create a ManagedBean (StoreConfig).
      *
-     * @param object
-     * @return The bean
-     * @throws Exception
+     * @param object The object to manage
+     * @return an MBean wrapping the object
+     * @throws Exception if an error occurred
      */
     protected DynamicMBean getManagedBean(Object object) throws Exception {
         ManagedBean managedBean = registry.findManagedBean("StoreConfig");
@@ -119,7 +115,7 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
     }
 
     /**
-     * @return Returns the storeConfig.
+     * @return the store config instance
      */
     public IStoreConfig getStoreConfig() {
         return storeConfig;
@@ -134,7 +130,7 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
     }
 
     /**
-     * @return Returns the storeConfigClass.
+     * @return the main store config class name
      */
     public String getStoreConfigClass() {
         return storeConfigClass;
@@ -149,7 +145,7 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
     }
 
     /**
-     * @return Returns the storeRegistry.
+     * @return the store registry
      */
     public String getStoreRegistry() {
         return storeRegistry;

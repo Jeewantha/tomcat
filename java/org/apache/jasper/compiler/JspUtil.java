@@ -16,17 +16,19 @@
  */
 package org.apache.jasper.compiler;
 
+import java.io.BufferedInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
-import java.util.Vector;
+import java.util.ArrayList;
 
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
-import org.apache.tomcat.util.scan.Jar;
+import org.apache.tomcat.Jar;
+import org.apache.tomcat.util.security.Escape;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 
@@ -60,10 +62,14 @@ public class JspUtil {
             "synchronized", "this", "throw", "throws", "transient", "try",
             "void", "volatile", "while" };
 
+    static final int JSP_INPUT_STREAM_BUFFER_SIZE = 1024;
+
     public static final int CHUNKSIZE = 1024;
 
     /**
-     * Takes a potential expression and converts it into XML form
+     * Takes a potential expression and converts it into XML form.
+     * @param expression The expression to convert
+     * @return XML view
      */
     public static String getExprInXml(String expression) {
         String returnString;
@@ -76,7 +82,7 @@ public class JspUtil {
             returnString = expression;
         }
 
-        return escapeXml(returnString);
+        return Escape.xml(returnString);
     }
 
     /**
@@ -108,6 +114,11 @@ public class JspUtil {
      * present have valid names. Checks attributes specified as XML-style
      * attributes as well as attributes specified using the jsp:attribute
      * standard action.
+     * @param typeOfTag The tag type
+     * @param n The corresponding node
+     * @param validAttributes The array with the valid attributes
+     * @param err Dispatcher for errors
+     * @throws JasperException An error occurred
      */
     public static void checkAttributes(String typeOfTag, Node n,
             ValidAttribute[] validAttributes, ErrorDispatcher err)
@@ -118,12 +129,12 @@ public class JspUtil {
 
         // AttributesImpl.removeAttribute is broken, so we do this...
         int tempLength = (attrs == null) ? 0 : attrs.getLength();
-        Vector<String> temp = new Vector<>(tempLength, 1);
+        ArrayList<String> temp = new ArrayList<>(tempLength);
         for (int i = 0; i < tempLength; i++) {
             @SuppressWarnings("null")  // If attrs==null, tempLength == 0
             String qName = attrs.getQName(i);
             if ((!qName.equals("xmlns")) && (!qName.startsWith("xmlns:"))) {
-                temp.addElement(qName);
+                temp.add(qName);
             }
         }
 
@@ -135,7 +146,7 @@ public class JspUtil {
                 Node node = tagBody.getNode(i);
                 if (node instanceof Node.NamedAttribute) {
                     String attrName = node.getAttributeValue("name");
-                    temp.addElement(attrName);
+                    temp.add(attrName);
                     // Check if this value appear in the attribute of the node
                     if (n.getAttributeValue(attrName) != null) {
                         err.jspError(n,
@@ -185,11 +196,8 @@ public class JspUtil {
         }
 
         // Now check to see if the rest of the attributes are valid too.
-        String attribute = null;
-
-        for (int j = 0; j < attrLeftLength; j++) {
+        for(String attribute : temp) {
             valid = false;
-            attribute = temp.elementAt(j);
             for (int i = 0; i < validAttributes.length; i++) {
                 if (attribute.equals(validAttributes[i].name)) {
                     valid = true;
@@ -202,33 +210,6 @@ public class JspUtil {
             }
         }
         // XXX *could* move EL-syntax validation here... (sb)
-    }
-
-    /**
-     * Escape the 5 entities defined by XML.
-     */
-    public static String escapeXml(String s) {
-        if (s == null) {
-            return null;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '<') {
-                sb.append("&lt;");
-            } else if (c == '>') {
-                sb.append("&gt;");
-            } else if (c == '\'') {
-                sb.append("&apos;");
-            } else if (c == '&') {
-                sb.append("&amp;");
-            } else if (c == '"') {
-                sb.append("&quot;");
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
     }
 
     public static class ValidAttribute {
@@ -248,7 +229,7 @@ public class JspUtil {
 
     /**
      * Convert a String value to 'boolean'. Besides the standard conversions
-     * done by Boolean.valueOf(s).booleanValue(), the value "yes" (ignore case)
+     * done by Boolean.parseBoolean(s), the value "yes" (ignore case)
      * is also converted to 'true'. If 's' is null, then 'false' is returned.
      *
      * @param s
@@ -261,21 +242,26 @@ public class JspUtil {
             if (s.equalsIgnoreCase("yes")) {
                 b = true;
             } else {
-                b = Boolean.valueOf(s).booleanValue();
+                b = Boolean.parseBoolean(s);
             }
         }
         return b;
     }
 
     /**
-     * Returns the <tt>Class</tt> object associated with the class or
+     * Returns the <code>Class</code> object associated with the class or
      * interface with the given string name.
      *
      * <p>
-     * The <tt>Class</tt> object is determined by passing the given string
-     * name to the <tt>Class.forName()</tt> method, unless the given string
+     * The <code>Class</code> object is determined by passing the given string
+     * name to the <code>Class.forName()</code> method, unless the given string
      * name represents a primitive type, in which case it is converted to a
-     * <tt>Class</tt> object by appending ".class" to it (e.g., "int.class").
+     * <code>Class</code> object by appending ".class" to it (e.g.,
+     * "int.class").
+     * @param type The class name, array or primitive type
+     * @param loader The class loader
+     * @return the loaded class
+     * @throws ClassNotFoundException Loading class failed
      */
     public static Class<?> toClass(String type, ClassLoader loader)
             throws ClassNotFoundException {
@@ -311,7 +297,7 @@ public class JspUtil {
             c = double.class;
         } else if ("void".equals(type)) {
             c = void.class;
-        } else if (type.indexOf('[') < 0) {
+        } else {
             c = loader.loadClass(type);
         }
 
@@ -330,6 +316,8 @@ public class JspUtil {
     /**
      * Produces a String representing a call to the EL interpreter.
      *
+     * @param isTagFile <code>true</code> if the file is a tag file
+     *  rather than a JSP
      * @param expression
      *            a String containing zero or more "${}" expressions
      * @param expectedType
@@ -645,7 +633,7 @@ public class JspUtil {
         }
     }
 
-    public static InputStream getInputStream(String fname, Jar jar,
+    public static BufferedInputStream getInputStream(String fname, Jar jar,
             JspCompilationContext ctxt) throws IOException {
 
         InputStream in = null;
@@ -662,7 +650,7 @@ public class JspUtil {
                     "jsp.error.file.not.found", fname));
         }
 
-        return in;
+        return new BufferedInputStream(in, JspUtil.JSP_INPUT_STREAM_BUFFER_SIZE);
     }
 
     public static InputSource getInputSource(String fname, Jar jar, JspCompilationContext ctxt)
@@ -683,13 +671,13 @@ public class JspUtil {
      * Gets the fully-qualified class name of the tag handler corresponding to
      * the given tag file path.
      *
-     * @param path
-     *            Tag file path
-     * @param err
-     *            Error dispatcher
+     * @param path Tag file path
+     * @param urn The tag identifier
+     * @param err Error dispatcher
      *
      * @return Fully-qualified class name of the tag handler corresponding to
      *         the given tag file path
+     * @throws JasperException Failed to generate a class name for the tag
      */
     public static String getTagHandlerClassName(String path, String urn,
             ErrorDispatcher err) throws JasperException {
@@ -752,46 +740,17 @@ public class JspUtil {
      * @return Java package corresponding to the given path
      */
     public static final String makeJavaPackage(String path) {
-        String classNameComponents[] = split(path, "/");
+        String classNameComponents[] = path.split("/");
         StringBuilder legalClassNames = new StringBuilder();
         for (int i = 0; i < classNameComponents.length; i++) {
-            legalClassNames.append(makeJavaIdentifier(classNameComponents[i]));
-            if (i < classNameComponents.length - 1) {
-                legalClassNames.append('.');
+            if (classNameComponents[i].length() > 0) {
+                if (legalClassNames.length() > 0) {
+                    legalClassNames.append('.');
+                }
+                legalClassNames.append(makeJavaIdentifier(classNameComponents[i]));
             }
         }
         return legalClassNames.toString();
-    }
-
-    /**
-     * Splits a string into it's components.
-     *
-     * @param path
-     *            String to split
-     * @param pat
-     *            Pattern to split at
-     * @return the components of the path
-     */
-    private static final String[] split(String path, String pat) {
-        Vector<String> comps = new Vector<>();
-        int pos = path.indexOf(pat);
-        int start = 0;
-        while (pos >= 0) {
-            if (pos > start) {
-                String comp = path.substring(start, pos);
-                comps.add(comp);
-            }
-            start = pos + pat.length();
-            pos = path.indexOf(pat, start);
-        }
-        if (start < path.length()) {
-            comps.add(path.substring(start));
-        }
-        String[] result = new String[comps.size()];
-        for (int i = 0; i < comps.size(); i++) {
-            result[i] = comps.elementAt(i);
-        }
-        return result;
     }
 
     /**
@@ -852,6 +811,8 @@ public class JspUtil {
 
     /**
      * Mangle the specified character to create a legal Java class name.
+     * @param ch The character
+     * @return the replacement character as a string
      */
     public static final String mangleChar(char ch) {
         char[] result = new char[5];
@@ -864,13 +825,15 @@ public class JspUtil {
     }
 
     /**
-     * Test whether the argument is a Java keyword
+     * Test whether the argument is a Java keyword.
+     * @param key The name
+     * @return <code>true</code> if the name is a java identifier
      */
     public static boolean isJavaKeyword(String key) {
         int i = 0;
         int j = javaKeywords.length;
         while (i < j) {
-            int k = (i + j) / 2;
+            int k = (i + j) >>> 1;
             int result = javaKeywords[k].compareTo(key);
             if (result == 0) {
                 return true;
@@ -897,8 +860,17 @@ public class JspUtil {
 
         InputStreamReader reader = null;
         InputStream in = getInputStream(fname, jar, ctxt);
-        for (int i = 0; i < skip; i++) {
-            in.read();
+        try {
+            for (int i = 0; i < skip; i++) {
+                in.read();
+            }
+        } catch (IOException ioe) {
+            try {
+                in.close();
+            } catch (IOException e) {
+                // Ignore
+            }
+            throw ioe;
         }
         try {
             reader = new InputStreamReader(in, encoding);
@@ -914,7 +886,8 @@ public class JspUtil {
      * 'java.lang.Object.class' 'int' -&gt; 'int.class' 'void' -&gt; 'Void.TYPE'
      * 'int[]' -&gt; 'int[].class'
      *
-     * @param type
+     * @param type The type from the TLD
+     * @return the Java type
      */
     public static String toJavaSourceTypeFromTld(String type) {
         if (type == null || "void".equals(type)) {
@@ -927,6 +900,8 @@ public class JspUtil {
      * Class.getName() return arrays in the form "[[[&lt;et&gt;", where et, the
      * element type can be one of ZBCDFIJS or L&lt;classname&gt;;. It is
      * converted into forms that can be understood by javac.
+     * @param type the type to convert
+     * @return the equivalent type in Java sources
      */
     public static String toJavaSourceType(String type) {
 
@@ -957,8 +932,7 @@ public class JspUtil {
 
         if (t == null) {
             // Should never happen
-            throw new IllegalArgumentException("Unable to extract type from [" +
-                    type + "]");
+            throw new IllegalArgumentException(Localizer.getMessage("jsp.error.unable.getType", type));
         }
 
         StringBuilder resultType = new StringBuilder(t);

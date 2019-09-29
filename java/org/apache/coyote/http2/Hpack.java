@@ -22,7 +22,7 @@ import org.apache.tomcat.util.res.StringManager;
 
 final class Hpack {
 
-    protected static final StringManager sm = StringManager.getManager(Hpack.class);
+    private static final StringManager sm = StringManager.getManager(Hpack.class);
 
     private static final byte LOWER_DIFF = 'a' - 'A';
     static final int DEFAULT_TABLE_SIZE = 4096;
@@ -133,7 +133,7 @@ final class Hpack {
     }
 
     /**
-     * Decodes an integer in the HPACK prefex format. If the return value is -1
+     * Decodes an integer in the HPACK prefix format. If the return value is -1
      * it means that there was not enough data in the buffer to complete the decoding
      * sequence.
      * <p/>
@@ -204,11 +204,11 @@ final class Hpack {
     }
 
 
-    static byte toLower(byte b) {
-        if (b >= 'A' && b <= 'Z') {
-            return (byte) (b + LOWER_DIFF);
+    static char toLower(char c) {
+        if (c >= 'A' && c <= 'Z') {
+            return (char) (c + LOWER_DIFF);
         }
-        return b;
+        return c;
     }
 
     private Hpack() {}

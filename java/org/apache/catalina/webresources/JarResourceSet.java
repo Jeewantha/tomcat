@@ -16,28 +16,23 @@
  */
 package org.apache.catalina.webresources;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.util.Enumeration;
 import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
-import org.apache.catalina.LifecycleException;
 import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 
 /**
  * Represents a {@link org.apache.catalina.WebResourceSet} based on a JAR file.
  */
-public class JarResourceSet extends AbstractArchiveResourceSet {
+public class JarResourceSet extends AbstractSingleArchiveResourceSet {
 
     /**
      * A no argument constructor is required for this to work with the digester.
      */
     public JarResourceSet() {
     }
+
 
     /**
      * Creates a new {@link org.apache.catalina.WebResourceSet} based on a JAR
@@ -61,45 +56,13 @@ public class JarResourceSet extends AbstractArchiveResourceSet {
      */
     public JarResourceSet(WebResourceRoot root, String webAppMount, String base,
             String internalPath) throws IllegalArgumentException {
-        setRoot(root);
-        setWebAppMount(webAppMount);
-        setBase(base);
-        setInternalPath(internalPath);
-
-        if (getRoot().getState().isAvailable()) {
-            try {
-                start();
-            } catch (LifecycleException e) {
-                throw new IllegalStateException(e);
-            }
-        }
+        super(root, webAppMount, base, internalPath);
     }
+
 
     @Override
     protected WebResource createArchiveResource(JarEntry jarEntry,
             String webAppPath, Manifest manifest) {
         return new JarResource(this, webAppPath, getBaseUrlString(), jarEntry);
-    }
-
-    //-------------------------------------------------------- Lifecycle methods
-    @Override
-    protected void initInternal() throws LifecycleException {
-
-        try (JarFile jarFile = new JarFile(getBase())) {
-            Enumeration<JarEntry> entries = jarFile.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                getJarFileEntries().put(entry.getName(), entry);
-            }
-            setManifest(jarFile.getManifest());
-        } catch (IOException ioe) {
-            throw new IllegalArgumentException(ioe);
-        }
-
-        try {
-            setBaseUrl((new File(getBase())).toURI().toURL());
-        } catch (MalformedURLException e) {
-            throw new IllegalArgumentException(e);
-        }
     }
 }

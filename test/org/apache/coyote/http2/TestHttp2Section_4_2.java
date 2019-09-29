@@ -55,11 +55,7 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
 
         os.write(settings);
 
-        // Read GOAWAY frame
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.FRAME_SIZE_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1, Http2Error.FRAME_SIZE_ERROR);
     }
 
     @Test
@@ -81,11 +77,7 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
 
         os.write(ping);
 
-        // Read GOAWAY frame
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.FRAME_SIZE_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1,  Http2Error.FRAME_SIZE_ERROR);
     }
 
 
@@ -107,11 +99,7 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
 
         os.write(ping);
 
-        // Read GOAWAY frame
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.FRAME_SIZE_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1,  Http2Error.FRAME_SIZE_ERROR);
     }
 
 
@@ -134,7 +122,7 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
 
         os.write(priority);
 
-        // Read GOAWAY frame
+        // Read Stream reset frame
         parser.readFrame(true);
 
         Assert.assertTrue(output.getTrace(),

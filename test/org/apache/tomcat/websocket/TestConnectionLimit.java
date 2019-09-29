@@ -34,22 +34,21 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEndpoint;
 
-
-public class TestConnectionLimit extends TomcatBaseTest{
+@Ignore // Not for use in normal unit test runs
+public class TestConnectionLimit extends TomcatBaseTest {
 
     /*
      * Simple test to see how many outgoing connections can be created on a
      * single machine.
      */
     @Test
-    @Ignore // Not for use in normal unit test runs
     public void testSingleMachine() throws Exception {
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         tomcat.getConnector().setAttribute("maxConnections", "-1");
 

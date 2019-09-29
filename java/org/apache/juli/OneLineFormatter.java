@@ -14,11 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.juli;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.Writer;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.logging.Formatter;
+import java.util.logging.LogManager;
 import java.util.logging.LogRecord;
 
 /**
@@ -38,31 +39,19 @@ import java.util.logging.LogRecord;
  */
 public class OneLineFormatter extends Formatter {
 
-    private static final String ST_SEP = System.lineSeparator() + " ";
-    private static final String UNKONWN_THREAD_NAME = "Unknown thread with ID ";
+    private static final String UNKNOWN_THREAD_NAME = "Unknown thread with ID ";
     private static final Object threadMxBeanLock = new Object();
     private static volatile ThreadMXBean threadMxBean = null;
     private static final int THREAD_NAME_CACHE_SIZE = 10000;
-    private static ThreadLocal<LinkedHashMap<Integer,String>> threadNameCache =
-            new ThreadLocal<LinkedHashMap<Integer,String>>() {
-
+    private static ThreadLocal<ThreadNameCache> threadNameCache = new ThreadLocal<ThreadNameCache>() {
         @Override
-        protected LinkedHashMap<Integer,String> initialValue() {
-            return new LinkedHashMap<Integer,String>() {
-
-                private static final long serialVersionUID = 1L;
-
-                @Override
-                protected boolean removeEldestEntry(
-                        Entry<Integer, String> eldest) {
-                    return (size() > THREAD_NAME_CACHE_SIZE);
-                }
-            };
+        protected ThreadNameCache initialValue() {
+            return new ThreadNameCache(THREAD_NAME_CACHE_SIZE);
         }
     };
 
     /* Timestamp format */
-    private static final String timeFormat = "dd-MMM-yyyy HH:mm:ss";
+    private static final String DEFAULT_TIME_FORMAT = "dd-MMM-yyyy HH:mm:ss";
 
     /**
      * The size of our global date format cache
@@ -75,21 +64,48 @@ public class OneLineFormatter extends Formatter {
     private static final int localCacheSize = 5;
 
     /**
-     * Global date format cache.
-     */
-    private static final DateFormatCache globalDateCache =
-            new DateFormatCache(globalCacheSize, timeFormat, null);
-
-    /**
      * Thread local date format cache.
      */
-    private static final ThreadLocal<DateFormatCache> localDateCache =
-            new ThreadLocal<DateFormatCache>() {
-        @Override
-        protected DateFormatCache initialValue() {
-            return new DateFormatCache(localCacheSize, timeFormat, globalDateCache);
+    private ThreadLocal<DateFormatCache> localDateCache;
+
+
+    public OneLineFormatter() {
+        String timeFormat = LogManager.getLogManager().getProperty(
+                OneLineFormatter.class.getName() + ".timeFormat");
+        if (timeFormat == null) {
+            timeFormat = DEFAULT_TIME_FORMAT;
         }
-    };
+        setTimeFormat(timeFormat);
+    }
+
+
+    /**
+     * Specify the time format to use for time stamps in log messages.
+     *
+     * @param timeFormat The format to use using the
+     *                   {@link java.text.SimpleDateFormat} syntax
+     */
+    public void setTimeFormat(final String timeFormat) {
+        final DateFormatCache globalDateCache =
+                new DateFormatCache(globalCacheSize, timeFormat, null);
+        localDateCache = new ThreadLocal<DateFormatCache>() {
+            @Override
+            protected DateFormatCache initialValue() {
+                return new DateFormatCache(localCacheSize, timeFormat, globalDateCache);
+            }
+        };
+    }
+
+
+    /**
+     * Obtain the format currently being used for time stamps in log messages.
+     *
+     * @return The current format in {@link java.text.SimpleDateFormat} syntax
+     */
+    public String getTimeFormat() {
+        return localDateCache.get().getTimeFormat();
+    }
+
 
     @Override
     public String format(LogRecord record) {
@@ -100,7 +116,7 @@ public class OneLineFormatter extends Formatter {
 
         // Severity
         sb.append(' ');
-        sb.append(record.getLevel());
+        sb.append(record.getLevel().getLocalizedName());
 
         // Thread
         sb.append(' ');
@@ -124,18 +140,17 @@ public class OneLineFormatter extends Formatter {
         sb.append(' ');
         sb.append(formatMessage(record));
 
+        // New line for next record
+        sb.append(System.lineSeparator());
+
         // Stack trace
         if (record.getThrown() != null) {
-            sb.append(ST_SEP);
             StringWriter sw = new StringWriter();
-            PrintWriter pw = new PrintWriter(sw);
+            PrintWriter pw = new IndentingPrintWriter(sw);
             record.getThrown().printStackTrace(pw);
             pw.close();
             sb.append(sw.getBuffer());
         }
-
-        // New line for next record
-        sb.append(System.lineSeparator());
 
         return sb.toString();
     }
@@ -178,7 +193,7 @@ public class OneLineFormatter extends Formatter {
         }
 
         if (logRecordThreadId > Integer.MAX_VALUE / 2) {
-            result = UNKONWN_THREAD_NAME + logRecordThreadId;
+            result = UNKNOWN_THREAD_NAME + logRecordThreadId;
         } else {
             // Double checked locking OK as threadMxBean is volatile
             if (threadMxBean == null) {
@@ -199,5 +214,40 @@ public class OneLineFormatter extends Formatter {
         cache.put(Integer.valueOf(logRecordThreadId), result);
 
         return result;
+    }
+
+
+    private static class ThreadNameCache extends LinkedHashMap<Integer,String> {
+
+        private static final long serialVersionUID = 1L;
+
+        private final int cacheSize;
+
+        public ThreadNameCache(int cacheSize) {
+            this.cacheSize = cacheSize;
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Entry<Integer, String> eldest) {
+            return (size() > cacheSize);
+        }
+    }
+
+
+    /*
+     * Minimal implementation to indent the printing of stack traces. This
+     * implementation depends on Throwable using WrappedPrintWriter.
+     */
+    private static class IndentingPrintWriter extends PrintWriter {
+
+        public IndentingPrintWriter(Writer out) {
+            super(out);
+        }
+
+        @Override
+        public void println(Object x) {
+            super.print('\t');
+            super.println(x);
+        }
     }
 }

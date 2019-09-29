@@ -18,6 +18,7 @@
 package org.apache.catalina.tribes;
 
 
+
 /**
  * MembershipService Interface<br>
  * The <code>MembershipService</code> interface is the membership component
@@ -35,10 +36,12 @@ public interface MembershipService {
      * @param properties - to be used to configure the membership service.
      */
     public void setProperties(java.util.Properties properties);
+
     /**
-     * Returns the properties for the configuration used.
+     * @return the properties for the configuration used.
      */
     public java.util.Properties getProperties();
+
     /**
      * Starts the membership service. If a membership listeners is added
      * the listener will start to receive membership events.
@@ -65,7 +68,6 @@ public interface MembershipService {
      * stops broad casting the server
      * @throws java.lang.IllegalArgumentException if the level is incorrect.
      */
-
     public void stop(int level);
 
     /**
@@ -73,36 +75,45 @@ public interface MembershipService {
      */
     public boolean hasMembers();
 
-
     /**
-     *
-     * @param mbr Member
-     * @return Member
+     * Retrieve the specified member from the membership.
+     * @param mbr The member to retrieve
+     * @return the member
      */
     public Member getMember(Member mbr);
-    /**
-     * Returns a list of all the members in the cluster.
-     */
 
+    /**
+     * @return a list of all the members in the cluster.
+     */
     public Member[] getMembers();
 
     /**
-     * Returns the member object that defines this member
+     * Get the local member.
+     * @return the member object that defines this member
+     * @param incAliveTime <code>true</code> to set the alive time
+     *  on the local member
      */
     public Member getLocalMember(boolean incAliveTime);
 
     /**
-     * Return all members by name
+     * @return all members by name
      */
-    public String[] getMembersByName() ;
+    public String[] getMembersByName();
 
     /**
-     * Return the member by name
+     * Get a member.
+     * @param name The member name
+     * @return the member
      */
-    public Member findMemberByName(String name) ;
+    public Member findMemberByName(String name);
 
     /**
-     * Sets the local member properties for broadcasting
+     * Sets the local member properties for broadcasting.
+     *
+     * @param listenHost Listen to host
+     * @param listenPort Listen to port
+     * @param securePort Use a secure port
+     * @param udpPort Use UDP
      */
     public void setLocalMemberProperties(String listenHost, int listenPort, int securePort, int udpPort);
 
@@ -114,7 +125,7 @@ public interface MembershipService {
     public void setMembershipListener(MembershipListener listener);
 
     /**
-     * removes the membership listener.
+     * Removes the membership listener.
      */
     public void removeMembershipListener();
 
@@ -128,10 +139,27 @@ public interface MembershipService {
     public void setDomain(byte[] domain);
 
     /**
-     * Broadcasts a message to all members
-     * @param message
-     * @throws ChannelException
+     * Broadcasts a message to all members.
+     * @param message The message to broadcast
+     * @throws ChannelException Message broadcast failed
      */
     public void broadcast(ChannelMessage message) throws ChannelException;
 
+    /**
+     * Return the channel that is related to this MembershipService
+     * @return Channel
+     */
+    public Channel getChannel();
+
+    /**
+     * Set the channel that is related to this MembershipService
+     * @param channel The channel
+     */
+    public void setChannel(Channel channel);
+
+    /**
+     * Get the MembershipProvider
+     * @return MembershipProvider
+     */
+    public MembershipProvider getMembershipProvider();
 }

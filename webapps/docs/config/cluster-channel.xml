@@ -109,12 +109,29 @@
 
       <attribute name="heartbeatSleeptime" required="false">
         If heartbeat == true, specifies the interval of heartbeat thread in milliseconds.
+        The default is 5000 (5 seconds).
       </attribute>
 
       <attribute name="optionCheck" required="false">
         If set to true, the GroupChannel will check the option flags that each
         interceptor is using. Reports an error if two interceptor share the same
-        flag.
+        flag. The default is false.
+      </attribute>
+
+      <attribute name="jmxEnabled" required="false">
+        Flag whether the channel components register with JMX or not.
+        The default value is true.
+      </attribute>
+
+      <attribute name="jmxDomain" required="false">
+        if <code>jmxEnabled</code> set to true, specifies the jmx domain which
+        this channel should be registered. The ClusterChannel is used as the
+        default value.
+      </attribute>
+
+      <attribute name="jmxPrefix" required="false">
+        if <code>jmxEnabled</code> set to true, specifies the jmx prefix which
+        will be used with channel ObjectName.
       </attribute>
 
     </attributes>

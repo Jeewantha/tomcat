@@ -18,9 +18,10 @@ package org.apache.catalina.webresources;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Set;
 import java.util.jar.Manifest;
 
@@ -28,7 +29,6 @@ import org.apache.catalina.LifecycleException;
 import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.WebResourceRoot.ResourceSetType;
-import org.apache.catalina.util.IOTools;
 import org.apache.catalina.util.ResourceSet;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -217,6 +217,12 @@ public class DirResourceSet extends AbstractFileResourceSet {
             return false;
         }
 
+        // write() is meant to create a file so ensure that the path doesn't
+        // end in '/'
+        if (path.endsWith("/")) {
+            return false;
+        }
+
         File dest = null;
         String webAppMount = getWebAppMount();
         if (path.startsWith(webAppMount)) {
@@ -228,18 +234,16 @@ public class DirResourceSet extends AbstractFileResourceSet {
             return false;
         }
 
-        if (dest.exists()) {
-            if (overwrite) {
-                if (!dest.delete()) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
+        if (dest.exists() && !overwrite) {
+            return false;
         }
 
-        try (FileOutputStream fos = new FileOutputStream(dest)) {
-            IOTools.flow(is, fos);
+        try {
+            if (overwrite) {
+                Files.copy(is, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.copy(is, dest.toPath());
+            }
         } catch (IOException ioe) {
             return false;
         }

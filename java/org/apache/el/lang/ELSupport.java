@@ -42,29 +42,25 @@ public class ELSupport {
 
     private static final Long ZERO = Long.valueOf(0L);
 
-    private static final boolean IS_SECURITY_ENABLED =
-            (System.getSecurityManager() != null);
-
     protected static final boolean COERCE_TO_ZERO;
 
     static {
-        if (IS_SECURITY_ENABLED) {
-            COERCE_TO_ZERO = AccessController.doPrivileged(
-                    new PrivilegedAction<Boolean>(){
+        String coerceToZeroStr;
+        if (System.getSecurityManager() != null) {
+            coerceToZeroStr = AccessController.doPrivileged(
+                    new PrivilegedAction<String>(){
                         @Override
-                        public Boolean run() {
-                            return Boolean.valueOf(System.getProperty(
-                                    "org.apache.el.parser.COERCE_TO_ZERO",
-                                    "false"));
+                        public String run() {
+                            return System.getProperty(
+                                    "org.apache.el.parser.COERCE_TO_ZERO", "false");
                         }
-
                     }
-            ).booleanValue();
+            );
         } else {
-            COERCE_TO_ZERO = Boolean.valueOf(System.getProperty(
-                    "org.apache.el.parser.COERCE_TO_ZERO",
-                    "false")).booleanValue();
+            coerceToZeroStr = System.getProperty(
+                    "org.apache.el.parser.COERCE_TO_ZERO", "false");
         }
+        COERCE_TO_ZERO = Boolean.parseBoolean(coerceToZeroStr);
     }
 
 
@@ -315,7 +311,7 @@ public class ELSupport {
             return Long.valueOf(number.longValue());
         }
         if (Double.TYPE == type || Double.class.equals(type)) {
-            return new Double(number.doubleValue());
+            return Double.valueOf(number.doubleValue());
         }
         if (Integer.TYPE == type || Integer.class.equals(type)) {
             return Integer.valueOf(number.intValue());
@@ -345,7 +341,7 @@ public class ELSupport {
             return Short.valueOf(number.shortValue());
         }
         if (Float.TYPE == type || Float.class.equals(type)) {
-            return new Float(number.floatValue());
+            return Float.valueOf(number.floatValue());
         }
         if (Number.class.equals(type)) {
             return number;

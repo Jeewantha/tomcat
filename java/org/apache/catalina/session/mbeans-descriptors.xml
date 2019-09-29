@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -33,11 +33,6 @@
                  type="java.lang.String"
             writeable="false"/>
 
-    <attribute   name="distributable"
-          description="The distributable flag for Sessions created by this
-                       Manager"
-                 type="boolean"/>
-
     <attribute   name="duplicates"
           description="Number of duplicated session ids generated"
                  type="int" />
@@ -58,11 +53,6 @@
     <attribute   name="maxActiveSessions"
           description="The maximum number of active Sessions allowed, or -1
                        for no limit"
-                 type="int"/>
-
-    <attribute   name="maxInactiveInterval"
-          description="The default maximum inactive interval for Sessions
-                       created by this Manager"
                  type="int"/>
 
     <attribute   name="name"
@@ -114,11 +104,6 @@
                  type="int"
             writeable="false" />
 
-    <attribute   name="sessionIdLength"
-          description="The session id length (in bytes) of Sessions
-                       created by this Manager"
-                 type="int"/>
-
     <attribute   name="sessionMaxAliveTime"
           description="Longest time an expired session had been alive"
                  type="int" />
@@ -129,9 +114,21 @@
             writeable="false"/>
 
     <attribute   name="rejectedSessions"
-          description="Number of sessions we rejected due to maxActive beeing reached"
+          description="Number of sessions we rejected due to maxActive being reached"
                  type="int"
             writeable="false"/>
+
+    <attribute   name="sessionAttributeNameFilter"
+          description="The string pattern used for including session attributes in distribution. Null means all attributes are included."
+                 type="java.lang.String"/>
+
+    <attribute   name="sessionAttributeValueClassNameFilter"
+          description="The regular expression used to filter session attributes based on the implementation class of the value. The regular expression is anchored and must match the fully qualified class name."
+                 type="java.lang.String"/>
+
+    <attribute   name="warnOnSessionAttributeFilterFailure"
+          description="Should a WARN level log message be generated if a session attribute fails to match sessionAttributeNameFilter or sessionAttributeClassNameFilter?"
+                 type="boolean"/>
 
     <operation   name="backgroundProcess"
           description="Invalidate all sessions that have expired."
@@ -220,10 +217,6 @@
                  type="java.lang.String"
             writeable="false"/>
 
-    <attribute   name="distributable"
-          description="The distributable flag for Sessions created by this Manager"
-                 type="boolean"/>
-
     <attribute   name="duplicates"
           description="Number of duplicated session ids generated"
                  type="int" />
@@ -252,10 +245,6 @@
 
     <attribute   name="maxIdleSwap"
           description="Indicates how many seconds old a session can get, after its last use in a request, before it should be backed up to the store. -1 means sessions are not backed up."
-                 type="int"/>
-
-    <attribute   name="maxInactiveInterval"
-          description="The default maximum inactive interval for Sessions created by this Manager"
                  type="int"/>
 
     <attribute   name="minIdleSwap"
@@ -302,11 +291,6 @@
                  type="int"
             writeable="false" />
 
-    <attribute   name="sessionIdLength"
-          description="The session id length (in bytes) of Sessions
-                       created by this Manager"
-                 type="int"/>
-
     <attribute   name="sessionMaxAliveTime"
           description="Longest time an expired session had been alive"
                  type="int" />
@@ -317,9 +301,21 @@
             writeable="false"/>
 
     <attribute   name="rejectedSessions"
-          description="Number of sessions we rejected due to maxActive beeing reached"
+          description="Number of sessions we rejected due to maxActive being reached"
                  type="int"
             writeable="false"/>
+
+    <attribute   name="sessionAttributeNameFilter"
+          description="The string pattern used for including session attributes in distribution. Null means all attributes are included."
+                 type="java.lang.String"/>
+
+    <attribute   name="sessionAttributeValueClassNameFilter"
+          description="The regular expression used to filter session attributes based on the implementation class of the value. The regular expression is anchored and must match the fully qualified class name."
+                 type="java.lang.String"/>
+
+    <attribute   name="warnOnSessionAttributeFilterFailure"
+          description="Should a WARN level log message be generated if a session attribute fails to match sessionAttributeNameFilter or sessionAttributeClassNameFilter?"
+                 type="boolean"/>
 
     <operation   name="backgroundProcess"
           description="Invalidate all sessions that have expired."
@@ -393,7 +389,7 @@
     <operation   name="isLoaded"
           description="If the session id is loaded in memory?"
                impact="ACTION"
-           returnType="booelan">
+           returnType="boolean">
       <parameter name="sessionId"
           description="Id of the session"
                  type="java.lang.String"/>

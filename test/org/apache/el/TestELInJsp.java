@@ -16,7 +16,8 @@
  */
 package org.apache.el;
 
-import java.math.BigDecimal;
+import java.io.File;
+import java.math.RoundingMode;
 import java.util.Collections;
 
 import javax.servlet.DispatcherType;
@@ -24,7 +25,11 @@ import javax.servlet.DispatcherType;
 import org.junit.Assert;
 import org.junit.Test;
 
+import org.apache.catalina.Wrapper;
+import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.jasper.servlet.JasperInitializer;
 import org.apache.tomcat.util.buf.ByteChunk;
 
 /**
@@ -119,6 +124,8 @@ public class TestELInJsp extends TomcatBaseTest {
         // Warning: JSP attribute escaping != Java String escaping
         assertEcho(result, "00-\\'hello world\\'");
         assertEcho(result, "01-\\'hello world\\'");
+        assertEcho(result, "02-\\'hello world\\'");
+        assertEcho(result, "03-\\'hello world\\'");
 
         res = getUrl("http://localhost:" + getPort() + "/test/bug45nnn/bug45451b.jsp");
         result = res.toString();
@@ -289,10 +296,43 @@ public class TestELInJsp extends TomcatBaseTest {
     }
 
     @Test
-    public void testELMisc() throws Exception {
-        getTomcatInstanceTestWebapp(false, true);
+    public void testELMiscNoQuoteAttributeEL() throws Exception {
+        doTestELMisc(false);
+    }
 
-        ByteChunk res = getUrl("http://localhost:" + getPort() + "/test/el-misc.jsp");
+    @Test
+    public void testELMiscWithQuoteAttributeEL() throws Exception {
+        doTestELMisc(true);
+    }
+
+    private void doTestELMisc(boolean quoteAttributeEL) throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // Create the context (don't use addWebapp as we want to modify the
+        // JSP Servlet settings).
+        File appDir = new File("test/webapp");
+        StandardContext ctxt = (StandardContext) tomcat.addContext(
+                null, "/test", appDir.getAbsolutePath());
+
+        ctxt.addServletContainerInitializer(new JasperInitializer(), null);
+
+        // Configure the defaults and then tweak the JSP servlet settings
+        // Note: Min value for maxLoadedJsps is 2
+        Tomcat.initWebappDefaults(ctxt);
+        Wrapper w = (Wrapper) ctxt.findChild("jsp");
+
+        String jspName;
+        if (quoteAttributeEL) {
+            jspName = "/test/el-misc-with-quote-attribute-el.jsp";
+            w.addInitParameter("quoteAttributeEL", "true");
+        } else {
+            jspName = "/test/el-misc-no-quote-attribute-el.jsp";
+            w.addInitParameter("quoteAttributeEL", "false");
+        }
+
+        tomcat.start();
+
+        ByteChunk res = getUrl("http://localhost:" + getPort() + jspName);
         String result = res.toString();
 
         assertEcho(result, "00-\\\\\\\"${'hello world'}");
@@ -423,11 +463,11 @@ public class TestELInJsp extends TomcatBaseTest {
         String result = res.toString();
         // javax.servlet
         assertEcho(result, "00-" + DispatcherType.ASYNC);
-        // No obvious status fields for javax.servlet.http
+        // No obvious static fields for javax.servlet.http
         // Could hack something with HttpUtils...
-        // No obvious status fields for javax.servlet.jsp
+        // No obvious static fields for javax.servlet.jsp
         // Wild card (package) import
-        assertEcho(result, "01-" + BigDecimal.ROUND_UP);
+        assertEcho(result, "01-" + RoundingMode.HALF_UP);
         // Class import
         assertEcho(result, "02-" + Collections.EMPTY_LIST.size());
     }
@@ -446,6 +486,38 @@ public class TestELInJsp extends TomcatBaseTest {
 
         String result = res.toString();
         assertEcho(result, "00-11");
+    }
+
+
+    @Test
+    public void testBug60032() throws Exception {
+        getTomcatInstanceTestWebapp(false, true);
+
+        ByteChunk res = getUrl("http://localhost:" + getPort() + "/test/bug6nnnn/bug60032.jsp");
+        String result = res.toString();
+        assertEcho(result, "{OK}");
+    }
+
+
+    @Test
+    public void testBug60431() throws Exception {
+        getTomcatInstanceTestWebapp(false, true);
+
+        ByteChunk res = getUrl("http://localhost:" + getPort() + "/test/bug6nnnn/bug60431.jsp");
+        String result = res.toString();
+        assertEcho(result, "01-OK");
+        assertEcho(result, "02-OK");
+        assertEcho(result, "03-OK");
+    }
+
+
+    @Test
+    public void testBug61854a() throws Exception {
+        getTomcatInstanceTestWebapp(true,  true);
+
+        ByteChunk res = getUrl("http://localhost:" + getPort() + "/test/bug6nnnn/bug61854.jsp");
+        String result = res.toString();
+        assertEcho(result, "01-OK");
     }
 
 

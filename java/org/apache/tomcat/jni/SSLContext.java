@@ -26,6 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class SSLContext {
 
+    public static final byte[] DEFAULT_SESSION_ID_CONTEXT =
+            new byte[] { 'd', 'e', 'f', 'a', 'u', 'l', 't' };
+
     /**
      * Create a new SSL context.
      *
@@ -38,6 +41,7 @@ public final class SSLContext {
      * {@link SSL#SSL_PROTOCOL_TLSV1}
      * {@link SSL#SSL_PROTOCOL_TLSV1_1}
      * {@link SSL#SSL_PROTOCOL_TLSV1_2}
+     * {@link SSL#SSL_PROTOCOL_TLSV1_3}
      * {@link SSL#SSL_PROTOCOL_ALL} ( == all TLS versions, no SSL)
      * </PRE>
      * @param mode SSL mode to use
@@ -111,11 +115,18 @@ public final class SSLContext {
     public static native void clearOptions(long ctx, int options);
 
     /**
+     * Returns all cipher suites that are enabled for negotiation in an SSL handshake.
+     * @param ctx Server or Client context to use.
+     * @return ciphers
+     */
+    public static native String[] getCiphers(long ctx);
+
+    /**
      * Sets the "quiet shutdown" flag for <b>ctx</b> to be
      * <b>mode</b>. SSL objects created from <b>ctx</b> inherit the
      * <b>mode</b> valid at the time and may be 0 or 1.
      * <br>
-     * Normally when a SSL connection is finished, the parties must send out
+     * Normally when an SSL connection is finished, the parties must send out
      * "close notify" alert messages using L&lt;SSL_shutdown(3)|SSL_shutdown(3)&gt;
      * for a clean shutdown.
      * <br>
@@ -139,11 +150,13 @@ public final class SSLContext {
      * is permitted to negotiate in the SSL handshake phase. Notice that this
      * directive can be used both in per-server and per-directory context.
      * In per-server context it applies to the standard SSL handshake when a
-     * connection is established. In per-directory context it forces a SSL
+     * connection is established. In per-directory context it forces an SSL
      * renegotiation with the reconfigured Cipher Suite after the HTTP request
      * was read but before the HTTP response is sent.
      * @param ctx Server or Client context to use.
-     * @param ciphers An SSL cipher specification.
+     * @param ciphers An OpenSSL cipher specification.
+     * @return <code>true</code> if the operation was successful
+     * @throws Exception An error occurred
      */
     public static native boolean setCipherSuite(long ctx, String ciphers)
         throws Exception;
@@ -166,6 +179,8 @@ public final class SSLContext {
      * @param ctx Server or Client context to use.
      * @param file File of concatenated PEM-encoded CA CRLs for Client Auth.
      * @param path Directory of PEM-encoded CA Certificates for Client Auth.
+     * @return <code>true</code> if the operation was successful
+     * @throws Exception An error occurred
      */
     public static native boolean setCARevocation(long ctx, String file,
                                                  String path)
@@ -190,6 +205,7 @@ public final class SSLContext {
      * @param file File of PEM-encoded Server CA Certificates.
      * @param skipfirst Skip first certificate if chain file is inside
      *                  certificate file.
+     * @return <code>true</code> if the operation was successful
      */
     public static native boolean setCertificateChainFile(long ctx, String file,
                                                          boolean skipfirst);
@@ -215,6 +231,8 @@ public final class SSLContext {
      * @param password Certificate password. If null and certificate
      *                 is encrypted, password prompt will be displayed.
      * @param idx Certificate index SSL_AIDX_RSA or SSL_AIDX_DSA.
+     * @return <code>true</code> if the operation was successful
+     * @throws Exception An error occurred
      */
     public static native boolean setCertificate(long ctx, String cert,
                                                 String key, String password,
@@ -224,38 +242,53 @@ public final class SSLContext {
     /**
      * Set the size of the internal session cache.
      * http://www.openssl.org/docs/ssl/SSL_CTX_sess_set_cache_size.html
+     * @param ctx Server or Client context to use.
+     * @param size The cache size
+     * @return the value set
      */
     public static native long setSessionCacheSize(long ctx, long size);
 
     /**
      * Get the size of the internal session cache.
      * http://www.openssl.org/docs/ssl/SSL_CTX_sess_get_cache_size.html
+     * @param ctx Server or Client context to use.
+     * @return the size
      */
     public static native long getSessionCacheSize(long ctx);
 
     /**
      * Set the timeout for the internal session cache in seconds.
      * http://www.openssl.org/docs/ssl/SSL_CTX_set_timeout.html
+     * @param ctx Server or Client context to use.
+     * @param timeoutSeconds Timeout value
+     * @return the value set
      */
     public static native long setSessionCacheTimeout(long ctx, long timeoutSeconds);
 
     /**
      * Get the timeout for the internal session cache in seconds.
      * http://www.openssl.org/docs/ssl/SSL_CTX_set_timeout.html
+     * @param ctx Server or Client context to use.
+     * @return the timeout
      */
     public static native long getSessionCacheTimeout(long ctx);
 
     /**
      * Set the mode of the internal session cache and return the previous used mode.
+     * @param ctx Server or Client context to use.
+     * @param mode The mode to set
+     * @return the value set
      */
     public static native long setSessionCacheMode(long ctx, long mode);
 
     /**
      * Get the mode of the current used internal session cache.
+     * @param ctx Server or Client context to use.
+     * @return the value set
      */
     public static native long getSessionCacheMode(long ctx);
 
-    /**
+    /*
      * Session resumption statistics methods.
      * http://www.openssl.org/docs/ssl/SSL_CTX_sess_number.html
      */
@@ -274,6 +307,8 @@ public final class SSLContext {
 
     /**
      * Set TLS session keys. This allows us to share keys across TFEs.
+     * @param ctx Server or Client context to use.
+     * @param keys Some session keys
      */
     public static native void setSessionTicketKeys(long ctx, byte[] keys);
 
@@ -297,6 +332,8 @@ public final class SSLContext {
      * @param file File of concatenated PEM-encoded CA Certificates for
      *             Client Auth.
      * @param path Directory of PEM-encoded CA Certificates for Client Auth.
+     * @return <code>true</code> if the operation was successful
+     * @throws Exception An error occurred
      */
     public static native boolean setCACertificate(long ctx, String file,
                                                   String path)
@@ -331,7 +368,7 @@ public final class SSLContext {
      * Authentication. Notice that this directive can be used both in per-server
      * and per-directory context. In per-server context it applies to the client
      * authentication process used in the standard SSL handshake when a connection
-     * is established. In per-directory context it forces a SSL renegotiation with
+     * is established. In per-directory context it forces an SSL renegotiation with
      * the reconfigured client verification level after the HTTP request was read
      * but before the HTTP response is sent.
      * <br>
@@ -382,14 +419,14 @@ public final class SSLContext {
         return sniCallBack.getSslContext(sniHostName);
     }
 
-    /*
+    /**
      * A map of default SSL Contexts to SNICallBack instances (in Tomcat these
      * are instances of AprEndpoint) that will be used to determine the SSL
      * Context to use bases on the SNI host name. It is structured this way
      * since a Tomcat instance may have several TLS enabled endpoints that each
      * have different SSL Context mappings for the same host name.
      */
-    private static Map<Long,SNICallBack> sniCallBacks = new ConcurrentHashMap<>();
+    private static final Map<Long,SNICallBack> sniCallBacks = new ConcurrentHashMap<>();
 
     /**
      * Register an OpenSSL SSLContext that will be used to initiate TLS
@@ -486,6 +523,7 @@ public final class SSLContext {
      * @param ctx Server context to use.
      * @param cert DH param file (can be generated from e.g. {@code openssl dhparam -rand - 2048 > dhparam.pem} -
      *             see the <a href="https://www.openssl.org/docs/apps/dhparam.html">OpenSSL documentation</a>).
+     * @throws Exception An error occurred
      */
     public static native void setTmpDH(long ctx, String cert)
             throws Exception;
@@ -495,6 +533,7 @@ public final class SSLContext {
      * @param ctx Server context to use.
      * @param curveName the name of the elliptic curve to use
      *             (available names can be obtained from {@code openssl ecparam -list_curves}).
+     * @throws Exception An error occurred
      */
     public static native void setTmpECDHByCurveName(long ctx, String curveName)
             throws Exception;
@@ -509,4 +548,37 @@ public final class SSLContext {
      * @return {@code true} if success, {@code false} otherwise.
      */
     public static native boolean setSessionIdContext(long ctx, byte[] sidCtx);
+
+    /**
+     * Set CertificateRaw
+     * <br>
+     * Use keystore a certificate and key to fill the BIOP
+     * @param ctx Server or Client context to use.
+     * @param cert Byte array with the certificate in DER encoding.
+     * @param key Byte array with the Private Key file in PEM format.
+     * @param sslAidxRsa Certificate index SSL_AIDX_RSA or SSL_AIDX_DSA.
+     * @return {@code true} if success, {@code false} otherwise.
+     */
+    public static native boolean setCertificateRaw(long ctx, byte[] cert, byte[] key, int sslAidxRsa);
+
+    /**
+     * Add a certificate to the certificate chain. Certs should be added in
+     * order starting with the issuer of the host certs and working up the
+     * certificate chain to the CA.
+     *
+     * <br>
+     * Use keystore a certificate chain to fill the BIOP
+     * @param ctx Server or Client context to use.
+     * @param cert Byte array with the certificate in DER encoding.
+     * @return {@code true} if success, {@code false} otherwise.
+     */
+    public static native boolean addChainCertificateRaw(long ctx, byte[] cert);
+
+    /**
+     * Add a CA certificate we accept as issuer for peer certs
+     * @param ctx Server or Client context to use.
+     * @param cert Byte array with the certificate in DER encoding.
+     * @return {@code true} if success, {@code false} otherwise.
+     */
+    public static native boolean addClientCACertificateRaw(long ctx, byte[] cert);
 }

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 import javax.el.ELClass;
 import javax.el.ELContext;
@@ -35,11 +36,23 @@ import javax.servlet.jsp.PageContext;
 */
 public class ScopedAttributeELResolver extends ELResolver {
 
+    // Indicates if a performance short-cut is available
+    private static final Class<?> AST_IDENTIFIER_KEY;
+
+    static {
+        Class<?> key = null;
+        try {
+            key = Class.forName("org.apache.el.parser.AstIdentifier");
+        } catch (Exception e) {
+            // Ignore: Expected if not running on Tomcat. Not a problem since
+            //         this just allows a short-cut.
+        }
+        AST_IDENTIFIER_KEY = key;
+    }
+
     @Override
     public Object getValue(ELContext context, Object base, Object property) {
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         Object result = null;
 
@@ -51,10 +64,26 @@ public class ScopedAttributeELResolver extends ELResolver {
                 result = page.findAttribute(key);
 
                 if (result == null) {
+                    boolean resolveClass = true;
+                    // Performance short-cut available when running on Tomcat
+                    if (AST_IDENTIFIER_KEY != null) {
+                        // Tomcat will set this key to Boolean.TRUE if the
+                        // identifier is a stand-alone identifier (i.e.
+                        // identifier) rather than part of an AstValue (i.e.
+                        // identifier.something). Imports do not need to be
+                        // checked if this is a stand-alone identifier
+                        Boolean value = (Boolean) context.getContext(AST_IDENTIFIER_KEY);
+                        if (value != null && value.booleanValue()) {
+                            resolveClass = false;
+                        }
+                    }
                     // This might be the name of an imported class
                     ImportHandler importHandler = context.getImportHandler();
                     if (importHandler != null) {
-                        Class<?> clazz = importHandler.resolveClass(key);
+                        Class<?> clazz = null;
+                        if (resolveClass) {
+                            clazz = importHandler.resolveClass(key);
+                        }
                         if (clazz != null) {
                             result = new ELClass(clazz);
                         }
@@ -82,9 +111,7 @@ public class ScopedAttributeELResolver extends ELResolver {
 
     @Override
     public Class<Object> getType(ELContext context, Object base, Object property) {
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base == null) {
             context.setPropertyResolved(base, property);
@@ -96,9 +123,7 @@ public class ScopedAttributeELResolver extends ELResolver {
 
     @Override
     public void setValue(ELContext context, Object base, Object property, Object value) {
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base == null) {
             context.setPropertyResolved(base, property);
@@ -117,9 +142,7 @@ public class ScopedAttributeELResolver extends ELResolver {
 
     @Override
     public boolean isReadOnly(ELContext context, Object base, Object property) {
-        if (context == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(context);
 
         if (base == null) {
             context.setPropertyResolved(base, property);

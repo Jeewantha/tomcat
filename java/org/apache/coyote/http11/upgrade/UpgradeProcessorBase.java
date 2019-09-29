@@ -18,26 +18,23 @@ package org.apache.coyote.http11.upgrade;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.concurrent.Executor;
 
-import javax.servlet.http.HttpUpgradeHandler;
 import javax.servlet.http.WebConnection;
 
-import org.apache.coyote.Processor;
+import org.apache.coyote.AbstractProcessorLight;
 import org.apache.coyote.Request;
+import org.apache.coyote.UpgradeToken;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
-public abstract class UpgradeProcessorBase implements Processor, WebConnection {
+public abstract class UpgradeProcessorBase extends AbstractProcessorLight implements WebConnection {
 
     protected static final int INFINITE_TIMEOUT = -1;
 
-    private final HttpUpgradeHandler httpUpgradeHandler;
+    private final UpgradeToken upgradeToken;
 
-    public UpgradeProcessorBase(SocketWrapperBase<?> wrapper, ByteBuffer leftOverInput,
-            HttpUpgradeHandler httpUpgradeHandler) {
-        this.httpUpgradeHandler = httpUpgradeHandler;
-        wrapper.unRead(leftOverInput);
+    public UpgradeProcessorBase(UpgradeToken upgradeToken) {
+        this.upgradeToken = upgradeToken;
     }
 
 
@@ -50,8 +47,8 @@ public abstract class UpgradeProcessorBase implements Processor, WebConnection {
 
 
     @Override
-    public HttpUpgradeHandler getHttpUpgradeHandler() {
-        return httpUpgradeHandler;
+    public UpgradeToken getUpgradeToken() {
+        return upgradeToken;
     }
 
 
@@ -64,20 +61,8 @@ public abstract class UpgradeProcessorBase implements Processor, WebConnection {
     // ---------------------------- Processor methods that are NO-OP for upgrade
 
     @Override
-    public final Executor getExecutor() {
+    public final SocketState service(SocketWrapperBase<?> socketWrapper) throws IOException {
         return null;
-    }
-
-
-    @Override
-    public final SocketState process(SocketWrapperBase<?> socketWrapper) throws IOException {
-        return null;
-    }
-
-
-    @Override
-    public void errorDispatch() {
-        // NO-OP
     }
 
 
@@ -100,13 +85,21 @@ public abstract class UpgradeProcessorBase implements Processor, WebConnection {
 
 
     @Override
-    public String getClientCertProvider() {
+    public ByteBuffer getLeftoverInput() {
         return null;
     }
 
 
     @Override
-    public ByteBuffer getLeftoverInput() {
-        return null;
+    public boolean checkAsyncTimeoutGeneration() {
+        return false;
+    }
+
+
+    // ----------------- Processor methods that are NO-OP by default for upgrade
+
+    @Override
+    public void timeoutAsync(long now) {
+        // NO-OP
     }
 }

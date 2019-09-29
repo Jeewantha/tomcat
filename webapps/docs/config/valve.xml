@@ -114,100 +114,23 @@
 
     <attributes>
 
+      <attribute name="buffered" required="false">
+        <p>Flag to determine if logging will be buffered.
+           If set to <code>false</code>, then access logging will be written after each
+           request. Default value: <code>true</code>
+        </p>
+      </attribute>
+
       <attribute name="className" required="true">
         <p>Java class name of the implementation to use.  This MUST be set to
         <strong>org.apache.catalina.valves.AccessLogValve</strong> to use the
         default access log valve.</p>
       </attribute>
 
-      <attribute name="directory" required="false">
-        <p>Absolute or relative pathname of a directory in which log files
-        created by this valve will be placed.  If a relative path is
-        specified, it is interpreted as relative to $CATALINA_BASE.  If
-        no directory attribute is specified, the default value is "logs"
-        (relative to $CATALINA_BASE).</p>
-      </attribute>
-
-      <attribute name="prefix" required="false">
-        <p>The prefix added to the start of each log file's name.  If not
-        specified, the default value is "access_log.".</p>
-      </attribute>
-
-      <attribute name="suffix" required="false">
-        <p>The suffix added to the end of each log file's name.  If not
-        specified, the default value is "" (a zero-length string),
-        meaning that no suffix will be added.</p>
-      </attribute>
-
-      <attribute name="fileDateFormat" required="false">
-        <p>Allows a customized timestamp in the access log file name.
-           The file is rotated whenever the formatted timestamp changes.
-           The default value is <code>.yyyy-MM-dd</code>.
-           If you wish to rotate every hour, then set this value
-           to <code>.yyyy-MM-dd.HH</code>.
-           The date format will always be localized
-           using the locale <code>en_US</code>.
+      <attribute name="condition" required="false">
+        <p>The same as <code>conditionUnless</code>. This attribute is
+           provided for backwards compatibility.
         </p>
-      </attribute>
-
-      <attribute name="rotatable" required="false">
-        <p>Flag to determine if log rotation should occur.
-           If set to <code>false</code>, then this file is never rotated and
-           <code>fileDateFormat</code> is ignored.
-           Default value: <code>true</code>
-        </p>
-      </attribute>
-
-      <attribute name="renameOnRotate" required="false">
-        <p>By default for a rotatable log the active access log file name
-           will contain the current timestamp in <code>fileDateFormat</code>.
-           During rotation the file is closed and a new file with the next
-           timestamp in the name is created and used. When setting
-           <code>renameOnRotate</code> to <code>true</code>, the timestamp
-           is no longer part of the active log file name. Only during rotation
-           the file is closed and then renamed to include the timestamp.
-           This is similar to the behavior of most log frameworks when
-           doing time based rotation.
-           Default value: <code>false</code>
-        </p>
-      </attribute>
-
-      <attribute name="pattern" required="false">
-        <p>A formatting layout identifying the various information fields
-        from the request and response to be logged, or the word
-        <code>common</code> or <code>combined</code> to select a
-        standard format.  See below for more information on configuring
-        this attribute.</p>
-      </attribute>
-
-      <attribute name="encoding" required="false">
-        <p>Character set used to write the log file. An empty string means
-        to use the system default character set. Default value: use the
-        system default character set.
-        </p>
-      </attribute>
-
-      <attribute name="locale" required="false">
-        <p>The locale used to format timestamps in the access log
-           lines. Any timestamps configured using an
-           explicit SimpleDateFormat pattern (<code>%{xxx}t</code>)
-           are formatted in this locale. By default the
-           default locale of the Java process is used. Switching the
-           locale after the AccessLogValve is initialized is not supported.
-           Any timestamps using the common log format
-           (<code>CLF</code>) are always formatted in the locale
-           <code>en_US</code>.
-        </p>
-      </attribute>
-
-      <attribute name="requestAttributesEnabled" required="false">
-        <p>Set to <code>true</code> to check for the existence of request
-        attributes (typically set by the RemoteIpValve and similar) that should
-        be used to override the values returned by the request for remote
-        address, remote host, server port and protocol. If the attributes are
-        not set, or this attribute is set to <code>false</code> then the values
-        from the request will be used. If not set, the default value of
-        <code>false</code> will be used.</p>
       </attribute>
 
       <attribute name="conditionIf" required="false">
@@ -232,17 +155,59 @@
         </p>
       </attribute>
 
-      <attribute name="condition" required="false">
-        <p>The same as <code>conditionUnless</code>. This attribute is
-           provided for backwards compatibility.
+      <attribute name="directory" required="false">
+        <p>Absolute or relative pathname of a directory in which log files
+        created by this valve will be placed.  If a relative path is
+        specified, it is interpreted as relative to $CATALINA_BASE.  If
+        no directory attribute is specified, the default value is "logs"
+        (relative to $CATALINA_BASE).</p>
+      </attribute>
+
+      <attribute name="encoding" required="false">
+        <p>Character set used to write the log file. An empty string means
+        to use the system default character set. Default value: use the
+        system default character set.
         </p>
       </attribute>
 
-      <attribute name="buffered" required="false">
-        <p>Flag to determine if logging will be buffered.
-           If set to <code>false</code>, then access logging will be written after each
-           request. Default value: <code>true</code>
+      <attribute name="fileDateFormat" required="false">
+        <p>Allows a customized timestamp in the access log file name.
+           The file is rotated whenever the formatted timestamp changes.
+           The default value is <code>.yyyy-MM-dd</code>.
+           If you wish to rotate every hour, then set this value
+           to <code>.yyyy-MM-dd.HH</code>.
+           The date format will always be localized
+           using the locale <code>en_US</code>.
         </p>
+      </attribute>
+
+      <attribute name="ipv6Canonical" required="false">
+        <p>Flag to determine if IPv6 addresses should be represented in canonical
+           representation format as defined by RFC 5952. If set to <code>true</code>,
+           then IPv6 addresses will be written in canonical format (e.g.
+           <code>2001:db8::1:0:0:1</code>, <code>::1</code>), otherwise it will be
+           represented in full form (e.g. <code>2001:db8:0:0:1:0:0:1</code>,
+           <code>0:0:0:0:0:0:0:1</code>). Default value: <code>false</code>
+        </p>
+      </attribute>
+
+      <attribute name="locale" required="false">
+        <p>The locale used to format timestamps in the access log
+           lines. Any timestamps configured using an
+           explicit SimpleDateFormat pattern (<code>%{xxx}t</code>)
+           are formatted in this locale. By default the
+           default locale of the Java process is used. Switching the
+           locale after the AccessLogValve is initialized is not supported.
+           Any timestamps using the common log format
+           (<code>CLF</code>) are always formatted in the locale
+           <code>en_US</code>.
+        </p>
+      </attribute>
+
+      <attribute name="maxDays" required="false">
+        <p>The maximum number of days rotated access logs will be retained for
+           before being deleted. If not specified, the default value of
+           <code>-1</code> will be used which means never delete old files.</p>
       </attribute>
 
       <attribute name="maxLogMessageBufferSize" required="false">
@@ -252,12 +217,63 @@
            set to larger than the typical access log message size.</p>
       </attribute>
 
+      <attribute name="pattern" required="false">
+        <p>A formatting layout identifying the various information fields
+        from the request and response to be logged, or the word
+        <code>common</code> or <code>combined</code> to select a
+        standard format.  See below for more information on configuring
+        this attribute.</p>
+      </attribute>
+
+      <attribute name="prefix" required="false">
+        <p>The prefix added to the start of each log file's name.  If not
+        specified, the default value is "access_log".</p>
+      </attribute>
+
+      <attribute name="renameOnRotate" required="false">
+        <p>By default for a rotatable log the active access log file name
+           will contain the current timestamp in <code>fileDateFormat</code>.
+           During rotation the file is closed and a new file with the next
+           timestamp in the name is created and used. When setting
+           <code>renameOnRotate</code> to <code>true</code>, the timestamp
+           is no longer part of the active log file name. Only during rotation
+           the file is closed and then renamed to include the timestamp.
+           This is similar to the behavior of most log frameworks when
+           doing time based rotation.
+           Default value: <code>false</code>
+        </p>
+      </attribute>
+
+      <attribute name="requestAttributesEnabled" required="false">
+        <p>Set to <code>true</code> to check for the existence of request
+        attributes (typically set by the RemoteIpValve and similar) that should
+        be used to override the values returned by the request for remote
+        address, remote host, server port and protocol. If the attributes are
+        not set, or this attribute is set to <code>false</code> then the values
+        from the request will be used. If not set, the default value of
+        <code>false</code> will be used.</p>
+      </attribute>
+
       <attribute name="resolveHosts" required="false">
         <p>This attribute is no longer supported. Use the connector
         attribute <code>enableLookups</code> instead.</p>
         <p>If you have <code>enableLookups</code> on the connector set to
         <code>true</code> and want to ignore it, use <b>%a</b> instead of
         <b>%h</b> in the value of <code>pattern</code>.</p>
+      </attribute>
+
+      <attribute name="rotatable" required="false">
+        <p>Flag to determine if log rotation should occur.
+           If set to <code>false</code>, then this file is never rotated and
+           <code>fileDateFormat</code> is ignored.
+           Default value: <code>true</code>
+        </p>
+      </attribute>
+
+      <attribute name="suffix" required="false">
+        <p>The suffix added to the end of each log file's name.  If not
+        specified, the default value is "" (a zero-length string),
+        meaning that no suffix will be added.</p>
       </attribute>
 
     </attributes>
@@ -288,10 +304,22 @@
     <li><b>%u</b> - Remote user that was authenticated (if any), else '-'</li>
     <li><b>%U</b> - Requested URL path</li>
     <li><b>%v</b> - Local server name</li>
-    <li><b>%D</b> - Time taken to process the request, in millis</li>
-    <li><b>%T</b> - Time taken to process the request, in seconds</li>
+    <li><b>%D</b> - Time taken to process the request in millis. Note: In
+                    httpd %D is microseconds. Behaviour will be aligned to httpd
+                    in Tomcat 10 onwards.</li>
+    <li><b>%T</b> - Time taken to process the request, in seconds. Note: This
+                    value has millisecond resolution whereas in httpd it has
+                    second resolution. Behaviour will be align to httpd
+                    in Tomcat 10 onwards.</li>
     <li><b>%F</b> - Time taken to commit the response, in millis</li>
     <li><b>%I</b> - Current request thread name (can compare later with stacktraces)</li>
+    <li><b>%X</b> - Connection status when response is completed:
+      <ul>
+      <li><code>X</code> = Connection aborted before the response completed.</li>
+      <li><code>+</code> = Connection may be kept alive after the response is sent.</li>
+      <li><code>-</code> = Connection will be closed after the response is sent.</li>
+      </ul>
+    </li>
     </ul>
 
     <p>
@@ -299,7 +327,7 @@
     headers, cookies, session or request attributes and special
     timestamp formats.
     It is modeled after the
-    <a href="http://httpd.apache.org/">Apache HTTP Server</a> log configuration
+    <a href="https://httpd.apache.org/">Apache HTTP Server</a> log configuration
     syntax. Each of them can be used multiple times with different <code>xxx</code> keys:
     </p>
     <ul>
@@ -350,7 +378,7 @@
     <a href="#Proxies_Support">Proxies Support</a> and the
     <a href="../proxy-howto.html">Proxy How-To</a>. For reverse proxies that
     use mod_jk, see the <a
-    href="http://tomcat.apache.org/connectors-doc/generic_howto/proxy.html">generic
+    href="https://tomcat.apache.org/connectors-doc/generic_howto/proxy.html">generic
     proxy</a> documentation. For other reverse proxies, consult their
     documentation.</p>
   </subsection>
@@ -369,7 +397,7 @@
     difference to the standard <code>AccessLogValve</code> is that
     <code>ExtendedAccessLogValve</code> creates log files which
     conform to the Working Draft for the
-    <a href="http://www.w3.org/TR/WD-logfile.html">Extended Log File Format</a>
+    <a href="https://www.w3.org/TR/WD-logfile.html">Extended Log File Format</a>
     defined by the W3C.</p>
 
   </subsection>
@@ -403,7 +431,7 @@
     <code>cs</code> for "client to server", <code>sc</code> for
     "server to client" or <code>x</code> for "application specific".
     Furthermore some tokens are completed by an additional selector.
-    See the <a href="http://www.w3.org/TR/WD-logfile.html">W3C specification</a>
+    See the <a href="https://www.w3.org/TR/WD-logfile.html">W3C specification</a>
     for more information about the format.</p>
 
     <p>The following format tokens are supported:</p>
@@ -624,7 +652,7 @@
     header. This is useful in combination with the context attribute
     <code>preemptiveAuthentication="true"</code>.</p>
 
-    <p><strong>Note:</strong> This filter processes the value returned by
+    <p><strong>Note:</strong> This valve processes the value returned by
     method <code>ServletRequest.getRemoteHost()</code>. To allow the method
     to return proper host names, you have to enable "DNS lookups" feature on
     a <strong>Connector</strong>.</p>
@@ -695,18 +723,187 @@
 
 </subsection>
 
+<subsection name="Remote CIDR Valve">
+
+  <subsection name="Introduction">
+
+    <p>The <strong>Remote CIDR Valve</strong> allows you to compare the
+      IP address of the client that submitted this request against one or more
+      netmasks following the CIDR notation, and either allow the request to
+      continue or refuse to process the request from this client. IPv4 and
+      IPv6 are both fully supported. A Remote CIDR Valve can be associated
+      with any Catalina container (<a href="engine.html">Engine</a>,
+      <a href="host.html">Host</a>, or <a href="context.html">Context</a>), and
+      must accept any request presented to this container for processing before
+      it will be passed on.
+    </p>
+
+    <p>This valve mimicks Apache's <code>Order</code>,
+      <code>Allow from</code> and <code>Deny from</code> directives,
+      with the following limitations:
+    </p>
+
+    <ul>
+      <li><code>Order</code> will always be <code>allow, deny</code>;</li>
+      <li>dotted quad notations for netmasks are not supported (that is, you
+        cannot write <code>192.168.1.0/255.255.255.0</code>, you must write
+        <code>192.168.1.0/24</code>;
+      </li>
+      <li>shortcuts, like <code>10.10.</code>, which is equivalent to
+        <code>10.10.0.0/16</code>, are not supported;
+      </li>
+      <li>as the valve name says, this is a CIDR only valve,
+        therefore subdomain notations like <code>.mydomain.com</code> are not
+        supported either.
+      </li>
+    </ul>
+
+    <p>Some more features of this valve are:
+    </p>
+
+    <ul>
+      <li>if you omit the CIDR prefix, this valve becomes a single IP
+        valve;</li>
+      <li>unlike the <a href="#Remote_Host_Valve">Remote Host Valve</a>,
+      it can handle IPv6 addresses in condensed form (<code>::1</code>,
+      <code>fe80::/71</code>, etc).</li>
+    </ul>
+
+  </subsection>
+
+  <subsection name="Attributes">
+
+    <p>The <strong>Remote CIDR Valve</strong> supports the following
+      configuration attributes:</p>
+
+    <attributes>
+
+      <attribute name="className" required="true">
+        <p>Java class name of the implementation to use.  This MUST be set to
+          <strong>org.apache.catalina.valves.RemoteCIDRValve</strong>.</p>
+      </attribute>
+
+      <attribute name="allow" required="false">
+        <p>A comma-separated list of IPv4 or IPv6 netmasks or addresses
+          that the remote client&apos;s IP address is matched against.
+          If this attribute is specified, the remote address MUST match
+          for this request to be accepted. If this attribute is not specified,
+          all requests will be accepted UNLESS the remote IP is matched by a
+          netmask in the <code>deny</code> attribute.
+        </p>
+      </attribute>
+
+      <attribute name="deny" required="false">
+        <p>A comma-separated list of IPv4 or IPv6 netmasks or addresses
+          that the remote client&apos;s IP address is matched against.
+          If this attribute is specified, the remote address MUST NOT match
+          for this request to be accepted. If this attribute is not specified,
+          request acceptance is governed solely by the <code>accept</code>
+          attribute.
+        </p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
+  <subsection name="Example">
+    <p>To allow access only for the clients connecting from localhost:</p>
+    <pre>
+      &lt;Valve className="org.apache.catalina.valves.RemoteCIDRValve"
+      allow="127.0.0.1, ::1"/&gt;
+    </pre>
+  </subsection>
+
+</subsection>
+
 
 </section>
 
 
 <section name="Proxies Support">
+  <subsection name="Load Balancer Draining Valve">
+    <subsection name="Introduction">
+      <p>
+        When using mod_jk or mod_proxy_ajp, the client's session id is used to
+        determine which back-end server will be used to serve the request. If the
+        target node is being "drained" (in mod_jk, this is the <i>DISABLED</i>
+        state; in mod_proxy_ajp, this is the <i>Drain (N)</i> state), requests
+        for expired sessions can actually cause the draining node to fail to
+        drain.
+      </p>
+      <p>
+        Unfortunately, AJP-based load-balancers cannot prove whether the
+        client-provided session id is valid or not and therefore will send any
+        requests for a session that appears to be targeted to that node to the
+        disabled (or "draining") node, causing the "draining" process to take
+        longer than necessary.
+      </p>
+      <p>
+        This Valve detects requests for invalid sessions, strips the session
+        information from the request, and redirects back to the same URL, where
+        the load-balancer should choose a different (active)  node to handle the
+        request. This will accelerate the "draining" process for the disabled
+        node(s).
+      </p>
+
+      <p>
+        The activation state of the node is sent by the load-balancer in the
+        request, so no state change on the node being disabled is necessary. Simply
+        configure this Valve in your valve pipeline and it will take action when
+        the activation state is set to "disabled".
+      </p>
+
+      <p>
+        You should take care to register this Valve earlier in the Valve pipeline
+        than any authentication Valves, because this Valve should be able to
+        redirect a request before any authentication Valve saves a request to a
+        protected resource. If this happens, a new session will be created and
+        the draining process will stall because a new, valid session will be
+        established.
+      </p>
+    </subsection><!-- / Introduction -->
+
+    <subsection name="Attributes">
+      <p>The <strong>Load Balancer Draining Valve</strong> supports the
+      following configuration attributes:</p>
+
+      <attributes>
+        <attribute name="className" required="true">
+          <p>Java class name of the implementation to use. This MUST be set to
+          <strong>org.apache.catalina.valves.LoadBalancerDrainingValve</strong>.
+          </p>
+        </attribute>
+
+        <attribute name="redirectStatusCode" required="false">
+          <p>Allows setting a custom redirect code to be used when the client
+          is redirected to be re-balanced by the load-balancer. The default is
+          307 TEMPORARY_REDIRECT.</p>
+        </attribute>
+
+        <attribute name="ignoreCookieName" required="false">
+          <p>When used with <code>ignoreCookieValue</code>, a client can present
+          this cookie (and accompanying value) that will cause this Valve to
+          do nothing. This will allow you to probe your <i>disabled</i> node
+          before re-enabling it to make sure that it is working as expected.</p>
+        </attribute>
+
+        <attribute name="ignoreCookieValue" required="false">
+          <p>When used with <code>ignoreCookieName</code>, a client can present
+          a cookie (and accompanying value) that will cause this Valve to
+          do nothing. This will allow you to probe your <i>disabled</i> node
+          before re-enabling it to make sure that it is working as expected.</p>
+        </attribute>
+      </attributes>
+    </subsection><!-- /Attributes -->
+  </subsection><!-- /Load Balancer Draining Valve -->
 
 <subsection name="Remote IP Valve">
 
   <subsection name="Introduction">
 
     <p>Tomcat port of
-    <a href="http://httpd.apache.org/docs/trunk/mod/mod_remoteip.html">mod_remoteip</a>,
+    <a href="https://httpd.apache.org/docs/trunk/mod/mod_remoteip.html">mod_remoteip</a>,
     this valve replaces the apparent client remote IP address and hostname for
     the request with the IP address list presented by a proxy or a load balancer
     via a request headers (e.g. &quot;X-Forwarded-For&quot;).</p>
@@ -772,7 +969,7 @@
         Internal proxies that appear in the <strong>remoteIpHeader</strong> will
         be trusted and will not appear in the <strong>proxiesHeader</strong>
         value. If not specified the default value of <code>
-        10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}
+        10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1
         </code> will be used.</p>
       </attribute>
 
@@ -803,6 +1000,12 @@
       <attribute name="protocolHeader" required="false">
         <p>Name of the HTTP Header read by this valve that holds the protocol
         used by the client to connect to the proxy. If not specified, the
+        default of <code>X-Forwarded-Proto</code> is used.</p>
+      </attribute>
+
+      <attribute name="hostHeader" required="false">
+        <p>Name of the HTTP Header read by this valve that holds the host
+        used by the client to connect to the proxy. If not specified, the
         default of <code>null</code> is used.</p>
       </attribute>
 
@@ -830,6 +1033,13 @@
          when the <strong>protocolHeader</strong> indicates <code>https</code>
          protocol and no <strong>portHeader</strong> is present. If not
          specified, the default of <code>443</code> is used.</p>
+      </attribute>
+
+      <attribute name="changeLocalHost" required="false">
+        <p>If <code>true</code>, the value returned by
+        <code>ServletRequest.getLocalHost()</code> and
+        <code>ServletRequest.getServerHost()</code> is modified by the this
+        valve. If not specified, the default of <code>false</code> is used.</p>
       </attribute>
 
       <attribute name="changeLocalPort" required="false">
@@ -915,7 +1125,6 @@
 
 
 </section>
-
 
 <section name="Single Sign On Valve">
 
@@ -1016,6 +1225,19 @@
         used.</p>
       </attribute>
 
+      <attribute name="charset" required="false">
+        <p>Controls if the <code>WWW-Authenticate</code> HTTP header includes a
+        <code>charset</code> authentication parameter as per RFC 7617. The only
+        permitted options are <code>null</code>, the empty string and
+        <code>UTF-8</code>. If <code>UTF-8</code> is specified then the
+        <code>charset</code> authentication parameter will be sent with that
+        value and the provided user name and optional password will be converted
+        from bytes to characters using UTF-8. Otherwise, no <code>charset</code>
+        authentication parameter will be sent and the provided user name and
+        optional password will be converted from bytes to characters using
+        ISO-8859-1. The default value is <code>null</code></p>
+      </attribute>
+
       <attribute name="className" required="true">
         <p>Java class name of the implementation to use.  This MUST be set to
         <strong>org.apache.catalina.authenticator.BasicAuthenticator</strong>.</p>
@@ -1065,6 +1287,33 @@
         session IDs. If an invalid algorithm and/or provider is specified, the
         platform default provider and the default algorithm will be used. If not
         specified, the platform default provider will be used.</p>
+      </attribute>
+
+      <attribute name="sendAuthInfoResponseHeaders" required="false">
+        <p>Controls whether the auth information (remote user and auth type)
+        shall be returned as response headers for a forwarded/proxied request.
+        When the <code>RemoteIpValve</code> or <code>RemoteIpFilter</code> mark
+        a forwarded request with the <code>Globals.REQUEST_FORWARDED_ATTRIBUTE</code>
+        this authenticator can return the values of
+        <code>HttpServletRequest.getRemoteUser()</code> and
+        <code>HttpServletRequest.getAuthType()</code> as response headers
+        <code>remote-user</code> and <code>auth-type</code> to a reverse proxy.
+        This is useful, e.g., for access log consistency or other decisions to make.
+        If not specified, the default value is <code>false</code>.</p>
+      </attribute>
+
+      <attribute name="trimCredentials" required="false">
+        <p>Controls whether leading and/or trailing whitespace is removed from
+        the parsed credentials. If not specified, the default value is
+        <code>true</code>.</p>
+      </attribute>
+
+      <attribute name="jaspicCallbackHandlerClass" required="false">
+        <p>Name of the Java class of the
+        <code>javax.security.auth.callback.CallbackHandler</code> implementation
+        which should be used by JASPIC. If none is specified the default
+        <code>org.apache.catalina.authenticator.jaspic.CallbackHandlerImpl</code>
+        will be used.</p>
       </attribute>
 
     </attributes>
@@ -1205,12 +1454,33 @@
         specified, the platform default provider will be used.</p>
       </attribute>
 
+      <attribute name="sendAuthInfoResponseHeaders" required="false">
+        <p>Controls whether the auth information (remote user and auth type)
+        shall be returned as response headers for a forwarded/proxied request.
+        When the <code>RemoteIpValve</code> or <code>RemoteIpFilter</code> mark
+        a forwarded request with the <code>Globals.REQUEST_FORWARDED_ATTRIBUTE</code>
+        this authenticator can return the values of
+        <code>HttpServletRequest.getRemoteUser()</code> and
+        <code>HttpServletRequest.getAuthType()</code> as response headers
+        <code>remote-user</code> and <code>auth-type</code> to a reverse proxy.
+        This is useful, e.g., for access log consistency or other decisions to make.
+        If not specified, the default value is <code>false</code>.</p>
+      </attribute>
+
       <attribute name="validateUri" required="false">
         <p>Should the URI be validated as required by RFC2617? If not specified,
         the default value of <code>true</code> will be used. This should
         normally only be set when Tomcat is located behind a reverse proxy and
         the proxy is modifying the URI passed to Tomcat such that DIGEST
         authentication always fails.</p>
+      </attribute>
+
+      <attribute name="jaspicCallbackHandlerClass" required="false">
+        <p>Name of the Java class of the
+        <code>javax.security.auth.callback.CallbackHandler</code> implementation
+        which should be used by JASPIC. If none is specified the default
+        <code>org.apache.catalina.authenticator.jaspic.CallbackHandlerImpl</code>
+        will be used.</p>
       </attribute>
 
     </attributes>
@@ -1318,6 +1588,27 @@
         specified, the platform default provider will be used.</p>
       </attribute>
 
+      <attribute name="sendAuthInfoResponseHeaders" required="false">
+        <p>Controls whether the auth information (remote user and auth type)
+        shall be returned as response headers for a forwarded/proxied request.
+        When the <code>RemoteIpValve</code> or <code>RemoteIpFilter</code> mark
+        a forwarded request with the <code>Globals.REQUEST_FORWARDED_ATTRIBUTE</code>
+        this authenticator can return the values of
+        <code>HttpServletRequest.getRemoteUser()</code> and
+        <code>HttpServletRequest.getAuthType()</code> as response headers
+        <code>remote-user</code> and <code>auth-type</code> to a reverse proxy.
+        This is useful, e.g., for access log consistency or other decisions to make.
+        If not specified, the default value is <code>false</code>.</p>
+      </attribute>
+
+      <attribute name="jaspicCallbackHandlerClass" required="false">
+        <p>Name of the Java class of the
+        <code>javax.security.auth.callback.CallbackHandler</code> implementation
+        which should be used by JASPIC. If none is specified the default
+        <code>org.apache.catalina.authenticator.jaspic.CallbackHandlerImpl</code>
+        will be used.</p>
+      </attribute>
+
     </attributes>
 
   </subsection>
@@ -1408,6 +1699,14 @@
         session IDs. If an invalid algorithm and/or provider is specified, the
         platform default provider and the default algorithm will be used. If not
         specified, the platform default provider will be used.</p>
+      </attribute>
+
+      <attribute name="jaspicCallbackHandlerClass" required="false">
+        <p>Name of the Java class of the
+        <code>javax.security.auth.callback.CallbackHandler</code> implementation
+        which should be used by JASPIC. If none is specified the default
+        <code>org.apache.catalina.authenticator.jaspic.CallbackHandlerImpl</code>
+        will be used.</p>
       </attribute>
 
     </attributes>
@@ -1551,12 +1850,33 @@
         specified, the platform default provider will be used.</p>
       </attribute>
 
+      <attribute name="sendAuthInfoResponseHeaders" required="false">
+        <p>Controls whether the auth information (remote user and auth type)
+        shall be returned as response headers for a forwarded/proxied request.
+        When the <code>RemoteIpValve</code> or <code>RemoteIpFilter</code> mark
+        a forwarded request with the <code>Globals.REQUEST_FORWARDED_ATTRIBUTE</code>
+        this authenticator can return the values of
+        <code>HttpServletRequest.getRemoteUser()</code> and
+        <code>HttpServletRequest.getAuthType()</code> as response headers
+        <code>remote-user</code> and <code>auth-type</code> to a reverse proxy.
+        This is useful, e.g., for access log consistency or other decisions to make.
+        If not specified, the default value is <code>false</code>.</p>
+      </attribute>
+
       <attribute name="storeDelegatedCredential" required="false">
         <p>Controls if the user&apos; delegated credential will be stored in
         the user Principal. If available, the delegated credential will be
         available to applications (e.g. for onward authentication to external
         services) via the <code>org.apache.catalina.realm.GSS_CREDENTIAL</code>
         request attribute. If not set, the default value of <code>true</code>
+        will be used.</p>
+      </attribute>
+
+      <attribute name="jaspicCallbackHandlerClass" required="false">
+        <p>Name of the Java class of the
+        <code>javax.security.auth.callback.CallbackHandler</code> implementation
+        which should be used by JASPIC. If none is specified the default
+        <code>org.apache.catalina.authenticator.jaspic.CallbackHandlerImpl</code>
         will be used.</p>
       </attribute>
 
@@ -1575,10 +1895,13 @@
   <subsection name="Introduction">
 
     <p>The <strong>Error Report Valve</strong> is a simple error handler
-    for HTTP status codes that will generate and return HTML error pages.</p>
+    for HTTP status codes that will generate and return HTML error pages. It can
+    also be configured to return pre-defined static HTML pages for specific
+    status codes and/or exception types.</p>
 
     <p><strong>NOTE:</strong> Disabling both showServerInfo and showReport will
-    only return the HTTP status code and remove all CSS.</p>
+    only return the HTTP status code and remove all CSS from the default
+    response.</p>
 
   </subsection>
 
@@ -1595,10 +1918,36 @@
         default error report valve.</p>
       </attribute>
 
+      <attribute name="errorCode.nnn" required="false">
+        <p>The location of the UTF-8 encoded HTML file to return for the HTTP
+        error code represented by <code>nnn</code>. For example,
+        <code>errorCode.404</code> specifies the file to return for an HTTP 404
+        error. The location may be relative or absolule. If relative, it must be
+        relative to <code>$CATALINA_BASE</code>. The special value of
+        <code>errorCode.0</code> may be used to define a default error page to
+        be used if no error page is defined for a status code. If no matching
+        error page is found, the default <strong>Error Report Valve</strong>
+        response will be returned.</p>
+      </attribute>
+
+      <attribute name="exceptionType.fullyQualifiedClassName" required="false">
+        <p>The location of the UTF-8 encoded HTML file to return if an error has
+        occurred and the <code>javax.servlet.error.exception</code> request
+        attribute has been set to an instance of
+        <code>fullyQualifiedClassName</code> or a sub-class of it. For example,
+        <code>errorCode.java.io.IOException</code> specifies the file to return
+        for an <code>IOException</code>. The location may be relative or
+        absolule. If relative, it must be relative to
+        <code>$CATALINA_BASE</code>. If no matching error page is found, the
+        default <strong>Error Report Valve</strong> response will be
+        returned.</p>
+      </attribute>
+
       <attribute name="showReport" required="false">
-        <p>Flag to determine if the error report is presented when an error
-           occurs. If set to <code>false</code>, then the error report is not in
-           the HTML response.
+        <p>Flag to determine if the error report (custom error message and/or
+           stack trace) is presented when an error occurs. If set to
+           <code>false</code>, then the error report is not returned in the HTML
+           response.
            Default value: <code>true</code>
         </p>
       </attribute>
@@ -1651,11 +2000,31 @@
         </p>
       </attribute>
 
+      <attribute name="contextAware" required="false">
+        <p>Flag to use the context name together with the client IP to
+        identify the session to re-use. Can be combined with <code>hostAware</code>.
+        Default value: <code>true</code>
+        </p>
+      </attribute>
+
+      <attribute name="crawlerIps" required="false">
+        <p>Regular expression (using <code>java.util.regex</code>) that client
+        IP is matched against to determine if a request is from a web crawler.
+        By default such regular expression is not set.</p>
+      </attribute>
+
       <attribute name="crawlerUserAgents" required="false">
         <p>Regular expression (using <code>java.util.regex</code>) that the user
         agent HTTP request header is matched against to determine if a request
         is from a web crawler. If not set, the default of
         <code>.*[bB]ot.*|.*Yahoo! Slurp.*|.*Feedfetcher-Google.*</code> is used.</p>
+      </attribute>
+
+      <attribute name="hostAware" required="false">
+        <p>Flag to use the configured host together with the client IP to
+        identify the session to re-use. Can be combined with <code>contextAware</code>.
+        Default value: <code>true</code>
+        </p>
       </attribute>
 
       <attribute name="sessionInactiveInterval" required="false">
@@ -1776,6 +2145,40 @@
       <attribute name="interruptible" required="false">
         <p>Flag to determine if a thread may be interrupted until a permit is
         available. The default value is <strong>false</strong>.</p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
+</section>
+
+<section name="Health Check Valve">
+
+  <subsection name="Introduction">
+
+    <p>The <strong>Health Check Valve</strong> responds to
+    cloud orchestrators health checks. Note that it checks
+    that a context is mapped (so that an application is deployed),
+    for example if you don't have a ROOT context but demo-1.0
+    you have to check for <code>/demo-1.0/health</code></p>
+  </subsection>
+
+  <subsection name="Attributes">
+
+    <p>The <strong>Health Check Valve</strong> supports the
+    following configuration attributes:</p>
+
+    <attributes>
+
+      <attribute name="className" required="true">
+        <p>Java class name of the implementation to use.  This MUST be set to
+        <strong>org.apache.catalina.valves.HealthCheckValve</strong>.</p>
+      </attribute>
+
+      <attribute name="path" required="false">
+        <p>Path by the cloud orchestrators health check logic.
+        The default value is <strong>/health</strong>.</p>
       </attribute>
 
     </attributes>

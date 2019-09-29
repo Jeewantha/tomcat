@@ -17,16 +17,15 @@
 package org.apache.catalina.valves.rewrite;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Hashtable;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 
@@ -36,8 +35,6 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.catalina.Container;
 import org.apache.catalina.Context;
-import org.apache.catalina.Engine;
-import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Pipeline;
@@ -46,11 +43,29 @@ import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.catalina.util.URLEncoder;
 import org.apache.catalina.valves.ValveBase;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.CharChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
+import org.apache.tomcat.util.buf.UDecoder;
+import org.apache.tomcat.util.buf.UriUtil;
+import org.apache.tomcat.util.file.ConfigFileLoader;
+import org.apache.tomcat.util.file.ConfigurationSource;
 import org.apache.tomcat.util.http.RequestUtil;
-import org.apache.tomcat.util.net.URL;
 
+/**
+ * Note: Extra caution should be used when adding a Rewrite Rule. When
+ * specifying a regex to match for in a Rewrite Rule, certain regex could allow
+ * an attacker to DoS your server, as Java's regex parsing is vulnerable to
+ * "catastrophic backtracking" (also known as "Regular expression Denial of
+ * Service", or ReDoS). There are some open source tools to help detect
+ * vulnerable regex, though in general it is a hard problem. A good defence is
+ * to use a regex debugger on your desired regex, and read more on the subject
+ * of catastrophic backtracking.
+ *
+ * @see <a href=
+ *      "https://www.owasp.org/index.php/Regular_expression_Denial_of_Service_-_ReDoS">OWASP
+ *      ReDoS</a>
+ */
 public class RewriteValve extends ValveBase {
 
     /**
@@ -90,6 +105,17 @@ public class RewriteValve extends ValveBase {
     protected Map<String, RewriteMap> maps = new Hashtable<>();
 
 
+    /**
+     * Maps configuration.
+     */
+    protected ArrayList<String> mapsConfiguration = new ArrayList<>();
+
+
+    public RewriteValve() {
+        super(true);
+    }
+
+
     public boolean getEnabled() {
         return enabled;
     }
@@ -97,6 +123,14 @@ public class RewriteValve extends ValveBase {
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
+
+
+    @Override
+    protected void initInternal() throws LifecycleException {
+        super.initInternal();
+        containerLog = LogFactory.getLog(getContainer().getLogName() + ".rewrite");
+    }
+
 
     @Override
     protected synchronized void startInternal() throws LifecycleException {
@@ -110,38 +144,22 @@ public class RewriteValve extends ValveBase {
             context = true;
             is = ((Context) getContainer()).getServletContext()
                 .getResourceAsStream("/WEB-INF/" + resourcePath);
-            if (container.getLogger().isDebugEnabled()) {
+            if (containerLog.isDebugEnabled()) {
                 if (is == null) {
-                    container.getLogger().debug("No configuration resource found: /WEB-INF/" + resourcePath);
+                    containerLog.debug("No configuration resource found: /WEB-INF/" + resourcePath);
                 } else {
-                    container.getLogger().debug("Read configuration from: /WEB-INF/" + resourcePath);
+                    containerLog.debug("Read configuration from: /WEB-INF/" + resourcePath);
                 }
             }
-        } else if (getContainer() instanceof Host) {
-            String resourceName = getHostConfigPath(resourcePath);
-            File file = new File(getConfigBase(), resourceName);
+        } else {
+            String resourceName = Container.getConfigPath(getContainer(), resourcePath);
             try {
-                if (!file.exists()) {
-                    if (resourceName != null) {
-                        // Use getResource and getResourceAsStream
-                        is = getClass().getClassLoader()
-                            .getResourceAsStream(resourceName);
-                        if (is != null && container.getLogger().isDebugEnabled()) {
-                            container.getLogger().debug("Read configuration from CL at " + resourceName);
-                        }
-                    }
-                } else {
-                    if (container.getLogger().isDebugEnabled()) {
-                        container.getLogger().debug("Read configuration from " + file.getAbsolutePath());
-                    }
-                    is = new FileInputStream(file);
+                ConfigurationSource.Resource resource = ConfigFileLoader.getSource().getResource(resourceName);
+                is = resource.getInputStream();
+            } catch (IOException e) {
+                if (containerLog.isDebugEnabled()) {
+                    containerLog.debug("No configuration resource found: " + resourceName, e);
                 }
-                if ((is == null) && (container.getLogger().isDebugEnabled())) {
-                    container.getLogger().debug("No configuration resource found: " + resourceName +
-                            " in " + getConfigBase() + " or in the classloader");
-                }
-            } catch (Exception e) {
-                container.getLogger().error("Error opening configuration", e);
             }
         }
 
@@ -154,12 +172,12 @@ public class RewriteValve extends ValveBase {
                 BufferedReader reader = new BufferedReader(isr)) {
             parse(reader);
         } catch (IOException ioe) {
-            container.getLogger().error("Error closing configuration", ioe);
+            containerLog.error(sm.getString("rewriteValve.closeError"), ioe);
         } finally {
             try {
                 is.close();
             } catch (IOException e) {
-                container.getLogger().error("Error closing configuration", e);
+                containerLog.error(sm.getString("rewriteValve.closeError"), e);
             }
         }
 
@@ -167,13 +185,21 @@ public class RewriteValve extends ValveBase {
 
     public void setConfiguration(String configuration)
         throws Exception {
+        if (containerLog == null) {
+            containerLog = LogFactory.getLog(getContainer().getLogName() + ".rewrite");
+        }
         maps.clear();
         parse(new BufferedReader(new StringReader(configuration)));
     }
 
     public String getConfiguration() {
         StringBuffer buffer = new StringBuffer();
-        // FIXME: Output maps if possible
+        for (String mapConfiguration : mapsConfiguration) {
+            buffer.append(mapConfiguration).append("\r\n");
+        }
+        if (mapsConfiguration.size() > 0) {
+            buffer.append("\r\n");
+        }
         for (int i = 0; i < rules.length; i++) {
             for (int j = 0; j < rules[i].getConditions().length; j++) {
                 buffer.append(rules[i].getConditions()[j].toString()).append("\r\n");
@@ -184,8 +210,8 @@ public class RewriteValve extends ValveBase {
     }
 
     protected void parse(BufferedReader reader) throws LifecycleException {
-        ArrayList<RewriteRule> rules = new ArrayList<>();
-        ArrayList<RewriteCond> conditions = new ArrayList<>();
+        List<RewriteRule> rules = new ArrayList<>();
+        List<RewriteCond> conditions = new ArrayList<>();
         while (true) {
             try {
                 String line = reader.readLine();
@@ -195,8 +221,8 @@ public class RewriteValve extends ValveBase {
                 Object result = parse(line);
                 if (result instanceof RewriteRule) {
                     RewriteRule rule = (RewriteRule) result;
-                    if (container.getLogger().isDebugEnabled()) {
-                        container.getLogger().debug("Add rule with pattern " + rule.getPatternString()
+                    if (containerLog.isDebugEnabled()) {
+                        containerLog.debug("Add rule with pattern " + rule.getPatternString()
                                 + " and substitution " + rule.getSubstitutionString());
                     }
                     for (int i = (conditions.size() - 1); i > 0; i--) {
@@ -205,9 +231,9 @@ public class RewriteValve extends ValveBase {
                         }
                     }
                     for (int i = 0; i < conditions.size(); i++) {
-                        if (container.getLogger().isDebugEnabled()) {
+                        if (containerLog.isDebugEnabled()) {
                             RewriteCond cond = conditions.get(i);
-                            container.getLogger().debug("Add condition " + cond.getCondPattern()
+                            containerLog.debug("Add condition " + cond.getCondPattern()
                                     + " test " + cond.getTestString() + " to rule with pattern "
                                     + rule.getPatternString() + " and substitution "
                                     + rule.getSubstitutionString() + (cond.isOrnext() ? " [OR]" : "")
@@ -223,12 +249,15 @@ public class RewriteValve extends ValveBase {
                     String mapName = (String) ((Object[]) result)[0];
                     RewriteMap map = (RewriteMap) ((Object[]) result)[1];
                     maps.put(mapName, map);
+                    // Keep the original configuration line as it is not possible to get
+                    // the parameters back without an API change
+                    mapsConfiguration.add(line);
                     if (map instanceof Lifecycle) {
                         ((Lifecycle) map).start();
                     }
                 }
             } catch (IOException e) {
-                container.getLogger().error("Error reading configuration", e);
+                containerLog.error(sm.getString("rewriteValve.readError"), e);
             }
         }
         this.rules = rules.toArray(new RewriteRule[0]);
@@ -242,9 +271,7 @@ public class RewriteValve extends ValveBase {
     @Override
     protected synchronized void stopInternal() throws LifecycleException {
         super.stopInternal();
-        Iterator<RewriteMap> values = maps.values().iterator();
-        while (values.hasNext()) {
-            RewriteMap map = values.next();
+        for (RewriteMap map : maps.values()) {
             if (map instanceof Lifecycle) {
                 ((Lifecycle) map).stop();
             }
@@ -263,7 +290,7 @@ public class RewriteValve extends ValveBase {
             return;
         }
 
-        if (invoked.get() == Boolean.TRUE) {
+        if (Boolean.TRUE.equals(invoked.get())) {
             try {
                 getNext().invoke(request, response);
             } finally {
@@ -280,27 +307,41 @@ public class RewriteValve extends ValveBase {
 
             // As long as MB isn't a char sequence or affiliated, this has to be
             // converted to a string
-            MessageBytes urlMB = context ? request.getRequestPathMB() : request.getDecodedRequestURIMB();
+            Charset uriCharset = request.getConnector().getURICharset();
+            String originalQueryStringEncoded = request.getQueryString();
+            MessageBytes urlMB =
+                    context ? request.getRequestPathMB() : request.getDecodedRequestURIMB();
             urlMB.toChars();
-            CharSequence url = urlMB.getCharChunk();
+            CharSequence urlDecoded = urlMB.getCharChunk();
             CharSequence host = request.getServerName();
             boolean rewritten = false;
             boolean done = false;
+            boolean qsa = false;
+            boolean qsd = false;
             for (int i = 0; i < rules.length; i++) {
                 RewriteRule rule = rules[i];
-                CharSequence test = (rule.isHost()) ? host : url;
+                CharSequence test = (rule.isHost()) ? host : urlDecoded;
                 CharSequence newtest = rule.evaluate(test, resolver);
                 if (newtest != null && !test.equals(newtest.toString())) {
-                    if (container.getLogger().isDebugEnabled()) {
-                        container.getLogger().debug("Rewrote " + test + " as " + newtest
+                    if (containerLog.isDebugEnabled()) {
+                        containerLog.debug("Rewrote " + test + " as " + newtest
                                 + " with rule pattern " + rule.getPatternString());
                     }
                     if (rule.isHost()) {
                         host = newtest;
                     } else {
-                        url = newtest;
+                        urlDecoded = newtest;
                     }
                     rewritten = true;
+                }
+
+                // Check QSA before the final reply
+                if (!qsa && newtest != null && rule.isQsappend()) {
+                    qsa = true;
+                }
+
+                if (!qsa && newtest != null && rule.isQsdiscard()) {
+                    qsd = true;
                 }
 
                 // Final reply
@@ -317,37 +358,66 @@ public class RewriteValve extends ValveBase {
                     done = true;
                     break;
                 }
+
                 // - redirect (code)
                 if (rule.isRedirect() && newtest != null) {
-                    // append the query string to the url if there is one and it hasn't been rewritten
-                    String queryString = request.getQueryString();
-                    StringBuffer urlString = new StringBuffer(url);
-                    if (queryString != null && queryString.length() > 0) {
-                        int index = urlString.indexOf("?");
-                        if (index != -1) {
-                            // if qsa is specified append the query
-                            if (rule.isQsappend()) {
-                                urlString.append('&');
-                                urlString.append(queryString);
-                            }
-                            // if the ? is the last character delete it, its only purpose was to
-                            // prevent the rewrite module from appending the query string
-                            else if (index == urlString.length() - 1) {
-                                urlString.deleteCharAt(index);
-                            }
-                        } else {
-                            urlString.append('?');
-                            urlString.append(queryString);
-                        }
+                    // Append the query string to the url if there is one and it
+                    // hasn't been rewritten
+                    String urlStringDecoded = urlDecoded.toString();
+                    int index = urlStringDecoded.indexOf("?");
+                    String rewrittenQueryStringDecoded;
+                    if (index == -1) {
+                        rewrittenQueryStringDecoded = null;
+                    } else {
+                        rewrittenQueryStringDecoded = urlStringDecoded.substring(index + 1);
+                        urlStringDecoded = urlStringDecoded.substring(0, index);
                     }
+
+                    StringBuffer urlStringEncoded =
+                            new StringBuffer(URLEncoder.DEFAULT.encode(urlStringDecoded, uriCharset));
+                    if (!qsd && originalQueryStringEncoded != null
+                            && originalQueryStringEncoded.length() > 0) {
+                        if (rewrittenQueryStringDecoded == null) {
+                            urlStringEncoded.append('?');
+                            urlStringEncoded.append(originalQueryStringEncoded);
+                        } else {
+                            if (qsa) {
+                                // if qsa is specified append the query
+                                urlStringEncoded.append('?');
+                                urlStringEncoded.append(URLEncoder.QUERY.encode(
+                                        rewrittenQueryStringDecoded, uriCharset));
+                                urlStringEncoded.append('&');
+                                urlStringEncoded.append(originalQueryStringEncoded);
+                            } else if (index == urlStringEncoded.length() - 1) {
+                                // if the ? is the last character delete it, its only purpose was to
+                                // prevent the rewrite module from appending the query string
+                                urlStringEncoded.deleteCharAt(index);
+                            } else {
+                                urlStringEncoded.append('?');
+                                urlStringEncoded.append(URLEncoder.QUERY.encode(
+                                        rewrittenQueryStringDecoded, uriCharset));
+                            }
+                        }
+                    } else if (rewrittenQueryStringDecoded != null) {
+                        urlStringEncoded.append('?');
+                        urlStringEncoded.append(
+                                URLEncoder.QUERY.encode(rewrittenQueryStringDecoded, uriCharset));
+                    }
+
                     // Insert the context if
                     // 1. this valve is associated with a context
                     // 2. the url starts with a leading slash
                     // 3. the url isn't absolute
-                    if (context && urlString.charAt(0) == '/' && !hasScheme(urlString)) {
-                        urlString.insert(0, request.getContext().getEncodedPath());
+                    if (context && urlStringEncoded.charAt(0) == '/' &&
+                            !UriUtil.hasScheme(urlStringEncoded)) {
+                        urlStringEncoded.insert(0, request.getContext().getEncodedPath());
                     }
-                    response.sendRedirect(urlString.toString());
+                    if (rule.isNoescape()) {
+                        response.sendRedirect(
+                                UDecoder.URLDecode(urlStringEncoded.toString(), uriCharset));
+                    } else {
+                        response.sendRedirect(urlStringEncoded.toString());
+                    }
                     response.setStatus(rule.getRedirectCode());
                     done = true;
                     break;
@@ -376,14 +446,6 @@ public class RewriteValve extends ValveBase {
                 //   to do that)
                 if (rule.isType() && newtest != null) {
                     request.setContentType(rule.getTypeValue());
-                }
-                // - qsappend
-                if (rule.isQsappend() && newtest != null) {
-                    String queryString = request.getQueryString();
-                    String urlString = url.toString();
-                    if (urlString.indexOf('?') != -1 && queryString != null) {
-                        url = urlString + "&" + queryString;
-                    }
                 }
 
                 // Control flow processing
@@ -417,42 +479,54 @@ public class RewriteValve extends ValveBase {
             if (rewritten) {
                 if (!done) {
                     // See if we need to replace the query string
-                    String urlString = url.toString();
-                    String queryString = null;
-                    int queryIndex = urlString.indexOf('?');
+                    String urlStringDecoded = urlDecoded.toString();
+                    String queryStringDecoded = null;
+                    int queryIndex = urlStringDecoded.indexOf('?');
                     if (queryIndex != -1) {
-                        queryString = urlString.substring(queryIndex+1);
-                        urlString = urlString.substring(0, queryIndex);
+                        queryStringDecoded = urlStringDecoded.substring(queryIndex+1);
+                        urlStringDecoded = urlStringDecoded.substring(0, queryIndex);
                     }
-                    // Set the new 'original' URI
+                    // Save the current context path before re-writing starts
                     String contextPath = null;
                     if (context) {
                         contextPath = request.getContextPath();
                     }
+                    // Populated the encoded (i.e. undecoded) requestURI
                     request.getCoyoteRequest().requestURI().setString(null);
                     CharChunk chunk = request.getCoyoteRequest().requestURI().getCharChunk();
                     chunk.recycle();
                     if (context) {
+                        // This is neither decoded nor normalized
                         chunk.append(contextPath);
                     }
-                    chunk.append(URLEncoder.DEFAULT.encode(urlString));
+                    chunk.append(URLEncoder.DEFAULT.encode(urlStringDecoded, uriCharset));
                     request.getCoyoteRequest().requestURI().toChars();
                     // Decoded and normalized URI
+                    // Rewriting may have denormalized the URL
+                    urlStringDecoded = RequestUtil.normalize(urlStringDecoded);
                     request.getCoyoteRequest().decodedURI().setString(null);
                     chunk = request.getCoyoteRequest().decodedURI().getCharChunk();
                     chunk.recycle();
                     if (context) {
-                        chunk.append(contextPath);
+                        // This is decoded and normalized
+                        chunk.append(request.getServletContext().getContextPath());
                     }
-                    chunk.append(RequestUtil.normalize(urlString));
+                    chunk.append(urlStringDecoded);
                     request.getCoyoteRequest().decodedURI().toChars();
                     // Set the new Query if there is one
-                    if (queryString != null) {
+                    if (queryStringDecoded != null) {
                         request.getCoyoteRequest().queryString().setString(null);
                         chunk = request.getCoyoteRequest().queryString().getCharChunk();
                         chunk.recycle();
-                        chunk.append(queryString);
-                        request.getCoyoteRequest().queryString().toChars();
+                        chunk.append(URLEncoder.QUERY.encode(queryStringDecoded, uriCharset));
+                        if (qsa && originalQueryStringEncoded != null &&
+                                originalQueryStringEncoded.length() > 0) {
+                            chunk.append('&');
+                            chunk.append(originalQueryStringEncoded);
+                        }
+                        if (!chunk.isNull()) {
+                            request.getCoyoteRequest().queryString().toChars();
+                        }
                     }
                     // Set the new host if it changed
                     if (!host.equals(request.getServerName())) {
@@ -464,18 +538,18 @@ public class RewriteValve extends ValveBase {
                     }
                     request.getMappingData().recycle();
                     // Reinvoke the whole request recursively
+                    Connector connector = request.getConnector();
                     try {
-                        Connector connector = request.getConnector();
                         if (!connector.getProtocolHandler().getAdapter().prepare(
                                 request.getCoyoteRequest(), response.getCoyoteResponse())) {
                             return;
                         }
-                        Pipeline pipeline = connector.getService().getContainer().getPipeline();
-                        request.setAsyncSupported(pipeline.isAsyncSupported());
-                        pipeline.getFirst().invoke(request, response);
                     } catch (Exception e) {
                         // This doesn't actually happen in the Catalina adapter implementation
                     }
+                    Pipeline pipeline = connector.getService().getContainer().getPipeline();
+                    request.setAsyncSupported(pipeline.isAsyncSupported());
+                    pipeline.getFirst().invoke(request, response);
                 }
             } else {
                 getNext().invoke(request, response);
@@ -489,56 +563,12 @@ public class RewriteValve extends ValveBase {
 
 
     /**
-     * Get config base.
-     */
-    protected File getConfigBase() {
-        File configBase =
-            new File(System.getProperty("catalina.base"), "conf");
-        if (!configBase.exists()) {
-            return null;
-        } else {
-            return configBase;
-        }
-    }
-
-
-    /**
-     * Find the configuration path where the rewrite configuration file
-     * will be stored.
-     *
-     * @param resourceName
-     */
-    protected String getHostConfigPath(String resourceName) {
-        StringBuffer result = new StringBuffer();
-        Container container = getContainer();
-        Container host = null;
-        Container engine = null;
-        while (container != null) {
-            if (container instanceof Host)
-                host = container;
-            if (container instanceof Engine)
-                engine = container;
-            container = container.getParent();
-        }
-        if (engine != null) {
-            result.append(engine.getName()).append('/');
-        }
-        if (host != null) {
-            result.append(host.getName()).append('/');
-        }
-        result.append(resourceName);
-        return result.toString();
-    }
-
-
-    /**
      * This factory method will parse a line formed like:
      *
      * Example:
      *  RewriteCond %{REMOTE_HOST}  ^host1.*  [OR]
      *
      * @param line A line from the rewrite configuration
-     *
      * @return The condition, rule or map resulting from parsing the line
      */
     public static Object parse(String line) {
@@ -549,12 +579,13 @@ public class RewriteValve extends ValveBase {
                 // RewriteCond TestString CondPattern [Flags]
                 RewriteCond condition = new RewriteCond();
                 if (tokenizer.countTokens() < 2) {
-                    throw new IllegalArgumentException("Invalid line: " + line);
+                    throw new IllegalArgumentException(sm.getString("rewriteValve.invalidLine", line));
                 }
                 condition.setTestString(tokenizer.nextToken());
                 condition.setCondPattern(tokenizer.nextToken());
                 if (tokenizer.hasMoreTokens()) {
                     String flags = tokenizer.nextToken();
+                    condition.setFlagsString(flags);
                     if (flags.startsWith("[") && flags.endsWith("]")) {
                         flags = flags.substring(1, flags.length() - 1);
                     }
@@ -568,12 +599,13 @@ public class RewriteValve extends ValveBase {
                 // RewriteRule Pattern Substitution [Flags]
                 RewriteRule rule = new RewriteRule();
                 if (tokenizer.countTokens() < 2) {
-                    throw new IllegalArgumentException("Invalid line: " + line);
+                    throw new IllegalArgumentException(sm.getString("rewriteValve.invalidLine", line));
                 }
                 rule.setPatternString(tokenizer.nextToken());
                 rule.setSubstitutionString(tokenizer.nextToken());
                 if (tokenizer.hasMoreTokens()) {
                     String flags = tokenizer.nextToken();
+                    rule.setFlagsString(flags);
                     if (flags.startsWith("[") && flags.endsWith("]")) {
                         flags = flags.substring(1, flags.length() - 1);
                     }
@@ -586,15 +618,16 @@ public class RewriteValve extends ValveBase {
             } else if (token.equals("RewriteMap")) {
                 // RewriteMap name rewriteMapClassName whateverOptionalParameterInWhateverFormat
                 if (tokenizer.countTokens() < 2) {
-                    throw new IllegalArgumentException("Invalid line: " + line);
+                    throw new IllegalArgumentException(sm.getString("rewriteValve.invalidLine", line));
                 }
                 String name = tokenizer.nextToken();
                 String rewriteMapClassName = tokenizer.nextToken();
                 RewriteMap map = null;
                 try {
-                    map = (RewriteMap) (Class.forName(rewriteMapClassName).newInstance());
+                    map = (RewriteMap) (Class.forName(
+                            rewriteMapClassName).getConstructor().newInstance());
                 } catch (Exception e) {
-                    throw new IllegalArgumentException("Invalid map className: " + line);
+                    throw new IllegalArgumentException(sm.getString("rewriteValve.invalidMapClassName", line));
                 }
                 if (tokenizer.hasMoreTokens()) {
                     map.setParameters(tokenizer.nextToken());
@@ -606,7 +639,7 @@ public class RewriteValve extends ValveBase {
             } else if (token.startsWith("#")) {
                 // it's a comment, ignore it
             } else {
-                throw new IllegalArgumentException("Invalid line: " + line);
+                throw new IllegalArgumentException(sm.getString("rewriteValve.invalidLine", line));
             }
         }
         return null;
@@ -615,9 +648,9 @@ public class RewriteValve extends ValveBase {
 
     /**
      * Parser for RewriteCond flags.
-     *
-     * @param condition
-     * @param flag
+     * @param line The configuration line being parsed
+     * @param condition The current condition
+     * @param flag The flag
      */
     protected static void parseCondFlag(String line, RewriteCond condition, String flag) {
         if (flag.equals("NC") || flag.equals("nocase")) {
@@ -625,19 +658,21 @@ public class RewriteValve extends ValveBase {
         } else if (flag.equals("OR") || flag.equals("ornext")) {
             condition.setOrnext(true);
         } else {
-            throw new IllegalArgumentException("Invalid flag in: " + line + " flags: " + flag);
+            throw new IllegalArgumentException(sm.getString("rewriteValve.invalidFlags", line, flag));
         }
     }
 
 
     /**
-     * Parser for ReweriteRule flags.
-     *
-     * @param rule
-     * @param flag
+     * Parser for RewriteRule flags.
+     * @param line The configuration line being parsed
+     * @param rule The current rule
+     * @param flag The flag
      */
     protected static void parseRuleFlag(String line, RewriteRule rule, String flag) {
-        if (flag.equals("chain") || flag.equals("C")) {
+        if (flag.equals("B")) {
+            rule.setEscapeBackReferences(true);
+        } else if (flag.equals("chain") || flag.equals("C")) {
             rule.setChain(true);
         } else if (flag.startsWith("cookie=") || flag.startsWith("CO=")) {
             rule.setCookie(true);
@@ -648,7 +683,7 @@ public class RewriteValve extends ValveBase {
             }
             StringTokenizer tokenizer = new StringTokenizer(flag, ":");
             if (tokenizer.countTokens() < 2) {
-                throw new IllegalArgumentException("Invalid flag in: " + line);
+                throw new IllegalArgumentException(sm.getString("rewriteValve.invalidFlags", line, flag));
             }
             rule.setCookieName(tokenizer.nextToken());
             rule.setCookieValue(tokenizer.nextToken());
@@ -659,7 +694,7 @@ public class RewriteValve extends ValveBase {
                 try {
                     rule.setCookieLifetime(Integer.parseInt(tokenizer.nextToken()));
                 } catch (NumberFormatException e) {
-                    throw new IllegalArgumentException("Invalid flag in: " + line, e);
+                    throw new IllegalArgumentException(sm.getString("rewriteValve.invalidFlags", line, flag), e);
                 }
             }
             if (tokenizer.hasMoreTokens()) {
@@ -680,7 +715,7 @@ public class RewriteValve extends ValveBase {
             }
             int pos = flag.indexOf(':');
             if (pos == -1 || (pos + 1) == flag.length()) {
-                throw new IllegalArgumentException("Invalid flag in: " + line);
+                throw new IllegalArgumentException(sm.getString("rewriteValve.invalidFlags", line, flag));
             }
             rule.addEnvName(flag.substring(0, pos));
             rule.addEnvValue(flag.substring(pos + 1));
@@ -692,30 +727,43 @@ public class RewriteValve extends ValveBase {
             rule.setHost(true);
         } else if (flag.startsWith("last") || flag.startsWith("L")) {
             rule.setLast(true);
-        } else if (flag.startsWith("next") || flag.startsWith("N")) {
-            rule.setNext(true);
         } else if (flag.startsWith("nocase") || flag.startsWith("NC")) {
             rule.setNocase(true);
         } else if (flag.startsWith("noescape") || flag.startsWith("NE")) {
             rule.setNoescape(true);
-        // FIXME: Proxy not supported, would require proxy capabilities in Tomcat
-        /* } else if (flag.startsWith("proxy") || flag.startsWith("P")) {
-            rule.setProxy(true);*/
+        } else if (flag.startsWith("next") || flag.startsWith("N")) {
+            rule.setNext(true);
+        // Note: Proxy is not supported as Tomcat does not have proxy
+        //       capabilities
         } else if (flag.startsWith("qsappend") || flag.startsWith("QSA")) {
             rule.setQsappend(true);
+        } else if (flag.startsWith("qsdiscard") || flag.startsWith("QSD")) {
+            rule.setQsdiscard(true);
         } else if (flag.startsWith("redirect") || flag.startsWith("R")) {
-            if (flag.startsWith("redirect=")) {
-                flag = flag.substring("redirect=".length());
-                rule.setRedirect(true);
-                rule.setRedirectCode(Integer.parseInt(flag));
-            } else if (flag.startsWith("R=")) {
-                flag = flag.substring("R=".length());
-                rule.setRedirect(true);
-                rule.setRedirectCode(Integer.parseInt(flag));
-            } else {
-                rule.setRedirect(true);
-                rule.setRedirectCode(HttpServletResponse.SC_FOUND);
+            rule.setRedirect(true);
+            int redirectCode = HttpServletResponse.SC_FOUND;
+            if (flag.startsWith("redirect=") || flag.startsWith("R=")) {
+                if (flag.startsWith("redirect=")) {
+                    flag = flag.substring("redirect=".length());
+                } else if (flag.startsWith("R=")) {
+                    flag = flag.substring("R=".length());
+                }
+                switch(flag) {
+                    case "temp":
+                        redirectCode = HttpServletResponse.SC_FOUND;
+                        break;
+                    case "permanent":
+                        redirectCode = HttpServletResponse.SC_MOVED_PERMANENTLY;
+                        break;
+                    case "seeother":
+                        redirectCode = HttpServletResponse.SC_SEE_OTHER;
+                        break;
+                    default:
+                        redirectCode = Integer.parseInt(flag);
+                        break;
+                }
             }
+            rule.setRedirectCode(redirectCode);
         } else if (flag.startsWith("skip") || flag.startsWith("S")) {
             if (flag.startsWith("skip=")) {
                 flag = flag.substring("skip=".length());
@@ -732,24 +780,7 @@ public class RewriteValve extends ValveBase {
             rule.setType(true);
             rule.setTypeValue(flag);
         } else {
-            throw new IllegalArgumentException("Invalid flag in: " + line + " flag: " + flag);
+            throw new IllegalArgumentException(sm.getString("rewriteValve.invalidFlags", line, flag));
         }
-    }
-
-
-    /**
-     * Determine if a URI string has a <code>scheme</code> component.
-     */
-    protected static boolean hasScheme(StringBuffer uri) {
-        int len = uri.length();
-        for(int i=0; i < len ; i++) {
-            char c = uri.charAt(i);
-            if(c == ':') {
-                return i > 0;
-            } else if(!URL.isSchemeChar(c)) {
-                return false;
-            }
-        }
-        return false;
     }
 }

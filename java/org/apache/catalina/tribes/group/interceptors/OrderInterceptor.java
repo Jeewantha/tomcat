@@ -18,6 +18,7 @@
 package org.apache.catalina.tribes.group.interceptors;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -42,8 +43,8 @@ import org.apache.catalina.tribes.util.StringManager;
  * and the queue might become rather large. If this is the case, then you might want to set
  * the value OrderInterceptor.maxQueue = 25 (meaning that we will never keep more than 25 messages in our queue)
  * <br><b>Configuration Options</b><br>
- * OrderInteceptor.expire=&lt;milliseconds&gt; - if a message arrives out of order, how long before we act on it <b>default=3000ms</b><br>
- * OrderInteceptor.maxQueue=&lt;max queue size&gt; - how much can the queue grow to ensure ordering.
+ * OrderInterceptor.expire=&lt;milliseconds&gt; - if a message arrives out of order, how long before we act on it <b>default=3000ms</b><br>
+ * OrderInterceptor.maxQueue=&lt;max queue size&gt; - how much can the queue grow to ensure ordering.
  *   This setting is useful to avoid OutOfMemoryErrors<b>default=Integer.MAX_VALUE</b><br>
  * OrderInterceptor.forwardExpired=&lt;boolean&gt; - this flag tells the interceptor what to
  * do when a message has expired or the queue has grown larger than the maxQueue value.
@@ -55,9 +56,9 @@ import org.apache.catalina.tribes.util.StringManager;
  */
 public class OrderInterceptor extends ChannelInterceptorBase {
     protected static final StringManager sm = StringManager.getManager(OrderInterceptor.class);
-    private final HashMap<Member, Counter> outcounter = new HashMap<>();
-    private final HashMap<Member, Counter> incounter = new HashMap<>();
-    private final HashMap<Member, MessageOrder> incoming = new HashMap<>();
+    private final Map<Member, Counter> outcounter = new HashMap<>();
+    private final Map<Member, Counter> incounter = new HashMap<>();
+    private final Map<Member, MessageOrder> incoming = new HashMap<>();
     private long expire = 3000;
     private boolean forwardExpired = true;
     private int maxQueue = Integer.MAX_VALUE;

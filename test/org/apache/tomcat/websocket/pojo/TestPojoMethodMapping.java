@@ -59,7 +59,7 @@ public class TestPojoMethodMapping extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -75,9 +75,9 @@ public class TestPojoMethodMapping extends TomcatBaseTest {
         session.getBasicRemote().sendText("NO-OP");
         session.close();
 
-        // Give server 5s to close
+        // Give server 20s to close. 5s should be plenty but the Gump VM is slow
         int count = 0;
-        while (count < 50) {
+        while (count < 200) {
             if (server.isClosed()) {
                 break;
             }

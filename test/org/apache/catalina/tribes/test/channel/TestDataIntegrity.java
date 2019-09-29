@@ -20,9 +20,8 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Random;
 
-import static org.junit.Assert.assertEquals;
-
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -32,7 +31,7 @@ import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
-import org.apache.catalina.tribes.group.interceptors.MessageDispatch15Interceptor;
+import org.apache.catalina.tribes.group.interceptors.MessageDispatchInterceptor;
 
 public class TestDataIntegrity {
     private int msgCount = 500;
@@ -44,9 +43,9 @@ public class TestDataIntegrity {
     @Before
     public void setUp() throws Exception {
         channel1 = new GroupChannel();
-        channel1.addInterceptor(new MessageDispatch15Interceptor());
+        channel1.addInterceptor(new MessageDispatchInterceptor());
         channel2 = new GroupChannel();
-        channel2.addInterceptor(new MessageDispatch15Interceptor());
+        channel2.addInterceptor(new MessageDispatchInterceptor());
         listener1 = new Listener();
         channel2.addChannelListener(listener1);
         TesterUtil.addRandomDomain(new ManagedChannel[] {channel1, channel2});
@@ -74,7 +73,6 @@ public class TestDataIntegrity {
                         System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
                     }catch ( Exception x ) {
                         x.printStackTrace();
-                        return;
                     }
                 }
             };
@@ -85,7 +83,7 @@ public class TestDataIntegrity {
         long start = System.currentTimeMillis();
         while ( (System.currentTimeMillis()-start)<15000 && msgCount*threadCount!=listener1.count) Thread.sleep(500);
         System.err.println("Finished NO_ACK ["+listener1.count+"]");
-        assertEquals("Checking success messages.",msgCount*threadCount,listener1.count);
+        Assert.assertEquals("Checking success messages.",msgCount*threadCount,listener1.count);
     }
 
     @Test
@@ -102,7 +100,6 @@ public class TestDataIntegrity {
                             System.out.println("Thread["+this.getName()+"] sent "+msgCount+" messages in "+(System.currentTimeMillis()-start)+" ms.");
                         }catch ( Exception x ) {
                             x.printStackTrace();
-                            return;
                         }
                     }
                 };
@@ -113,7 +110,7 @@ public class TestDataIntegrity {
             long start = System.currentTimeMillis();
             while ( (System.currentTimeMillis()-start)<25000 && msgCount*threadCount!=listener1.count) Thread.sleep(500);
             System.err.println("Finished ASYNC MULTI THREAD ["+listener1.count+"]");
-            assertEquals("Checking success messages.",msgCount*threadCount,listener1.count);
+            Assert.assertEquals("Checking success messages.",msgCount*threadCount,listener1.count);
     }
 
     @Test
@@ -124,7 +121,7 @@ public class TestDataIntegrity {
         long start = System.currentTimeMillis();
         while ( (System.currentTimeMillis()-start)<5000 && msgCount!=listener1.count) Thread.sleep(500);
         System.err.println("Finished ASYNC");
-        assertEquals("Checking success messages.",msgCount,listener1.count);
+        Assert.assertEquals("Checking success messages.",msgCount,listener1.count);
     }
 
     @Test
@@ -133,7 +130,7 @@ public class TestDataIntegrity {
         for (int i=0; i<msgCount; i++) channel1.send(new Member[] {channel2.getLocalMember(false)},Data.createRandomData(),Channel.SEND_OPTIONS_USE_ACK);
         Thread.sleep(250);
         System.err.println("Finished ACK");
-        assertEquals("Checking success messages.",msgCount,listener1.count);
+        Assert.assertEquals("Checking success messages.",msgCount,listener1.count);
     }
 
     @Test
@@ -142,7 +139,7 @@ public class TestDataIntegrity {
         for (int i=0; i<msgCount; i++) channel1.send(new Member[] {channel2.getLocalMember(false)},Data.createRandomData(),Channel.SEND_OPTIONS_SYNCHRONIZED_ACK|Channel.SEND_OPTIONS_USE_ACK);
         Thread.sleep(250);
         System.err.println("Finished SYNC_ACK");
-        assertEquals("Checking success messages.",msgCount,listener1.count);
+        Assert.assertEquals("Checking success messages.",msgCount,listener1.count);
     }
 
     public static class Listener implements ChannelListener {
@@ -171,7 +168,7 @@ public class TestDataIntegrity {
         public int length;
         public byte[] data;
         public byte key;
-        public static Random r = new Random();
+        public static final Random r = new Random();
         public static Data createRandomData() {
             int i = r.nextInt();
             i = ( i % 127 );

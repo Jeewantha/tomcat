@@ -22,12 +22,12 @@ import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.catalina.Container;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.catalina.valves.ValveBase;
 import org.apache.tomcat.util.buf.MessageBytes;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Valve that implements the default basic behavior for the
@@ -40,19 +40,10 @@ import org.apache.tomcat.util.buf.MessageBytes;
  */
 final class StandardContextValve extends ValveBase {
 
+    private static final StringManager sm = StringManager.getManager(StandardContextValve.class);
+
     public StandardContextValve() {
         super(true);
-    }
-
-
-    /**
-     * Cast to a StandardContext right away, as it will be needed later.
-     *
-     * @see org.apache.catalina.Contained#setContainer(org.apache.catalina.Container)
-     */
-    @Override
-    public void setContainer(Container container) {
-        super.setContainer(container);
     }
 
 

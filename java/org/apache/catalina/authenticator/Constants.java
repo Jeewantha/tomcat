@@ -38,8 +38,6 @@ public class Constants {
     public static final String DEFAULT_JAAS_CONF = "conf/jaas.conf";
     public static final String DEFAULT_LOGIN_MODULE_NAME =
         "com.sun.security.jgss.krb5.accept";
-    public static final String USE_SUBJECT_CREDS_ONLY_PROPERTY =
-            "javax.security.auth.useSubjectCredsOnly";
 
     // Cookie name for single sign on support
     public static final String SINGLE_SIGN_ON_COOKIE =
@@ -55,7 +53,11 @@ public class Constants {
      * request is associated.
      */
     public static final String REQ_SSOID_NOTE =
-      "org.apache.catalina.request.SSOID";
+            "org.apache.catalina.request.SSOID";
+
+
+    public static final String REQ_JASPIC_SUBJECT_NOTE =
+            "org.apache.catalina.authenticator.jaspic.SUBJECT";
 
 
     // ---------------------------------------------------------- Session Notes

@@ -19,7 +19,7 @@ package org.apache.coyote.http2;
 import java.util.Map;
 
 /**
- * Represents the local connection settingsL i.e. the settings the client is
+ * Represents the local connection settings i.e. the settings the client is
  * expected to use when communicating with the server. There will be a delay
  * between calling a setter and the setting taking effect at the client. When a
  * setter is called, the new value is added to the set of pending settings. Once
@@ -30,12 +30,20 @@ import java.util.Map;
  * client will respond (almost certainly by closing the connection) as defined
  * in the HTTP/2 specification.
  */
-public class ConnectionSettingsLocal extends ConnectionSettingsBase<IllegalArgumentException> {
+class ConnectionSettingsLocal extends ConnectionSettingsBase<IllegalArgumentException> {
+
+    private static final String ENDPOINT_NAME = "Local(client->server)";
 
     private boolean sendInProgress = false;
 
+
+    ConnectionSettingsLocal(String connectionId) {
+        super(connectionId);
+    }
+
+
     @Override
-    protected synchronized void set(Setting setting, Long value) {
+    final synchronized void set(Setting setting, Long value) {
         checkSend();
         if (current.get(setting).longValue() == value.longValue()) {
             pending.remove(setting);
@@ -45,7 +53,7 @@ public class ConnectionSettingsLocal extends ConnectionSettingsBase<IllegalArgum
     }
 
 
-    synchronized byte[] getSettingsFrameForPending() {
+    final synchronized byte[] getSettingsFrameForPending() {
         checkSend();
         int payloadSize = pending.size() * 6;
         byte[] result = new byte[9 + payloadSize];
@@ -67,7 +75,7 @@ public class ConnectionSettingsLocal extends ConnectionSettingsBase<IllegalArgum
     }
 
 
-    synchronized boolean ack() {
+    final synchronized boolean ack() {
         if (sendInProgress) {
             sendInProgress = false;
             current.putAll(pending);
@@ -88,7 +96,13 @@ public class ConnectionSettingsLocal extends ConnectionSettingsBase<IllegalArgum
 
 
     @Override
-    void throwException(String msg, Http2Error error) throws IllegalArgumentException {
+    final void throwException(String msg, Http2Error error) throws IllegalArgumentException {
         throw new IllegalArgumentException(msg);
+    }
+
+
+    @Override
+    final String getEndpointName() {
+        return ENDPOINT_NAME;
     }
 }

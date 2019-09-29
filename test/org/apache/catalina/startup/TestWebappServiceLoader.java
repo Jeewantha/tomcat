@@ -32,7 +32,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
-import org.apache.catalina.core.TesterContext;
+import org.apache.tomcat.unittest.TesterContext;
 import org.easymock.EasyMock;
 import org.easymock.IMocksControl;
 
@@ -172,7 +172,7 @@ public class TestWebappServiceLoader {
         try {
             loader.loadServices(ServletContainerInitializer.class, names);
         } catch (IOException e) {
-            Assert.assertTrue(e.getCause() instanceof InstantiationException);
+            Assert.assertTrue(e.getCause() instanceof ReflectiveOperationException);
         } finally {
             control.verify();
         }

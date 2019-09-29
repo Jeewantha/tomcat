@@ -17,6 +17,8 @@
 
 package org.apache.catalina.tribes;
 
+import java.io.Serializable;
+
 /**
  * The Member interface, defines a member in the group.
  * Each member can carry a set of properties, defined by the actual implementation.<BR>
@@ -27,7 +29,7 @@ package org.apache.catalina.tribes;
  * since a member that has crashed and the starts up again on the same port/host is
  * not guaranteed to be the same member, so no state transfers will ever be confused
  */
-public interface Member {
+public interface Member extends Serializable {
 
     /**
      * When a member leaves the cluster, the payload of the memberDisappeared member
@@ -36,7 +38,7 @@ public interface Member {
     public static final byte[] SHUTDOWN_PAYLOAD = new byte[] {66, 65, 66, 89, 45, 65, 76, 69, 88};
 
     /**
-     * Returns the name of this node, should be unique within the group.
+     * @return the name of this node, should be unique within the group.
      */
     public String getName();
 
@@ -129,6 +131,7 @@ public interface Member {
      * Highly optimized version of serializing a member into a byte array
      * Returns a cached byte[] reference, do not modify this data
      * @param getalive  calculate memberAlive time
+     * @return the data as a byte array
      */
     public byte[] getData(boolean getalive);
 
@@ -137,12 +140,21 @@ public interface Member {
      * Returns a cached byte[] reference, do not modify this data
      * @param getalive  calculate memberAlive time
      * @param reset     reset the cached data package, and create a new one
+     * @return the data as a byte array
      */
     public byte[] getData(boolean getalive, boolean reset);
 
     /**
      * Length of a message obtained by {@link #getData(boolean)} or
      * {@link #getData(boolean, boolean)}.
+     * @return the data length
      */
     public int getDataLength();
+
+    /**
+     * @return boolean - true if the member is local member
+     */
+    public boolean isLocal();
+
+    public void setLocal(boolean local);
 }

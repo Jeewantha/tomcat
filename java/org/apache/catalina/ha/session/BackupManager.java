@@ -17,7 +17,6 @@
 package org.apache.catalina.ha.session;
 
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 
 import org.apache.catalina.DistributedManager;
@@ -39,7 +38,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class BackupManager extends ClusterManagerBase
         implements MapOwner, DistributedManager {
 
-    private final Log log = LogFactory.getLog(BackupManager.class);
+    private final Log log = LogFactory.getLog(BackupManager.class); // must not be static
 
     /**
      * The string manager for this package.
@@ -54,7 +53,7 @@ public class BackupManager extends ClusterManagerBase
     protected String name;
 
     /**
-     *
+     * Flag for how this map sends messages.
      */
     private int mapSendOptions = Channel.SEND_OPTIONS_SYNCHRONIZED_ACK|Channel.SEND_OPTIONS_USE_ACK;
 
@@ -67,6 +66,11 @@ public class BackupManager extends ClusterManagerBase
      * Flag for whether to terminate this map that failed to start.
      */
     private boolean terminateOnStartFailure = false;
+
+    /**
+     * The timeout for a ping message in replication map.
+     */
+    private long accessTimeout = 5000;
 
     /**
      * Constructor, just calls super()
@@ -144,6 +148,7 @@ public class BackupManager extends ClusterManagerBase
                     this, cluster.getChannel(), rpcTimeout, getMapName(),
                     getClassLoaders(), terminateOnStartFailure);
             map.setChannelSendOptions(mapSendOptions);
+            map.setAccessTimeout(accessTimeout);
             this.sessions = map;
         }  catch ( Exception x ) {
             log.error(sm.getString("backupManager.startUnable", getName()),x);
@@ -187,11 +192,6 @@ public class BackupManager extends ClusterManagerBase
     }
 
     @Override
-    public void setDistributable(boolean dist) {
-        this.distributable = dist;
-    }
-
-    @Override
     public void setName(String name) {
         this.name = name;
     }
@@ -200,8 +200,24 @@ public class BackupManager extends ClusterManagerBase
         this.mapSendOptions = mapSendOptions;
     }
 
+    public void setMapSendOptions(String mapSendOptions) {
+
+        int value = Channel.parseSendOptions(mapSendOptions);
+        if (value > 0) {
+            this.setMapSendOptions(value);
+        }
+    }
+
     public int getMapSendOptions() {
         return mapSendOptions;
+    }
+
+    /**
+     * returns the SendOptions as a comma separated list of names
+     * @return a comma separated list of the option names
+     */
+    public String getMapSendOptionsName(){
+        return Channel.getSendOptionsAsString(mapSendOptions);
     }
 
     public void setRpcTimeout(long rpcTimeout) {
@@ -220,6 +236,14 @@ public class BackupManager extends ClusterManagerBase
         return terminateOnStartFailure;
     }
 
+    public long getAccessTimeout() {
+        return accessTimeout;
+    }
+
+    public void setAccessTimeout(long accessTimeout) {
+        this.accessTimeout = accessTimeout;
+    }
+
     @Override
     public String[] getInvalidatedSessions() {
         return new String[0];
@@ -232,6 +256,7 @@ public class BackupManager extends ClusterManagerBase
         result.mapSendOptions = mapSendOptions;
         result.rpcTimeout = rpcTimeout;
         result.terminateOnStartFailure = terminateOnStartFailure;
+        result.accessTimeout = accessTimeout;
         return result;
     }
 
@@ -247,9 +272,8 @@ public class BackupManager extends ClusterManagerBase
         Set<String> sessionIds = new HashSet<>();
         LazyReplicatedMap<String,Session> map =
                 (LazyReplicatedMap<String,Session>)sessions;
-        Iterator<String> keys = map.keySetFull().iterator();
-        while (keys.hasNext()) {
-            sessionIds.add(keys.next());
+        for (String id : map.keySetFull()) {
+            sessionIds.add(id);
         }
         return sessionIds;
     }

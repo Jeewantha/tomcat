@@ -72,7 +72,7 @@ public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase 
             try {
                 this.encoding = B2CConverter.getCharset(encodingName);
             } catch (UnsupportedEncodingException e) {
-                log.warn(sm.getString("mdCredentialHandler.unknownEncoding",
+                log.error(sm.getString("mdCredentialHandler.unknownEncoding",
                         encodingName, encoding.name()));
             }
         }
@@ -148,6 +148,11 @@ public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase 
             } else {
                 // Hex hashes should be compared case-insensitively
                 String userDigest = mutate(inputCredentials, null, 1);
+                if (userDigest == null) {
+                    // Failed to mutate user credentials. Automatic fail.
+                    // Root cause should be logged by mutate()
+                    return false;
+                }
                 return storedCredentials.equalsIgnoreCase(userDigest);
             }
         }

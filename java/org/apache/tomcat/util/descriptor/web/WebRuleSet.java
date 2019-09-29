@@ -24,11 +24,10 @@ import org.apache.tomcat.util.digester.CallMethodRule;
 import org.apache.tomcat.util.digester.CallParamRule;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.digester.Rule;
-import org.apache.tomcat.util.digester.RuleSetBase;
+import org.apache.tomcat.util.digester.RuleSet;
 import org.apache.tomcat.util.digester.SetNextRule;
 import org.apache.tomcat.util.res.StringManager;
 import org.xml.sax.Attributes;
-
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a web application
@@ -36,7 +35,7 @@ import org.xml.sax.Attributes;
  *
  * @author Craig R. McClanahan
  */
-public class WebRuleSet extends RuleSetBase {
+public class WebRuleSet implements RuleSet {
 
     /**
      * The string resources for this package.
@@ -118,6 +117,7 @@ public class WebRuleSet extends RuleSetBase {
     /**
      * Construct an instance of this <code>RuleSet</code> with the default
      * matching pattern prefix.
+     * @param fragment <code>true</code> if this is a web fragment
      */
     public WebRuleSet(boolean fragment) {
 
@@ -132,11 +132,9 @@ public class WebRuleSet extends RuleSetBase {
      *
      * @param prefix Prefix for matching pattern rules (including the
      *  trailing slash character)
+     * @param fragment <code>true</code> if this is a web fragment
      */
     public WebRuleSet(String prefix, boolean fragment) {
-
-        super();
-        this.namespaceURI = null;
         this.prefix = prefix;
         this.fragment = fragment;
 
@@ -150,8 +148,8 @@ public class WebRuleSet extends RuleSetBase {
         relativeOrdering = new RelativeOrderingRule(fragment);
     }
 
-    // --------------------------------------------------------- Public Methods
 
+    // --------------------------------------------------------- Public Methods
 
     /**
      * <p>Add the set of Rule instances defined in this RuleSet to the
@@ -193,7 +191,11 @@ public class WebRuleSet extends RuleSetBase {
             digester.addCallMethod(fullPrefix + "/absolute-ordering/others",
                                    "addAbsoluteOrderingOthers");
             digester.addRule(fullPrefix + "/deny-uncovered-http-methods",
-                    new SetDenyUncoveredHttpMethodsRule());
+                             new SetDenyUncoveredHttpMethodsRule());
+            digester.addCallMethod(fullPrefix + "/request-character-encoding",
+                                   "setRequestCharacterEncoding", 0);
+            digester.addCallMethod(fullPrefix + "/response-character-encoding",
+                                   "setResponseCharacterEncoding", 0);
         }
 
         digester.addCallMethod(fullPrefix + "/context-param",
@@ -496,6 +498,7 @@ public class WebRuleSet extends RuleSetBase {
                                "setHome", 0);
         digester.addRule(fullPrefix + "/ejb-local-ref/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/ejb-local-ref/lookup-name", "setLookupName", 0);
         configureInjectionRules(digester, "web-app/ejb-local-ref/");
 
         //ejb-ref
@@ -518,6 +521,7 @@ public class WebRuleSet extends RuleSetBase {
                                "setRemote", 0);
         digester.addRule(fullPrefix + "/ejb-ref/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/ejb-ref/lookup-name", "setLookupName", 0);
         configureInjectionRules(digester, "web-app/ejb-ref/");
 
         //env-entry
@@ -537,6 +541,7 @@ public class WebRuleSet extends RuleSetBase {
                                "setValue", 0);
         digester.addRule(fullPrefix + "/env-entry/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/env-entry/lookup-name", "setLookupName", 0);
         configureInjectionRules(digester, "web-app/env-entry/");
 
         //resource-env-ref
@@ -551,6 +556,7 @@ public class WebRuleSet extends RuleSetBase {
                 "setType", 0);
         digester.addRule(fullPrefix + "/resource-env-ref/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/resource-env-ref/lookup-name", "setLookupName", 0);
         configureInjectionRules(digester, "web-app/resource-env-ref/");
 
         //message-destination
@@ -571,6 +577,7 @@ public class WebRuleSet extends RuleSetBase {
                                "setName", 0);
         digester.addRule(fullPrefix + "/message-destination/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/message-destination/lookup-name", "setLookupName", 0);
 
         //message-destination-ref
         digester.addObjectCreate(fullPrefix + "/message-destination-ref",
@@ -590,6 +597,8 @@ public class WebRuleSet extends RuleSetBase {
                                "setUsage", 0);
         digester.addRule(fullPrefix + "/message-destination-ref/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/message-destination-ref/lookup-name",
+                "setLookupName", 0);
         configureInjectionRules(digester, "web-app/message-destination-ref/");
 
         //resource-ref
@@ -610,6 +619,7 @@ public class WebRuleSet extends RuleSetBase {
                                "setType", 0);
         digester.addRule(fullPrefix + "/resource-ref/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/resource-ref/lookup-name", "setLookupName", 0);
         configureInjectionRules(digester, "web-app/resource-ref/");
 
         //service-ref
@@ -669,6 +679,7 @@ public class WebRuleSet extends RuleSetBase {
                                "addPortName", 0);
         digester.addRule(fullPrefix + "/service-ref/mapped-name",
                          new MappedNameRule());
+        digester.addCallMethod(fullPrefix + "/service-ref/lookup-name", "setLookupName", 0);
         configureInjectionRules(digester, "web-app/service-ref/");
     }
 
@@ -703,7 +714,7 @@ public class WebRuleSet extends RuleSetBase {
  * only 1 time within the web.xml
  */
 final class SetLoginConfig extends Rule {
-    protected boolean isLoginConfigSet = false;
+    boolean isLoginConfigSet = false;
     public SetLoginConfig() {
         // NO-OP
     }
@@ -726,7 +737,7 @@ final class SetLoginConfig extends Rule {
  * only 1 time within the web.xml
  */
 final class SetJspConfig extends Rule {
-    protected boolean isJspConfigSet = false;
+    boolean isJspConfigSet = false;
     public SetJspConfig() {
         // NO-OP
     }
@@ -749,7 +760,7 @@ final class SetJspConfig extends Rule {
  * only 1 time within the web.xml
  */
 final class SetSessionConfig extends Rule {
-    protected boolean isSessionConfigSet = false;
+    boolean isSessionConfigSet = false;
     public SetSessionConfig() {
         // NO-OP
     }
@@ -946,7 +957,7 @@ final class CallParamMultiRule extends CallParamRule {
  */
 final class CallMethodMultiRule extends CallMethodRule {
 
-    protected final int multiParamIndex;
+    final int multiParamIndex;
 
     public CallMethodMultiRule(String methodName, int paramCount, int multiParamIndex) {
         super(methodName, paramCount);
@@ -1103,7 +1114,7 @@ final class VersionRule extends Rule {
  */
 final class NameRule extends Rule {
 
-    protected boolean isNameSet = false;
+    boolean isNameSet = false;
 
     public NameRule() {
         // NO-OP
@@ -1134,7 +1145,7 @@ final class NameRule extends Rule {
  */
 final class AbsoluteOrderingRule extends Rule {
 
-    protected boolean isAbsoluteOrderingSet = false;
+    boolean isAbsoluteOrderingSet = false;
     private final boolean fragment;
 
     public AbsoluteOrderingRule(boolean fragment) {
@@ -1168,7 +1179,7 @@ final class AbsoluteOrderingRule extends Rule {
  */
 final class RelativeOrderingRule extends Rule {
 
-    protected boolean isRelativeOrderingSet = false;
+    boolean isRelativeOrderingSet = false;
     private final boolean fragment;
 
     public RelativeOrderingRule(boolean fragment) {

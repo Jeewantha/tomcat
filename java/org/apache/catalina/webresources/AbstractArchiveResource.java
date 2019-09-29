@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.cert.Certificate;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarEntry;
 import java.util.jar.Manifest;
 
@@ -113,6 +114,9 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     public long getContentLength() {
+        if (isDirectory()) {
+            return -1;
+        }
         return resource.getSize();
     }
 
@@ -133,7 +137,7 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     public URL getURL() {
-        String url = baseUrl + "!/" + resource.getName();
+        String url = baseUrl + resource.getName();
         try {
             return new URL(url);
         } catch (MalformedURLException e) {
@@ -165,6 +169,11 @@ public abstract class AbstractArchiveResource extends AbstractResource {
             throw new ArrayIndexOutOfBoundsException(sm.getString(
                     "abstractResource.getContentTooLarge", getWebappPath(),
                     Long.valueOf(len)));
+        }
+
+        if (len < 0) {
+            // Content is not applicable here (e.g. is a directory)
+            return null;
         }
 
         int size = (int) len;
@@ -215,6 +224,9 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     protected final InputStream doGetInputStream() {
+        if (isDirectory()) {
+            return null;
+        }
         return getJarInputStreamWrapper();
     }
 
@@ -222,7 +234,7 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     /**
      * This wrapper assumes that the InputStream was created from a JarFile
-     * obtained from a call to getArchiveResourceSet().getJarFile(). If this is
+     * obtained from a call to getArchiveResourceSet().openJarFile(). If this is
      * not the case then the usage counting in AbstractArchiveResourceSet will
      * break and the JarFile may be unexpectedly closed.
      */
@@ -230,6 +242,7 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
         private final JarEntry jarEntry;
         private final InputStream is;
+        private final AtomicBoolean closed = new AtomicBoolean(false);
 
 
         public JarInputStreamWrapper(JarEntry jarEntry, InputStream is) {
@@ -270,7 +283,11 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
         @Override
         public void close() throws IOException {
-            archiveResourceSet.closeJarFile();
+            if (closed.compareAndSet(false, true)) {
+                // Must only call this once else the usage counting will break
+                archiveResourceSet.closeJarFile();
+            }
+            is.close();
         }
 
 

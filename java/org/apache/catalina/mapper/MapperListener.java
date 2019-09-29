@@ -75,15 +75,17 @@ public class MapperListener extends LifecycleMBeanBase
      */
     private final String domain = null;
 
-    // ----------------------------------------------------------- Constructors
 
+    // ----------------------------------------------------------- Constructors
 
     /**
      * Create mapper listener.
+     *
+     * @param service The service this listener is associated with
      */
-    public MapperListener(Mapper mapper, Service service) {
-        this.mapper = mapper;
+    public MapperListener(Service service) {
         this.service = service;
+        this.mapper = service.getMapper();
     }
 
 
@@ -94,12 +96,13 @@ public class MapperListener extends LifecycleMBeanBase
 
         setState(LifecycleState.STARTING);
 
-        // Find any components that have already been initialized since the
-        // MBean listener won't be notified as those components will have
-        // already registered their MBeans
+        Engine engine = service.getContainer();
+        if (engine == null) {
+            return;
+        }
+
         findDefaultHost();
 
-        Engine engine = (Engine) service.getContainer();
         addListeners(engine);
 
         Container[] conHosts = engine.findChildren();
@@ -117,7 +120,10 @@ public class MapperListener extends LifecycleMBeanBase
     public void stopInternal() throws LifecycleException {
         setState(LifecycleState.STOPPING);
 
-        Engine engine = (Engine) service.getContainer();
+        Engine engine = service.getContainer();
+        if (engine == null) {
+            return;
+        }
         removeListeners(engine);
     }
 
@@ -125,7 +131,7 @@ public class MapperListener extends LifecycleMBeanBase
     @Override
     protected String getDomainInternal() {
         if (service instanceof LifecycleMBeanBase) {
-            return ((LifecycleMBeanBase) service).getDomain();
+            return service.getDomain();
         } else {
             return null;
         }
@@ -135,7 +141,7 @@ public class MapperListener extends LifecycleMBeanBase
     @Override
     protected String getObjectNameKeyProperties() {
         // Same as connector but Mapper rather than Connector
-        return ("type=Mapper");
+        return "type=Mapper";
     }
 
     // --------------------------------------------- Container Listener methods
@@ -255,12 +261,12 @@ public class MapperListener extends LifecycleMBeanBase
 
     private void findDefaultHost() {
 
-        Engine engine = (Engine) service.getContainer();
+        Engine engine = service.getContainer();
         String defaultHost = engine.getDefaultHost();
 
         boolean found = false;
 
-        if (defaultHost != null && defaultHost.length() >0) {
+        if (defaultHost != null && defaultHost.length() > 0) {
             Container[] containers = engine.findChildren();
 
             for (Container container : containers) {
@@ -280,11 +286,10 @@ public class MapperListener extends LifecycleMBeanBase
             }
         }
 
-        if(found) {
+        if (found) {
             mapper.setDefaultHostName(defaultHost);
         } else {
-            log.warn(sm.getString("mapperListener.unknownDefaultHost",
-                    defaultHost, service));
+            log.error(sm.getString("mapperListener.unknownDefaultHost", defaultHost, service));
         }
     }
 
@@ -302,6 +307,10 @@ public class MapperListener extends LifecycleMBeanBase
                 registerContext((Context) container);
             }
         }
+
+        // Default host may have changed
+        findDefaultHost();
+
         if(log.isDebugEnabled()) {
             log.debug(sm.getString("mapperListener.registerHost",
                     host.getName(), domain, service));
@@ -317,6 +326,9 @@ public class MapperListener extends LifecycleMBeanBase
         String hostname = host.getName();
 
         mapper.removeHost(hostname);
+
+        // Default host may have changed
+        findDefaultHost();
 
         if(log.isDebugEnabled()) {
             log.debug(sm.getString("mapperListener.unregisterHost", hostname,
@@ -442,13 +454,9 @@ public class MapperListener extends LifecycleMBeanBase
         }
     }
 
-    /**
+    /*
      * Populate <code>wrappers</code> list with information for registration of
      * mappings for this wrapper in this context.
-     *
-     * @param context
-     * @param wrapper
-     * @param list
      */
     private void prepareWrapperMappingInfo(Context context, Wrapper wrapper,
             List<WrapperMappingInfo> wrappers) {

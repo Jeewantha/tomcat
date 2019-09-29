@@ -24,6 +24,7 @@ import java.util.jar.JarInputStream;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.buf.UriUtil;
 
 /**
  * Represents a single resource (file or directory) that is located within a
@@ -37,36 +38,31 @@ public class JarWarResource extends AbstractArchiveResource {
 
     public JarWarResource(AbstractArchiveResourceSet archiveResourceSet, String webAppPath,
             String baseUrl, JarEntry jarEntry, String archivePath) {
-        super(archiveResourceSet, webAppPath, "jar:war:" + baseUrl + "*/" + archivePath,
-                jarEntry, "jar:" + baseUrl + "!/" + archivePath);
+
+        super(archiveResourceSet, webAppPath,
+                "jar:war:" + baseUrl + UriUtil.getWarSeparator() + archivePath + "!/",
+                jarEntry, "war:" + baseUrl + UriUtil.getWarSeparator() + archivePath);
         this.archivePath = archivePath;
     }
 
     @Override
     protected JarInputStreamWrapper getJarInputStreamWrapper() {
+        JarFile warFile = null;
+        JarInputStream jarIs = null;
+        JarEntry entry = null;
         try {
-            JarFile warFile = getArchiveResourceSet().openJarFile();
+            warFile = getArchiveResourceSet().openJarFile();
             JarEntry jarFileInWar = warFile.getJarEntry(archivePath);
             InputStream isInWar = warFile.getInputStream(jarFileInWar);
 
-            JarInputStream jarIs = new JarInputStream(isInWar);
-            JarEntry entry = jarIs.getNextJarEntry();
+            jarIs = new JarInputStream(isInWar);
+            entry = jarIs.getNextJarEntry();
             while (entry != null &&
                     !entry.getName().equals(getResource().getName())) {
                 entry = jarIs.getNextJarEntry();
             }
 
             if (entry == null) {
-                try {
-                    jarIs.close();
-                } catch (IOException ioe) {
-                    // Ignore
-                }
-                try {
-                    warFile.close();
-                } catch (IOException ioe) {
-                    // Ignore
-                }
                 return null;
             }
 
@@ -76,7 +72,22 @@ public class JarWarResource extends AbstractArchiveResource {
                 log.debug(sm.getString("jarResource.getInputStreamFail",
                         getResource().getName(), getBaseUrl()), e);
             }
+            // Ensure jarIs is closed if there is an exception
+            entry = null;
             return null;
+        } finally {
+            if (entry == null) {
+                if (jarIs != null) {
+                    try {
+                        jarIs.close();
+                    } catch (IOException ioe) {
+                        // Ignore
+                    }
+                }
+                if (warFile != null) {
+                    getArchiveResourceSet().closeJarFile();
+                }
+            }
         }
     }
 

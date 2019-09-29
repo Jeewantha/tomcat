@@ -105,12 +105,9 @@ public class PersistentValve extends ValveBase {
             if (store != null) {
                 Session session = null;
                 try {
-                    bind(context);
                     session = store.load(sessionId);
                 } catch (Exception e) {
                     container.getLogger().error("deserializeError");
-                } finally {
-                    unbind(context);
                 }
                 if (session != null) {
                     if (!session.isValid() ||
@@ -200,6 +197,9 @@ public class PersistentValve extends ValveBase {
      * than its expiration date as of the supplied time.
      *
      * FIXME: Probably belongs in the Session class.
+     * @param session The session to check
+     * @param timeNow The current time to check for
+     * @return <code>true</code> if the session is past its expiration
      */
     protected boolean isSessionStale(Session session, long timeNow) {
 

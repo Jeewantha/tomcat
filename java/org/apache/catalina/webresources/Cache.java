@@ -31,8 +31,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class Cache {
 
     private static final Log log = LogFactory.getLog(Cache.class);
-    protected static final StringManager sm =
-            StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(Cache.class);
 
     private static final long TARGET_FREE_PERCENT_GET = 5;
     private static final long TARGET_FREE_PERCENT_BACKGROUND = 10;
@@ -75,8 +74,8 @@ public class Cache {
         if (cacheEntry == null) {
             // Local copy to ensure consistency
             int objectMaxSizeBytes = getObjectMaxSizeBytes();
-            CachedResource newCacheEntry =
-                    new CachedResource(this, root, path, getTtl(), objectMaxSizeBytes);
+            CachedResource newCacheEntry = new CachedResource(this, root, path, getTtl(),
+                    objectMaxSizeBytes, useClassLoaderResources);
 
             // Concurrent callers will end up with the same CachedResource
             // instance
@@ -98,15 +97,13 @@ public class Cache {
                     // efficiency (younger entries may be evicted before older
                     // ones) for speed since this is on the critical path for
                     // request processing
-                    long targetSize =
-                            maxSize * (100 - TARGET_FREE_PERCENT_GET) / 100;
-                    long newSize = evict(
-                            targetSize, resourceCache.values().iterator());
+                    long targetSize = maxSize * (100 - TARGET_FREE_PERCENT_GET) / 100;
+                    long newSize = evict(targetSize, resourceCache.values().iterator());
                     if (newSize > maxSize) {
                         // Unable to create sufficient space for this resource
                         // Remove it from the cache
                         removeCacheEntry(path);
-                        log.warn(sm.getString("cache.addFail", path));
+                        log.warn(sm.getString("cache.addFail", path, root.getContext().getName()));
                     }
                 }
             } else {
@@ -137,8 +134,8 @@ public class Cache {
         if (cacheEntry == null) {
             // Local copy to ensure consistency
             int objectMaxSizeBytes = getObjectMaxSizeBytes();
-            CachedResource newCacheEntry =
-                    new CachedResource(this, root, path, getTtl(), objectMaxSizeBytes);
+            CachedResource newCacheEntry = new CachedResource(this, root, path, getTtl(),
+                    objectMaxSizeBytes, useClassLoaderResources);
 
             // Concurrent callers will end up with the same CachedResource
             // instance
@@ -158,10 +155,8 @@ public class Cache {
                     // efficiency (younger entries may be evicted before older
                     // ones) for speed since this is on the critical path for
                     // request processing
-                    long targetSize =
-                            maxSize * (100 - TARGET_FREE_PERCENT_GET) / 100;
-                    long newSize = evict(
-                            targetSize, resourceCache.values().iterator());
+                    long targetSize = maxSize * (100 - TARGET_FREE_PERCENT_GET) / 100;
+                    long newSize = evict(targetSize, resourceCache.values().iterator());
                     if (newSize > maxSize) {
                         // Unable to create sufficient space for this resource
                         // Remove it from the cache
@@ -204,9 +199,12 @@ public class Cache {
     }
 
     private boolean noCache(String path) {
-        // Don't cache resources used by the class loader (it has its own cache)
-        if (path.startsWith("/WEB-INF/classes/") ||
-                path.startsWith("/WEB-INF/lib/")) {
+        // Don't cache classes. The class loader handles this.
+        // Don't cache JARs. The ResourceSet handles this.
+        if ((path.endsWith(".class") &&
+                (path.startsWith("/WEB-INF/classes/") || path.startsWith("/WEB-INF/lib/")))
+                ||
+                (path.startsWith("/WEB-INF/lib/") && path.endsWith(".jar"))) {
             return true;
         }
         return false;

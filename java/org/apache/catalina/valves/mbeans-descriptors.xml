@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -318,7 +318,7 @@
                type="boolean"/>
 
     <attribute name="interruptible"
-               description="Should this be blocked interruptibly until a permit is availabl?"
+               description="Should this be blocked interruptibly until a permit is available?"
                type="boolean"/>
 
     <attribute name="stateName"
@@ -336,7 +336,6 @@
 
     <attribute name="addConnectorPort"
                description="Append the server connector port to the client IP separated by a semicolon"
-               is="true"
                type="boolean"/>
 
     <attribute name="allow"
@@ -375,7 +374,6 @@
 
     <attribute name="invalidAuthenticationWhenDeny"
                description="Send an invalid authentication header instead of deny"
-               is="true"
                type="boolean"/>
 
     <attribute name="stateName"
@@ -401,7 +399,6 @@
 
     <attribute name="addConnectorPort"
                description="Append the server connector port to the client IP separated by a semicolon"
-               is="true"
                type="boolean"/>
 
     <attribute name="allow"
@@ -440,7 +437,6 @@
 
     <attribute name="invalidAuthenticationWhenDeny"
                description="Send an invalid authentication header instead of deny"
-               is="true"
                type="boolean"/>
 
     <attribute name="stateName"

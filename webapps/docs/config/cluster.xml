@@ -43,6 +43,21 @@
   making the configuration seem like a lot, but don't lose faith, instead you have a tremendous control
   over what is going on.</p>
 </section>
+<section name="Security">
+
+<p>The cluster implementation is written on the basis that a secure, trusted
+network is used for all of the cluster related network traffic. It is not safe
+to run a cluster on a insecure, untrusted network.</p>
+
+<p>There are many options for providing a secure, trusted network for use by a
+Tomcat cluster. These include:</p>
+<ul>
+  <li>private LAN</li>
+  <li>a Virtual Private Network (VPN)</li>
+  <li>IPSEC</li>
+</ul>
+
+</section>
 <section name="Engine vs Host placement">
   <p>
    You can place the <code>&lt;Cluster&gt;</code> element inside either the <code>&lt;Engine&gt;</code>
@@ -127,20 +142,25 @@
       <br/>
       Note that if you use ASYNC messaging it is possible for update messages
       for a session to be processed by the receiving nodes in a different order
-      to the order in which they were sent.</p>
+      to the order in which they were sent.
+      </p>
+      <p>
+      You may also set these options as a comma separated string, e.g. "async, multicast", which
+      will be translated into <code>Channel.SEND_OPTIONS_ASYNCHRONOUS | Channel.SEND_OPTIONS_MULTICAST</code>
+      <br/>
+      The valid option names are "asynchronous" (alias "async"), "byte_message" (alias "byte")
+      , "multicast", "secure", "synchronized_ack" (alias "sync"), "udp", "use_ack"
+      </p>
     </attribute>
     <attribute name="channelStartOptions" required="false">
       <p>Sets the start and stop flags for the &lt;Channel&gt; object used by the cluster.
          The default is <code>Channel.DEFAULT</code> which starts all the channel services, such as
-         sender, receiver, multicast sender and multicast receiver.
+         sender, receiver, membership sender and membership receiver.
          The following flags are available today:</p>
          <source>Channel.DEFAULT = Channel.SND_RX_SEQ (1) |
                   Channel.SND_TX_SEQ (2) |
                   Channel.MBR_RX_SEQ (4) |
                   Channel.MBR_TX_SEQ (8);</source>
-         <p>To start a channel without multicasting, you would want to use the value <code>Channel.SND_RX_SEQ | Channel.SND_TX_SEQ</code>
-         that equals to <code>3</code>.
-      </p>
     </attribute>
 
     <attribute name="heartbeatBackgroundEnabled" required="false">

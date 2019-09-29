@@ -47,8 +47,9 @@ import org.apache.juli.logging.LogFactory;
  */
 public class AddDefaultCharsetFilter extends FilterBase {
 
-    private static final Log log =
-        LogFactory.getLog(AddDefaultCharsetFilter.class);
+    // Log must be non-static as loggers are created per class-loader and this
+    // Filter may be used in multiple class loaders
+    private final Log log = LogFactory.getLog(AddDefaultCharsetFilter.class); // must not be static
 
     private static final String DEFAULT_ENCODING = "ISO-8859-1";
 
@@ -108,7 +109,7 @@ public class AddDefaultCharsetFilter extends FilterBase {
         public void setContentType(String ct) {
 
             if (ct != null && ct.startsWith("text/")) {
-                if (ct.indexOf("charset=") < 0) {
+                if (!ct.contains("charset=")) {
                     super.setContentType(ct + ";charset=" + encoding);
                 } else {
                     super.setContentType(ct);
@@ -118,6 +119,24 @@ public class AddDefaultCharsetFilter extends FilterBase {
                 super.setContentType(ct);
             }
 
+        }
+
+        @Override
+        public void setHeader(String name, String value) {
+            if (name.trim().equalsIgnoreCase("content-type")) {
+                setContentType(value);
+            } else {
+                super.setHeader(name, value);
+            }
+        }
+
+        @Override
+        public void addHeader(String name, String value) {
+            if (name.trim().equalsIgnoreCase("content-type")) {
+                setContentType(value);
+            } else {
+                super.addHeader(name, value);
+            }
         }
 
         @Override

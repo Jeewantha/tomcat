@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
  Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -23,13 +23,13 @@
   <!-- 'Standard Checks' in the Checkstyle documentation:                    -->
   <!-- http://checkstyle.sourceforge.net/config_coding.html                  -->
 
+  <!-- Cache what has passed checkstyle -->
+  <property name="cacheFile"
+            value="${tomcat.output}/res/checkstyle/cachefile-javax-checkstyle.xml"/>
+
   <!-- Specific checks for javax.* packages -->
 
   <module name="TreeWalker">
-    <!-- Cache what has passed checkstyle -->
-    <property name="cacheFile"
-              value="${tomcat.output}/res/checkstyle/cachefile-javax-checkstyle.xml"/>
-
     <module name="ImportControl">
       <property name="file" value="${basedir}/res/checkstyle/javax-import-control.xml"/>
     </module>

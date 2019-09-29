@@ -115,7 +115,7 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", docBase.getAbsolutePath());
 
         Tomcat.addServlet(ctx, "servlet", new PathParamServlet());
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -136,7 +136,7 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "servlet", new PathParamServlet());
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
@@ -167,20 +167,20 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
 
     @Test
     public void testPathParamExtRootNoParam() throws Exception {
-        pathParamExtenionTest("/testapp/blah.txt", "none");
+        pathParamExtensionTest("/testapp/blah.txt", "none");
     }
 
     @Test
     public void testPathParamExtLevel1NoParam() throws Exception {
-        pathParamExtenionTest("/testapp/blah/blah.txt", "none");
+        pathParamExtensionTest("/testapp/blah/blah.txt", "none");
     }
 
     @Test
     public void testPathParamExtLevel1WithParam() throws Exception {
-        pathParamExtenionTest("/testapp/blah;x=y/blah.txt", "none");
+        pathParamExtensionTest("/testapp/blah;x=y/blah.txt", "none");
     }
 
-    private void pathParamExtenionTest(String path, String expected)
+    private void pathParamExtensionTest(String path, String expected)
             throws Exception {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
@@ -189,7 +189,7 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         Context ctx = tomcat.addContext("/testapp", null);
 
         Tomcat.addServlet(ctx, "servlet", new PathParamServlet());
-        ctx.addServletMapping("*.txt", "servlet");
+        ctx.addServletMappingDecoded("*.txt", "servlet");
 
         tomcat.start();
 
@@ -240,7 +240,7 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
 
         PathInfoServlet servlet = new PathInfoServlet();
         Tomcat.addServlet(ctx, "servlet", servlet);
-        ctx.addServletMapping("/*", "servlet");
+        ctx.addServletMappingDecoded("/*", "servlet");
 
         tomcat.start();
 
@@ -283,7 +283,7 @@ public class TestCoyoteAdapter extends TomcatBaseTest {
         AsyncServlet servlet = new AsyncServlet();
         Wrapper w = Tomcat.addServlet(ctx, "async", servlet);
         w.setAsyncSupported(true);
-        ctx.addServletMapping("/async", "async");
+        ctx.addServletMappingDecoded("/async", "async");
 
         tomcat.start();
 

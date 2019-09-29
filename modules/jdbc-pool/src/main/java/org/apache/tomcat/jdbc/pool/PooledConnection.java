@@ -23,18 +23,22 @@ import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.management.ObjectName;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.jdbc.pool.interceptor.ConnectionState;
+import org.apache.tomcat.jdbc.pool.jmx.JmxUtil;
 
 /**
  * Represents a pooled connection
  * and holds a reference to the {@link java.sql.Connection} object
  * @version 1.0
  */
-public class PooledConnection {
+public class PooledConnection implements PooledConnectionMBean {
     /**
      * Logger
      */
@@ -106,6 +110,10 @@ public class PooledConnection {
 
     private volatile long connectionVersion=0;
 
+    private static final AtomicLong connectionIndex = new AtomicLong(0);
+
+    private ObjectName oname = null;
+
     /**
      * Weak reference to cache the list of interceptors for this connection
      * so that we don't create a new list of interceptors each time we borrow
@@ -130,13 +138,17 @@ public class PooledConnection {
         connectionVersion = parent.getPoolVersion();
     }
 
+    @Override
     public long getConnectionVersion() {
         return connectionVersion;
     }
 
     /**
      * @deprecated use {@link #shouldForceReconnect(String, String)}
-     * method kept since it was public, to avoid changing interface. name was pooo
+     * method kept since it was public, to avoid changing interface.
+     * @param username The user name
+     * @param password The password
+     * @return <code>true</code>if the pool does not need to reconnect
      */
     @Deprecated
     public boolean checkUser(String username, String password) {
@@ -190,9 +202,9 @@ public class PooledConnection {
                 log.debug("Unable to disconnect previous connection.", x);
             } //catch
         } //end if
-        if (poolProperties.getDataSource()==null && poolProperties.getDataSourceJNDI()!=null) {
+        //if (poolProperties.getDataSource()==null && poolProperties.getDataSourceJNDI()!=null) {
             //TODO lookup JNDI name
-        }
+        //}
 
         if (poolProperties.getDataSource()!=null) {
             connectUsingDataSource();
@@ -270,7 +282,7 @@ public class PooledConnection {
                             poolProperties.getDriverClassName(),
                             PooledConnection.class.getClassLoader(),
                             Thread.currentThread().getContextClassLoader()
-                        ).newInstance();
+                        ).getConstructor().newInstance();
                 }
             }
         } catch (java.lang.Exception cn) {
@@ -331,6 +343,7 @@ public class PooledConnection {
      *
      * @return true if connect() was called successfully and disconnect has not yet been called
      */
+    @Override
     public boolean isInitialized() {
         return connection!=null;
     }
@@ -341,6 +354,7 @@ public class PooledConnection {
      * @return Returns true if the connection has been connected more than
      * {@link PoolConfiguration#getMaxAge()} milliseconds. false otherwise.
      */
+    @Override
     public boolean isMaxAgeExpired() {
         if (getPoolProperties().getMaxAge()>0 ) {
             return (System.currentTimeMillis() - getLastConnected()) > getPoolProperties().getMaxAge();
@@ -400,14 +414,14 @@ public class PooledConnection {
         if (poolProperties.getRemoveAbandonedTimeout() <= 0) {
             return Long.MAX_VALUE;
         } else {
-            return poolProperties.getRemoveAbandonedTimeout()*1000;
+            return poolProperties.getRemoveAbandonedTimeout() * 1000L;
         } //end if
     }
 
     /**
-     * Returns true if the connection pool is configured
+     * Returns <code>true</code> if the connection pool is configured
      * to do validation for a certain action.
-     * @param action
+     * @param action The validation action
      */
     private boolean doValidate(int action) {
         if (action == PooledConnection.VALIDATE_BORROW &&
@@ -429,9 +443,12 @@ public class PooledConnection {
             return false;
     }
 
-    /**Returns true if the object is still valid. if not
+    /**
+     * Returns <code>true</code> if the object is still valid. if not
      * the pool will call the getExpiredAction() and follow up with one
      * of the four expired methods
+     * @param validateAction The value
+     * @return <code>true</code> if the connection is valid
      */
     public boolean validate(int validateAction) {
         return validate(validateAction,null);
@@ -491,6 +508,29 @@ public class PooledConnection {
             query = poolProperties.getValidationQuery();
         }
 
+        if (query == null) {
+            int validationQueryTimeout = poolProperties.getValidationQueryTimeout();
+            if (validationQueryTimeout < 0) validationQueryTimeout = 0;
+            try {
+                if (connection.isValid(validationQueryTimeout)) {
+                    this.lastValidated = now;
+                    return true;
+                } else {
+                    if (getPoolProperties().getLogValidationErrors()) {
+                        log.error("isValid() returned false.");
+                    }
+                    return false;
+                }
+            } catch (SQLException e) {
+                if (getPoolProperties().getLogValidationErrors()) {
+                    log.error("isValid() failed.", e);
+                } else if (log.isDebugEnabled()) {
+                    log.debug("isValid() failed.", e);
+                }
+                return false;
+            }
+        }
+
         Statement stmt = null;
         try {
             stmt = connection.createStatement();
@@ -506,12 +546,28 @@ public class PooledConnection {
             return true;
         } catch (Exception ex) {
             if (getPoolProperties().getLogValidationErrors()) {
-                log.warn("SQL Validation error", ex);
+                log.error("SQL Validation error", ex);
             } else if (log.isDebugEnabled()) {
                 log.debug("Unable to validate object:",ex);
             }
             if (stmt!=null)
                 try { stmt.close();} catch (Exception ignore2){/*NOOP*/}
+
+            try {
+                if(!connection.getAutoCommit()) {
+                    connection.rollback();
+                }
+            } catch (SQLException e) {
+                // do nothing
+            }
+        } finally {
+            try {
+                if(!connection.getAutoCommit()) {
+                    connection.commit();
+                }
+            } catch (SQLException e) {
+                // do nothing
+            }
         }
         return false;
     } //validate
@@ -540,6 +596,10 @@ public class PooledConnection {
             if (log.isDebugEnabled()) {
                 log.debug("Unable to close SQL connection",x);
             }
+        }
+        if (oname != null) {
+            JmxUtil.unregisterJmx(oname);
+            oname = null;
         }
         return released.compareAndSet(false, true);
 
@@ -573,7 +633,7 @@ public class PooledConnection {
         setSuspect(false);
     }
 
-
+    @Override
     public boolean isSuspect() {
         return suspect;
     }
@@ -604,7 +664,7 @@ public class PooledConnection {
     /**
      * Sets the pool configuration for this connection and connection pool.
      * Object is shared with the {@link ConnectionPool}
-     * @param poolProperties
+     * @param poolProperties The pool properties
      */
     public void setPoolProperties(PoolConfiguration poolProperties) {
         this.poolProperties = poolProperties;
@@ -616,6 +676,7 @@ public class PooledConnection {
      * This timestamp can also be reset by the {@link org.apache.tomcat.jdbc.pool.interceptor.ResetAbandonedTimer#invoke(Object, java.lang.reflect.Method, Object[])}
      * @return the timestamp of the last pool action as defined by {@link System#currentTimeMillis()}
      */
+    @Override
     public long getTimestamp() {
         return timestamp;
     }
@@ -625,6 +686,7 @@ public class PooledConnection {
      * @return the discarded flag. If the value is true,
      * either {@link #disconnect(boolean)} has been called or it will be called when the connection is returned to the pool.
      */
+    @Override
     public boolean isDiscarded() {
         return discarded;
     }
@@ -633,6 +695,7 @@ public class PooledConnection {
      * Returns the timestamp of the last successful validation query execution.
      * @return the timestamp of the last successful validation query execution as defined by {@link System#currentTimeMillis()}
      */
+    @Override
     public long getLastValidated() {
         return lastValidated;
     }
@@ -692,6 +755,7 @@ public class PooledConnection {
      * ie, a successful call to {@link java.sql.Driver#connect(String, java.util.Properties)}.
      * @return the timestamp when this connection was created as defined by {@link System#currentTimeMillis()}
      */
+    @Override
     public long getLastConnected() {
         return lastConnected;
     }
@@ -724,6 +788,7 @@ public class PooledConnection {
      * Returns true if this connection has been released and wont be reused.
      * @return true if the method {@link #release()} has been called
      */
+    @Override
     public boolean isReleased() {
         return released.get();
     }
@@ -732,4 +797,57 @@ public class PooledConnection {
         return attributes;
     }
 
+    public void createMBean() {
+        if (oname != null) return;
+        String keyprop = ",connections=PooledConnection["+connectionIndex.getAndIncrement()+"]";
+        oname = JmxUtil.registerJmx(parent.getJmxPool().getObjectName(), keyprop, this);
+    }
+
+    public ObjectName getObjectName() {
+        return oname;
+    }
+
+    @Override
+    public void clearWarnings() {
+        try {
+            connection.clearWarnings();
+        } catch (SQLException e) {
+            log.warn("Unable to clear Warnings, connection will be closed.", e);
+        }
+    }
+
+    @Override
+    public boolean isClosed() throws SQLException {
+        return connection.isClosed();
+    }
+
+    @Override
+    public boolean getAutoCommit() throws SQLException {
+        return connection.getAutoCommit();
+    }
+
+    @Override
+    public String getCatalog() throws SQLException {
+        return connection.getCatalog();
+    }
+
+    @Override
+    public int getHoldability() throws SQLException {
+        return connection.getHoldability();
+    }
+
+    @Override
+    public boolean isReadOnly() throws SQLException {
+        return connection.isReadOnly();
+    }
+
+    @Override
+    public String getSchema() throws SQLException {
+        return connection.getSchema();
+    }
+
+    @Override
+    public int getTransactionIsolation() throws SQLException {
+        return connection.getTransactionIsolation();
+    }
 }

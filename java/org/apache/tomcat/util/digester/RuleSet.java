@@ -14,9 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.digester;
-
 
 /**
  * <p>Public interface defining a shorthand means of configuring a complete
@@ -34,22 +32,7 @@ package org.apache.tomcat.util.digester;
  *     your RuleSet to configure the necessary rules.</li>
  * </ul>
  */
-
 public interface RuleSet {
-
-
-    // ------------------------------------------------------------- Properties
-
-
-    /**
-     * Return the namespace URI that will be applied to all Rule instances
-     * created from this RuleSet.
-     */
-    public String getNamespaceURI();
-
-
-    // --------------------------------------------------------- Public Methods
-
 
     /**
      * Add the set of Rule instances defined in this RuleSet to the
@@ -60,7 +43,5 @@ public interface RuleSet {
      * @param digester Digester instance to which the new Rule instances
      *  should be added.
      */
-    public void addRuleInstances(Digester digester);
-
-
+    void addRuleInstances(Digester digester);
 }

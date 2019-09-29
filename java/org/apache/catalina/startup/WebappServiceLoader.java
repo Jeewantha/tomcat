@@ -34,6 +34,7 @@ import java.util.regex.Pattern;
 import javax.servlet.ServletContext;
 
 import org.apache.catalina.Context;
+import org.apache.tomcat.util.scan.JarFactory;
 
 /**
  * A variation of Java's JAR ServiceLoader that respects exclusion rules for
@@ -50,6 +51,8 @@ import org.apache.catalina.Context;
  * defined by resources in the parent ClassLoader will always be returned.
  * <p>
  * Provider classes will be loaded using the context's ClassLoader.
+ *
+ * @param <T> The type of service to load
  *
  * @see javax.servlet.ServletContainerInitializer
  * @see java.util.ServiceLoader
@@ -112,7 +115,7 @@ public class WebappServiceLoader<T> {
                 if (base.endsWith("/")) {
                     url = new URL(base + configFile);
                 } else {
-                    url = new URL("jar:" + base + "!/" + configFile);
+                    url = JarFactory.getJarEntryURL(jarUrl, configFile);
                 }
                 try {
                     parseConfigFile(applicationServicesFound, url);
@@ -158,10 +161,9 @@ public class WebappServiceLoader<T> {
 
     void parseConfigFile(LinkedHashSet<String> servicesFound, URL url)
             throws IOException {
-        try (InputStream is = url.openStream()) {
-            InputStreamReader in =
-                    new InputStreamReader(is, StandardCharsets.UTF_8);
-            BufferedReader reader = new BufferedReader(in);
+        try (InputStream is = url.openStream();
+            InputStreamReader in = new InputStreamReader(is, StandardCharsets.UTF_8);
+            BufferedReader reader = new BufferedReader(in)) {
             String line;
             while ((line = reader.readLine()) != null) {
                 int i = line.indexOf('#');
@@ -184,9 +186,8 @@ public class WebappServiceLoader<T> {
         for (String serviceClass : servicesFound) {
             try {
                 Class<?> clazz = Class.forName(serviceClass, true, loader);
-                services.add(serviceType.cast(clazz.newInstance()));
-            } catch (ClassNotFoundException | InstantiationException |
-                    IllegalAccessException | ClassCastException e) {
+                services.add(serviceType.cast(clazz.getConstructor().newInstance()));
+            } catch (ReflectiveOperationException | ClassCastException e) {
                 throw new IOException(e);
             }
         }

@@ -49,9 +49,10 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
         this.registry=reg;
     }
 
-    /** Used if a single component is loaded
+    /**
+     * Used if a single component is loaded
      *
-     * @param type
+     * @param type The type
      */
     public void setType( String type ) {
        this.type=type;
@@ -82,7 +83,7 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
             registry.addManagedBean(managed);
 
         } catch( Exception ex ) {
-            log.error( "Error reading descriptors ", ex);
+            log.error(sm.getString("modules.readDescriptorsError"), ex);
         }
     }
 
@@ -332,26 +333,26 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
                     mbean.addAttribute(ai);
             }
 
+            // This map is populated by iterating the methods (which end up as
+            // values in the Map) and obtaining the key from the value. It is
+            // impossible for a key to be associated with a null value.
             for (Entry<String,Method> entry : invokeAttMap.entrySet()) {
                 String name = entry.getKey();
                 Method m = entry.getValue();
-                if(m != null) {
-                    OperationInfo op=new OperationInfo();
-                    op.setName(name);
-                    op.setReturnType(m.getReturnType().getName());
-                    op.setDescription("Introspected operation " + name);
-                    Class<?> parms[] = m.getParameterTypes();
-                    for(int i=0; i<parms.length; i++ ) {
-                        ParameterInfo pi=new ParameterInfo();
-                        pi.setType(parms[i].getName());
-                        pi.setName( "param" + i);
-                        pi.setDescription("Introspected parameter param" + i);
-                        op.addParameter(pi);
-                    }
-                    mbean.addOperation(op);
-                } else {
-                    log.error("Null arg method for [" + name + "]");
+
+                OperationInfo op=new OperationInfo();
+                op.setName(name);
+                op.setReturnType(m.getReturnType().getName());
+                op.setDescription("Introspected operation " + name);
+                Class<?> parms[] = m.getParameterTypes();
+                for(int i=0; i<parms.length; i++ ) {
+                    ParameterInfo pi=new ParameterInfo();
+                    pi.setType(parms[i].getName());
+                    pi.setName(("param" + i).intern());
+                    pi.setDescription(("Introspected parameter param" + i).intern());
+                    op.addParameter(pi);
                 }
+                mbean.addOperation(op);
             }
 
             if( log.isDebugEnabled())

@@ -16,10 +16,8 @@
 ================================================================================
 
 General preparations before any publishing:
-1 - Download Maven Ant Tasks (version 2.1.0 is known to work) and place it in
-    this directory
-2 - Generate a standard Tomcat release (ant release)
-3 - Copy mvn.properties.default to mvn.properties and adjust it as necessary.
+1 - Generate a standard Tomcat release (ant release)
+2 - Copy mvn.properties.default to mvn.properties and adjust it as necessary.
     You will need to set asf.ldap.username and you'll probably need to set
     gpg.exec
     The other properties should be OK. Note: you will be prompted for your
@@ -37,3 +35,6 @@ To release do the following:
 2 - check the upload and then close the repository
 3 - include the repository in the VOTE thread
 4 - in https://repository.apache.org/index.html#stagingRepositories release it
+
+To install in your maven repo:
+1 - ant -f mvn-pub.xml generic-install

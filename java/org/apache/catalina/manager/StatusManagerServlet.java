@@ -119,10 +119,15 @@ public class StatusManagerServlet
             onStr = "*:type=ThreadPool,*";
             objectName = new ObjectName(onStr);
             set = mBeanServer.queryMBeans(objectName, null);
+            onStr = "*:type=ThreadPool,*,subType=SocketProperties";
+            objectName = new ObjectName(onStr);
+            Set<ObjectInstance> set2 = mBeanServer.queryMBeans(objectName, null);
             iterator = set.iterator();
             while (iterator.hasNext()) {
                 ObjectInstance oi = iterator.next();
-                threadPools.addElement(oi.getObjectName());
+                if (!set2.contains(oi)) {
+                    threadPools.addElement(oi.getObjectName());
+                }
             }
 
             // Query Global Request Processors
@@ -190,6 +195,9 @@ public class StatusManagerServlet
                       HttpServletResponse response)
         throws IOException, ServletException {
 
+        StringManager smClient = StringManager.getManager(
+                Constants.Package, request.getLocales());
+
         // mode is flag for HTML or XML output
         int mode = 0;
         // if ?XML=true, set the mode to XML
@@ -215,49 +223,49 @@ public class StatusManagerServlet
         args = new Object[2];
         args[0] = request.getContextPath();
         if (completeStatus) {
-            args[1] = sm.getString("statusServlet.complete");
+            args[1] = smClient.getString("statusServlet.complete");
         } else {
-            args[1] = sm.getString("statusServlet.title");
+            args[1] = smClient.getString("statusServlet.title");
         }
         // use StatusTransformer to output status
         StatusTransformer.writeBody(writer,args,mode);
 
         // Manager Section
         args = new Object[9];
-        args[0] = sm.getString("htmlManagerServlet.manager");
+        args[0] = smClient.getString("htmlManagerServlet.manager");
         args[1] = response.encodeURL(request.getContextPath() + "/html/list");
-        args[2] = sm.getString("htmlManagerServlet.list");
-        args[3] = response.encodeURL
+        args[2] = smClient.getString("htmlManagerServlet.list");
+        args[3] = // External link
             (request.getContextPath() + "/" +
-             sm.getString("htmlManagerServlet.helpHtmlManagerFile"));
-        args[4] = sm.getString("htmlManagerServlet.helpHtmlManager");
-        args[5] = response.encodeURL
+             smClient.getString("htmlManagerServlet.helpHtmlManagerFile"));
+        args[4] = smClient.getString("htmlManagerServlet.helpHtmlManager");
+        args[5] = // External link
             (request.getContextPath() + "/" +
-             sm.getString("htmlManagerServlet.helpManagerFile"));
-        args[6] = sm.getString("htmlManagerServlet.helpManager");
+             smClient.getString("htmlManagerServlet.helpManagerFile"));
+        args[6] = smClient.getString("htmlManagerServlet.helpManager");
         if (completeStatus) {
             args[7] = response.encodeURL
                 (request.getContextPath() + "/status");
-            args[8] = sm.getString("statusServlet.title");
+            args[8] = smClient.getString("statusServlet.title");
         } else {
             args[7] = response.encodeURL
                 (request.getContextPath() + "/status/all");
-            args[8] = sm.getString("statusServlet.complete");
+            args[8] = smClient.getString("statusServlet.complete");
         }
         // use StatusTransformer to output status
         StatusTransformer.writeManager(writer,args,mode);
 
         // Server Header Section
         args = new Object[9];
-        args[0] = sm.getString("htmlManagerServlet.serverTitle");
-        args[1] = sm.getString("htmlManagerServlet.serverVersion");
-        args[2] = sm.getString("htmlManagerServlet.serverJVMVersion");
-        args[3] = sm.getString("htmlManagerServlet.serverJVMVendor");
-        args[4] = sm.getString("htmlManagerServlet.serverOSName");
-        args[5] = sm.getString("htmlManagerServlet.serverOSVersion");
-        args[6] = sm.getString("htmlManagerServlet.serverOSArch");
-        args[7] = sm.getString("htmlManagerServlet.serverHostname");
-        args[8] = sm.getString("htmlManagerServlet.serverIPAddress");
+        args[0] = smClient.getString("htmlManagerServlet.serverTitle");
+        args[1] = smClient.getString("htmlManagerServlet.serverVersion");
+        args[2] = smClient.getString("htmlManagerServlet.serverJVMVersion");
+        args[3] = smClient.getString("htmlManagerServlet.serverJVMVendor");
+        args[4] = smClient.getString("htmlManagerServlet.serverOSName");
+        args[5] = smClient.getString("htmlManagerServlet.serverOSVersion");
+        args[6] = smClient.getString("htmlManagerServlet.serverOSArch");
+        args[7] = smClient.getString("htmlManagerServlet.serverHostname");
+        args[8] = smClient.getString("htmlManagerServlet.serverIPAddress");
         // use StatusTransformer to output status
         StatusTransformer.writePageHeading(writer,args,mode);
 
@@ -283,20 +291,59 @@ public class StatusManagerServlet
         try {
 
             // Display operating system statistics using APR if available
-            StatusTransformer.writeOSState(writer,mode);
+            args = new Object[7];
+            args[0] = smClient.getString("htmlManagerServlet.osPhysicalMemory");
+            args[1] = smClient.getString("htmlManagerServlet.osAvailableMemory");
+            args[2] = smClient.getString("htmlManagerServlet.osTotalPageFile");
+            args[3] = smClient.getString("htmlManagerServlet.osFreePageFile");
+            args[4] = smClient.getString("htmlManagerServlet.osMemoryLoad");
+            args[5] = smClient.getString("htmlManagerServlet.osKernelTime");
+            args[6] = smClient.getString("htmlManagerServlet.osUserTime");
+            StatusTransformer.writeOSState(writer, mode, args);
 
             // Display virtual machine statistics
-            StatusTransformer.writeVMState(writer,mode);
+            args = new Object[9];
+            args[0] = smClient.getString("htmlManagerServlet.jvmFreeMemory");
+            args[1] = smClient.getString("htmlManagerServlet.jvmTotalMemory");
+            args[2] = smClient.getString("htmlManagerServlet.jvmMaxMemory");
+            args[3] = smClient.getString("htmlManagerServlet.jvmTableTitleMemoryPool");
+            args[4] = smClient.getString("htmlManagerServlet.jvmTableTitleType");
+            args[5] = smClient.getString("htmlManagerServlet.jvmTableTitleInitial");
+            args[6] = smClient.getString("htmlManagerServlet.jvmTableTitleTotal");
+            args[7] = smClient.getString("htmlManagerServlet.jvmTableTitleMaximum");
+            args[8] = smClient.getString("htmlManagerServlet.jvmTableTitleUsed");
+            // use StatusTransformer to output status
+            StatusTransformer.writeVMState(writer,mode, args);
 
             Enumeration<ObjectName> enumeration = threadPools.elements();
             while (enumeration.hasMoreElements()) {
                 ObjectName objectName = enumeration.nextElement();
                 String name = objectName.getKeyProperty("name");
+                args = new Object[19];
+                args[0] = smClient.getString("htmlManagerServlet.connectorStateMaxThreads");
+                args[1] = smClient.getString("htmlManagerServlet.connectorStateThreadCount");
+                args[2] = smClient.getString("htmlManagerServlet.connectorStateThreadBusy");
+                args[3] = smClient.getString("htmlManagerServlet.connectorStateAliveSocketCount");
+                args[4] = smClient.getString("htmlManagerServlet.connectorStateMaxProcessingTime");
+                args[5] = smClient.getString("htmlManagerServlet.connectorStateProcessingTime");
+                args[6] = smClient.getString("htmlManagerServlet.connectorStateRequestCount");
+                args[7] = smClient.getString("htmlManagerServlet.connectorStateErrorCount");
+                args[8] = smClient.getString("htmlManagerServlet.connectorStateBytesRecieved");
+                args[9] = smClient.getString("htmlManagerServlet.connectorStateBytesSent");
+                args[10] = smClient.getString("htmlManagerServlet.connectorStateTableTitleStage");
+                args[11] = smClient.getString("htmlManagerServlet.connectorStateTableTitleTime");
+                args[12] = smClient.getString("htmlManagerServlet.connectorStateTableTitleBSent");
+                args[13] = smClient.getString("htmlManagerServlet.connectorStateTableTitleBRecv");
+                args[14] = smClient.getString("htmlManagerServlet.connectorStateTableTitleClientForw");
+                args[15] = smClient.getString("htmlManagerServlet.connectorStateTableTitleClientAct");
+                args[16] = smClient.getString("htmlManagerServlet.connectorStateTableTitleVHost");
+                args[17] = smClient.getString("htmlManagerServlet.connectorStateTableTitleRequest");
+                args[18] = smClient.getString("htmlManagerServlet.connectorStateHint");
                 // use StatusTransformer to output status
                 StatusTransformer.writeConnectorState
                     (writer, objectName,
                      name, mBeanServer, globalRequestProcessors,
-                     requestProcessors, mode);
+                     requestProcessors, mode, args);
             }
 
             if ((request.getPathInfo() != null)
@@ -354,14 +401,7 @@ public class StatusManagerServlet
                         requestProcessors.removeElement(objectName);
                     }
                 }
-                String j2eeType = objectName.getKeyProperty("j2eeType");
-                if (j2eeType != null) {
-
-                }
             }
         }
-
     }
-
-
 }

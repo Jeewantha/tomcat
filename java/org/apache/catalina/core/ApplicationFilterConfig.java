@@ -14,16 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.core;
 
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,7 +37,6 @@ import org.apache.catalina.Globals;
 import org.apache.catalina.security.SecurityUtil;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.InstanceManager;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.apache.tomcat.util.log.SystemLogHandler;
@@ -59,10 +56,10 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
     private static final long serialVersionUID = 1L;
 
-    protected static final StringManager sm =
+    static final StringManager sm =
         StringManager.getManager(Constants.Package);
 
-    private static final Log log = LogFactory.getLog(ApplicationFilterConfig.class);
+    private transient Log log = LogFactory.getLog(ApplicationFilterConfig.class); // must not be static
 
     /**
      * Empty String collection to serve as the basis for empty enumerations.
@@ -89,12 +86,12 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      *  instantiating the filter object
      * @exception ServletException if thrown by the filter's init() method
      * @throws NamingException
-     * @throws InvocationTargetException
+     * @throws SecurityException
+     * @throws IllegalArgumentException
      */
     ApplicationFilterConfig(Context context, FilterDef filterDef)
-        throws ClassCastException, ClassNotFoundException,
-               IllegalAccessException, InstantiationException,
-               ServletException, InvocationTargetException, NamingException {
+            throws ClassCastException, ReflectiveOperationException, ServletException,
+            NamingException, IllegalArgumentException, SecurityException {
 
         super();
 
@@ -105,7 +102,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
             getFilter();
         } else {
             this.filter = filterDef.getFilter();
-            getInstanceManager().newInstance(filter);
+            context.getInstanceManager().newInstance(filter);
             initFilter();
         }
     }
@@ -132,11 +129,6 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
     private final FilterDef filterDef;
 
     /**
-     * the InstanceManager used to create and destroy filter instances.
-     */
-    private transient InstanceManager instanceManager;
-
-    /**
      * JMX registration name
      */
     private ObjectName oname;
@@ -149,11 +141,11 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      */
     @Override
     public String getFilterName() {
-        return (filterDef.getFilterName());
+        return filterDef.getFilterName();
     }
 
     /**
-     * Return the class of the filter we are configuring.
+     * @return The class of the filter we are configuring.
      */
     public String getFilterClass() {
         return filterDef.getFilterClass();
@@ -171,7 +163,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
         Map<String,String> map = filterDef.getParameterMap();
         if (map == null) {
-            return (null);
+            return null;
         }
 
         return map.get(name);
@@ -211,15 +203,13 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("ApplicationFilterConfig[");
         sb.append("name=");
         sb.append(filterDef.getFilterName());
         sb.append(", filterClass=");
         sb.append(filterDef.getFilterClass());
         sb.append("]");
-        return (sb.toString());
-
+        return sb.toString();
     }
 
     // --------------------------------------------------------- Public Methods
@@ -243,23 +233,24 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      *  instantiating the filter object
      * @exception ServletException if thrown by the filter's init() method
      * @throws NamingException
-     * @throws InvocationTargetException
+     * @throws ReflectiveOperationException
+     * @throws SecurityException
+     * @throws IllegalArgumentException
      */
-    Filter getFilter() throws ClassCastException, ClassNotFoundException,
-        IllegalAccessException, InstantiationException, ServletException,
-        InvocationTargetException, NamingException {
+    Filter getFilter() throws ClassCastException, ReflectiveOperationException, ServletException,
+            NamingException, IllegalArgumentException, SecurityException {
 
         // Return the existing filter instance, if any
         if (this.filter != null)
-            return (this.filter);
+            return this.filter;
 
         // Identify the class loader we will be using
         String filterClass = filterDef.getFilterClass();
-        this.filter = (Filter) getInstanceManager().newInstance(filterClass);
+        this.filter = (Filter) context.getInstanceManager().newInstance(filterClass);
 
         initFilter();
 
-        return (this.filter);
+        return this.filter;
 
     }
 
@@ -287,9 +278,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      * Return the filter definition we are configured for.
      */
     FilterDef getFilterDef() {
-
-        return (this.filterDef);
-
+        return this.filterDef;
     }
 
     /**
@@ -300,8 +289,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
         unregisterJMX();
 
-        if (this.filter != null)
-        {
+        if (this.filter != null) {
             try {
                 if (Globals.IS_SECURITY_ENABLED) {
                     try {
@@ -321,12 +309,14 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
             }
             if (!context.getIgnoreAnnotations()) {
                 try {
-                    ((StandardContext) context).getInstanceManager().destroyInstance(this.filter);
+                    context.getInstanceManager().destroyInstance(this.filter);
                 } catch (Exception e) {
                     Throwable t = ExceptionUtils
                             .unwrapInvocationTargetException(e);
                     ExceptionUtils.handleThrowable(t);
-                    context.getLogger().error("ApplicationFilterConfig.preDestroy", t);
+                    context.getLogger().error(
+                            sm.getString("applicationFilterConfig.preDestroy",
+                                    filterDef.getFilterName(), filterDef.getFilterClass()), t);
                 }
             }
         }
@@ -336,20 +326,6 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
 
     // -------------------------------------------------------- Private Methods
-
-    private InstanceManager getInstanceManager() {
-        if (instanceManager == null) {
-            if (context instanceof StandardContext) {
-                instanceManager = ((StandardContext)context).getInstanceManager();
-            } else {
-                instanceManager = new DefaultInstanceManager(null,
-                        new HashMap<String, Map<String, String>>(),
-                        context,
-                        getClass().getClassLoader());
-            }
-        }
-        return instanceManager;
-    }
 
     private void registerJMX() {
         String parentName = context.getName();
@@ -381,13 +357,13 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
         }
         try {
             oname = new ObjectName(onameStr);
-            Registry.getRegistry(null, null).registerComponent(this, oname,
-                    null);
+            Registry.getRegistry(null, null).registerComponent(this, oname, null);
         } catch (Exception ex) {
-            log.info(sm.getString("applicationFilterConfig.jmxRegisterFail",
+            log.warn(sm.getString("applicationFilterConfig.jmxRegisterFail",
                     getFilterClass(), getFilterName()), ex);
         }
     }
+
 
     private void unregisterJMX() {
         // unregister this component
@@ -395,15 +371,22 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
             try {
                 Registry.getRegistry(null, null).unregisterComponent(oname);
                 if (log.isDebugEnabled())
-                    log.debug(sm.getString(
-                            "applicationFilterConfig.jmxUnregister",
+                    log.debug(sm.getString("applicationFilterConfig.jmxUnregister",
                             getFilterClass(), getFilterName()));
             } catch(Exception ex) {
-                log.error(sm.getString(
-                        "applicationFilterConfig.jmxUnregisterFail",
+                log.warn(sm.getString("applicationFilterConfig.jmxUnregisterFail",
                         getFilterClass(), getFilterName()), ex);
             }
         }
-
     }
+
+
+    /*
+     * Log objects are not Serializable.
+     */
+    private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
+        ois.defaultReadObject();
+        log = LogFactory.getLog(ApplicationFilterConfig.class);
+    }
+
 }

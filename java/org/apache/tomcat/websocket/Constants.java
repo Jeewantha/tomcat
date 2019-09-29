@@ -73,6 +73,13 @@ public class Constants {
     public static final String IO_TIMEOUT_MS_PROPERTY =
             "org.apache.tomcat.websocket.IO_TIMEOUT_MS";
     public static final long IO_TIMEOUT_MS_DEFAULT = 5000;
+
+    // RFC 2068 recommended a limit of 5
+    // Most browsers have a default limit of 20
+    public static final String MAX_REDIRECTIONS_PROPERTY =
+            "org.apache.tomcat.websocket.MAX_REDIRECTIONS";
+    public static final int MAX_REDIRECTIONS_DEFAULT = 20;
+
     // HTTP upgrade header names and values
     public static final String HOST_HEADER_NAME = "Host";
     public static final String UPGRADE_HEADER_NAME = "Upgrade";
@@ -80,11 +87,22 @@ public class Constants {
     public static final String ORIGIN_HEADER_NAME = "Origin";
     public static final String CONNECTION_HEADER_NAME = "Connection";
     public static final String CONNECTION_HEADER_VALUE = "upgrade";
+    public static final String LOCATION_HEADER_NAME = "Location";
+    public static final String AUTHORIZATION_HEADER_NAME = "Authorization";
+    public static final String WWW_AUTHENTICATE_HEADER_NAME = "WWW-Authenticate";
     public static final String WS_VERSION_HEADER_NAME = "Sec-WebSocket-Version";
     public static final String WS_VERSION_HEADER_VALUE = "13";
     public static final String WS_KEY_HEADER_NAME = "Sec-WebSocket-Key";
     public static final String WS_PROTOCOL_HEADER_NAME = "Sec-WebSocket-Protocol";
     public static final String WS_EXTENSIONS_HEADER_NAME = "Sec-WebSocket-Extensions";
+
+    /// HTTP redirection status codes
+    public static final int MULTIPLE_CHOICES = 300;
+    public static final int MOVED_PERMANENTLY = 301;
+    public static final int FOUND = 302;
+    public static final int SEE_OTHER = 303;
+    public static final int USE_PROXY = 305;
+    public static final int TEMPORARY_REDIRECT = 307;
 
     // Configuration for Origin header in client
     static final String DEFAULT_ORIGIN_HEADER_VALUE =
@@ -101,6 +119,9 @@ public class Constants {
             "org.apache.tomcat.websocket.DEFAULT_PROCESS_PERIOD", 10)
             .intValue();
 
+    public static final String WS_AUTHENTICATION_USER_NAME = "org.apache.tomcat.websocket.WS_AUTHENTICATION_USER_NAME";
+    public static final String WS_AUTHENTICATION_PASSWORD = "org.apache.tomcat.websocket.WS_AUTHENTICATION_PASSWORD";
+
     /* Configuration for extensions
      * Note: These options are primarily present to enable this implementation
      *       to pass compliance tests. They are expected to be removed once
@@ -112,13 +133,8 @@ public class Constants {
     static final boolean ALLOW_UNSUPPORTED_EXTENSIONS =
             Boolean.getBoolean("org.apache.tomcat.websocket.ALLOW_UNSUPPORTED_EXTENSIONS");
 
-    // Configuration for stream behavior
-    static final boolean STREAMS_DROP_EMPTY_MESSAGES =
-            Boolean.getBoolean("org.apache.tomcat.websocket.STREAMS_DROP_EMPTY_MESSAGES");
-
     public static final boolean STRICT_SPEC_COMPLIANCE =
-            Boolean.getBoolean(
-                    "org.apache.tomcat.websocket.STRICT_SPEC_COMPLIANCE");
+            Boolean.getBoolean("org.apache.tomcat.websocket.STRICT_SPEC_COMPLIANCE");
 
     public static final List<Extension> INSTALLED_EXTENSIONS;
 

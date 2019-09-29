@@ -14,16 +14,23 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote.http11.filters;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
 
-import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Response;
+import org.apache.coyote.http11.HttpOutputBuffer;
 import org.apache.coyote.http11.OutputFilter;
-import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.HexUtils;
+import org.apache.tomcat.util.http.fileupload.ByteArrayOutputStream;
 
 /**
  * Chunked output filter.
@@ -32,90 +39,95 @@ import org.apache.tomcat.util.buf.HexUtils;
  */
 public class ChunkedOutputFilter implements OutputFilter {
 
+    private static final byte[] LAST_CHUNK_BYTES = {(byte) '0', (byte) '\r', (byte) '\n'};
+    private static final byte[] CRLF_BYTES = {(byte) '\r', (byte) '\n'};
+    private static final byte[] END_CHUNK_BYTES =
+        {(byte) '0', (byte) '\r', (byte) '\n', (byte) '\r', (byte) '\n'};
 
-    // -------------------------------------------------------------- Constants
-    /**
-     * End chunk.
-     */
-    protected static final ByteChunk END_CHUNK = new ByteChunk();
-
-
-    // ----------------------------------------------------- Static Initializer
-
+    private static final Set<String> disallowedTrailerFieldNames = new HashSet<>();
 
     static {
-        byte[] END_CHUNK_BYTES = {(byte) '0', (byte) '\r', (byte) '\n',
-                                  (byte) '\r', (byte) '\n'};
-        END_CHUNK.setBytes(END_CHUNK_BYTES, 0, END_CHUNK_BYTES.length);
+        // Always add these in lower case
+        disallowedTrailerFieldNames.add("age");
+        disallowedTrailerFieldNames.add("cache-control");
+        disallowedTrailerFieldNames.add("content-length");
+        disallowedTrailerFieldNames.add("content-encoding");
+        disallowedTrailerFieldNames.add("content-range");
+        disallowedTrailerFieldNames.add("content-type");
+        disallowedTrailerFieldNames.add("date");
+        disallowedTrailerFieldNames.add("expires");
+        disallowedTrailerFieldNames.add("location");
+        disallowedTrailerFieldNames.add("retry-after");
+        disallowedTrailerFieldNames.add("trailer");
+        disallowedTrailerFieldNames.add("transfer-encoding");
+        disallowedTrailerFieldNames.add("vary");
+        disallowedTrailerFieldNames.add("warning");
     }
-
-
-    // ------------------------------------------------------------ Constructor
-
-
-    /**
-     * Default constructor.
-     */
-    public ChunkedOutputFilter() {
-        chunkLength[8] = (byte) '\r';
-        chunkLength[9] = (byte) '\n';
-    }
-
-
-    // ----------------------------------------------------- Instance Variables
-
 
     /**
      * Next buffer in the pipeline.
      */
-    protected OutputBuffer buffer;
-
-
-    /**
-     * Buffer used for chunk length conversion.
-     */
-    protected final byte[] chunkLength = new byte[10];
+    protected HttpOutputBuffer buffer;
 
 
     /**
      * Chunk header.
      */
-    protected final ByteChunk chunkHeader = new ByteChunk();
+    protected final ByteBuffer chunkHeader = ByteBuffer.allocate(10);
 
 
-    // ------------------------------------------------------------- Properties
+    protected final ByteBuffer lastChunk = ByteBuffer.wrap(LAST_CHUNK_BYTES);
+    protected final ByteBuffer crlfChunk = ByteBuffer.wrap(CRLF_BYTES);
+    /**
+     * End chunk.
+     */
+    protected final ByteBuffer endChunk = ByteBuffer.wrap(END_CHUNK_BYTES);
+
+
+    private Response response;
+
+
+    public ChunkedOutputFilter() {
+        chunkHeader.put(8, (byte) '\r');
+        chunkHeader.put(9, (byte) '\n');
+    }
 
 
     // --------------------------------------------------- OutputBuffer Methods
 
     @Override
-    public int doWrite(ByteChunk chunk)
-        throws IOException {
+    public int doWrite(ByteBuffer chunk) throws IOException {
 
-        int result = chunk.getLength();
+        int result = chunk.remaining();
 
         if (result <= 0) {
             return 0;
         }
 
-        // Calculate chunk header
-        int pos = 7;
-        int current = result;
-        while (current > 0) {
-            int digit = current % 16;
-            current = current / 16;
-            chunkLength[pos--] = HexUtils.getHex(digit);
-        }
-        chunkHeader.setBytes(chunkLength, pos + 1, 9 - pos);
+        int pos = calculateChunkHeader(result);
+
+        chunkHeader.position(pos).limit(10);
         buffer.doWrite(chunkHeader);
 
         buffer.doWrite(chunk);
 
-        chunkHeader.setBytes(chunkLength, 8, 2);
+        chunkHeader.position(8).limit(10);
         buffer.doWrite(chunkHeader);
 
         return result;
+    }
 
+
+    private int calculateChunkHeader(int len) {
+        // Calculate chunk header
+        int pos = 8;
+        int current = len;
+        while (current > 0) {
+            int digit = current % 16;
+            current = current / 16;
+            chunkHeader.put(--pos, HexUtils.getHex(digit));
+        }
+        return pos;
     }
 
 
@@ -127,48 +139,69 @@ public class ChunkedOutputFilter implements OutputFilter {
 
     // --------------------------------------------------- OutputFilter Methods
 
-
-    /**
-     * Some filters need additional parameters from the response. All the
-     * necessary reading can occur in that method, as this method is called
-     * after the response header processing is complete.
-     */
     @Override
     public void setResponse(Response response) {
-        // NOOP: No need for parameters from response in this filter
+        this.response = response;
     }
 
 
-    /**
-     * Set the next buffer in the filter pipeline.
-     */
     @Override
-    public void setBuffer(OutputBuffer buffer) {
+    public void setBuffer(HttpOutputBuffer buffer) {
         this.buffer = buffer;
     }
 
 
-    /**
-     * End the current request. It is acceptable to write extra bytes using
-     * buffer.doWrite during the execution of this method.
-     */
     @Override
-    public long end()
-        throws IOException {
-
-        // Write end chunk
-        buffer.doWrite(END_CHUNK);
-
-        return 0;
-
+    public void flush() throws IOException {
+        // No data buffered in this filter. Flush next buffer.
+        buffer.flush();
     }
 
 
-    /**
-     * Make the filter ready to process the next request.
-     */
+    @Override
+    public void end() throws IOException {
+
+        Supplier<Map<String,String>> trailerFieldsSupplier = response.getTrailerFields();
+        Map<String,String> trailerFields = null;
+
+        if (trailerFieldsSupplier != null) {
+            trailerFields = trailerFieldsSupplier.get();
+        }
+
+        if (trailerFields == null) {
+            // Write end chunk
+            buffer.doWrite(endChunk);
+            endChunk.position(0).limit(endChunk.capacity());
+        } else {
+            buffer.doWrite(lastChunk);
+            lastChunk.position(0).limit(lastChunk.capacity());
+
+           ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+           OutputStreamWriter osw = new OutputStreamWriter(baos, StandardCharsets.ISO_8859_1);
+            for (Map.Entry<String,String> trailerField : trailerFields.entrySet()) {
+                // Ignore disallowed headers
+                if (disallowedTrailerFieldNames.contains(
+                        trailerField.getKey().toLowerCase(Locale.ENGLISH))) {
+                    continue;
+                }
+                osw.write(trailerField.getKey());
+                osw.write(':');
+                osw.write(' ');
+                osw.write(trailerField.getValue());
+                osw.write("\r\n");
+            }
+            osw.close();
+            buffer.doWrite(ByteBuffer.wrap(baos.toByteArray()));
+
+            buffer.doWrite(crlfChunk);
+            crlfChunk.position(0).limit(crlfChunk.capacity());
+        }
+        buffer.end();
+    }
+
+
     @Override
     public void recycle() {
-        // NOOP: Nothing to recycle
+        response = null;
     }
 }

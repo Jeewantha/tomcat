@@ -44,8 +44,8 @@ public class TestWebXml {
         WebXml webxml = new WebXml();
 
         // Defaults
-        Assert.assertEquals(3, webxml.getMajorVersion());
-        Assert.assertEquals(1, webxml.getMinorVersion());
+        Assert.assertEquals(4, webxml.getMajorVersion());
+        Assert.assertEquals(0, webxml.getMinorVersion());
 
         // Both get changed
         webxml.setVersion("2.5");
@@ -130,6 +130,17 @@ public class TestWebXml {
     }
 
     @Test
+    public void testParseVersion40() {
+
+        WebXml webxml = new WebXml();
+
+        webxml.setVersion("4.0");
+        Assert.assertEquals(4, webxml.getMajorVersion());
+        Assert.assertEquals(0, webxml.getMinorVersion());
+        Assert.assertEquals("4.0", webxml.getVersion());
+    }
+
+    @Test
     public void testValidateVersion22() throws IOException, SAXException {
         doTestValidateVersion("2.2");
     }
@@ -157,6 +168,11 @@ public class TestWebXml {
     @Test
     public void testValidateVersion31() throws IOException, SAXException {
         doTestValidateVersion("3.1");
+    }
+
+    @Test
+    public void testValidateVersion40() throws IOException, SAXException {
+        doTestValidateVersion("4.0");
     }
 
     private void doTestValidateVersion(String version) throws IOException, SAXException {
@@ -230,7 +246,7 @@ public class TestWebXml {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName("Dummy");
-        filterMap.addURLPattern("/*");
+        filterMap.addURLPatternDecoded("/*");
         webXmlDefaultFragment.addFilterMapping(filterMap);
 
         // Listeners were added in 2.3 so should be excluded in 2.2
@@ -275,7 +291,7 @@ public class TestWebXml {
         sc.setDisplayName("dummy");
         SecurityCollection collection = new SecurityCollection();
         collection.setName("dummy");
-        collection.addPattern("/*");
+        collection.addPatternDecoded("/*");
         collection.addMethod("DELETE");
         sc.addCollection(collection);
         webXmlDefaultFragment.addSecurityConstraint(sc);

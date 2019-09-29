@@ -1123,32 +1123,32 @@ public class TestHostConfigAutomaticDeployment extends TomcatBaseTest {
                 if (xml == null) {
                     Assert.fail();
                 } else {
-                    xml.setLastModified(System.currentTimeMillis() -
-                            10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+                    Assert.assertTrue("Failed to set last modified for [" + xml + "]", xml.setLastModified(
+                            System.currentTimeMillis() - 10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
                 }
                 break;
             case EXT:
                 if (ext == null) {
                     Assert.fail();
                 } else {
-                    ext.setLastModified(System.currentTimeMillis() -
-                            10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+                    Assert.assertTrue("Failed to set last modified for [" + ext + "]", ext.setLastModified(
+                            System.currentTimeMillis() - 10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
                 }
                 break;
             case WAR:
                 if (war == null) {
                     Assert.fail();
                 } else {
-                    war.setLastModified(System.currentTimeMillis() -
-                            10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+                    Assert.assertTrue("Failed to set last modified for [" + war + "]", war.setLastModified(
+                            System.currentTimeMillis() - 10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
                 }
                 break;
             case DIR:
                 if (dir == null) {
                     Assert.fail();
                 } else {
-                    dir.setLastModified(System.currentTimeMillis() -
-                            10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+                    Assert.assertTrue("Failed to set last modified for [" + dir + "]", dir.setLastModified(
+                            System.currentTimeMillis() - 10 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
                 }
                 break;
             default:
@@ -1697,8 +1697,8 @@ public class TestHostConfigAutomaticDeployment extends TomcatBaseTest {
         }
         Files.copy(src.toPath(), dest.toPath());
         // Make sure that HostConfig thinks the WAR has been modified.
-        dest.setLastModified(
-                System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+        Assert.assertTrue("Failed to set last modified for [" + dest + "]", dest.setLastModified(
+                System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
         return dest;
     }
 
@@ -1710,8 +1710,8 @@ public class TestHostConfigAutomaticDeployment extends TomcatBaseTest {
         }
         Files.copy(XML_SOURCE.toPath(), xml.toPath());
         // Make sure that HostConfig thinks the xml has been modified.
-        xml.setLastModified(
-                System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+        Assert.assertTrue("Failed to set last modified for [" + xml + "]", xml.setLastModified(
+                System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
         return xml;
     }
 
@@ -1746,8 +1746,8 @@ public class TestHostConfigAutomaticDeployment extends TomcatBaseTest {
             fos.write(context.toString().getBytes(StandardCharsets.ISO_8859_1));
         }
         // Make sure that HostConfig thinks the xml has been modified.
-        xml.setLastModified(
-                System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+        Assert.assertTrue("Failed to set last modified for [" + xml + "]", xml.setLastModified(
+                System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
         return xml;
     }
 
@@ -1886,5 +1886,88 @@ public class TestHostConfigAutomaticDeployment extends TomcatBaseTest {
 
     public static class TesterContext extends StandardContext {
         // No functional change
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineNoContextFF() throws Exception {
+        doTestUpdateWarOffline(WAR_SOURCE, false, false);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineNoContextTF() throws Exception {
+        doTestUpdateWarOffline(WAR_SOURCE, true, false);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineNoContextFT() throws Exception {
+        doTestUpdateWarOffline(WAR_SOURCE, false, true);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineNoContextTT() throws Exception {
+        doTestUpdateWarOffline(WAR_SOURCE, true, true);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineContextFF() throws Exception {
+        doTestUpdateWarOffline(WAR_XML_SOURCE, false, false);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineContextTF() throws Exception {
+        doTestUpdateWarOffline(WAR_XML_SOURCE, true, false);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineContextFT() throws Exception {
+        doTestUpdateWarOffline(WAR_XML_SOURCE, false, true);
+    }
+
+
+    @Test
+    public void testUpdateWarOfflineContextTT() throws Exception {
+        doTestUpdateWarOffline(WAR_XML_SOURCE, true, true);
+    }
+
+
+    private void doTestUpdateWarOffline(File srcWar, boolean deployOnStartUp, boolean autoDeploy)
+            throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+        StandardHost host = (StandardHost) tomcat.getHost();
+        host.setDeployOnStartup(deployOnStartUp);
+
+        File war = createWar(srcWar, true);
+        // Make the WAR appear to have been created earlier
+        Assert.assertTrue("Failed to set last modified for [" + war + "]", war.setLastModified(
+                war.lastModified() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
+
+        tomcat.addWebapp(APP_NAME.getPath(), war.getAbsolutePath());
+        tomcat.start();
+
+        // Get the last modified timestamp for the expanded dir
+        File dir = new File(host.getAppBase(), APP_NAME.getBaseName());
+        // Make the DIR appear to have been created earlier
+        long lastModified = war.lastModified() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS;
+        Assert.assertTrue("Failed to set last modified for [" + dir + "]",
+                dir.setLastModified(lastModified));
+
+        host.stop();
+        Assert.assertTrue("Failed to set last modified for [" + war + "]",
+                war.setLastModified(System.currentTimeMillis()));
+        host.start();
+        if (autoDeploy) {
+            host.backgroundProcess();
+        }
+
+        long newLastModified = dir.lastModified();
+
+        Assert.assertNotEquals("Timestamp hasn't changed", lastModified,  newLastModified);
     }
 }

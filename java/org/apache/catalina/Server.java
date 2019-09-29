@@ -19,6 +19,7 @@
 package org.apache.catalina;
 
 import java.io.File;
+import java.util.concurrent.ScheduledExecutorService;
 
 import org.apache.catalina.deploy.NamingResourcesImpl;
 import org.apache.catalina.startup.Catalina;
@@ -51,7 +52,7 @@ public interface Server extends Lifecycle {
     // ------------------------------------------------------------- Properties
 
     /**
-     * Return the global naming resources.
+     * @return the global naming resources.
      */
     public NamingResourcesImpl getGlobalNamingResources();
 
@@ -66,13 +67,16 @@ public interface Server extends Lifecycle {
 
 
     /**
-     * Return the global naming resources context.
+     * @return the global naming resources context.
      */
     public javax.naming.Context getGlobalNamingContext();
 
 
     /**
-     * Return the port number we listen to for shutdown commands.
+     * @return the port number we listen to for shutdown commands.
+     *
+     * @see #getPortOffset()
+     * @see #getPortWithOffset()
      */
     public int getPort();
 
@@ -81,12 +85,40 @@ public interface Server extends Lifecycle {
      * Set the port number we listen to for shutdown commands.
      *
      * @param port The new port number
+     *
+     * @see #setPortOffset(int)
      */
     public void setPort(int port);
 
+    /**
+     * Get the number that offsets the port used for shutdown commands.
+     * For example, if port is 8005, and portOffset is 1000,
+     * the server listens at 9005.
+     *
+     * @return the port offset
+     */
+    public int getPortOffset();
 
     /**
-     * Return the address on which we listen to for shutdown commands.
+     * Set the number that offsets the server port used for shutdown commands.
+     * For example, if port is 8005, and you set portOffset to 1000,
+     * connector listens at 9005.
+     *
+     * @param portOffset sets the port offset
+     */
+    public void setPortOffset(int portOffset);
+
+    /**
+     * Get the actual port on which server is listening for the shutdown commands.
+     * If you do not set port offset, port is returned. If you set
+     * port offset, port offset + port is returned.
+     *
+     * @return the port with offset
+     */
+    public int getPortWithOffset();
+
+    /**
+     * @return the address on which we listen to for shutdown commands.
      */
     public String getAddress();
 
@@ -100,7 +132,7 @@ public interface Server extends Lifecycle {
 
 
     /**
-     * Return the shutdown command string we are waiting for.
+     * @return the shutdown command string we are waiting for.
      */
     public String getShutdown();
 
@@ -114,7 +146,7 @@ public interface Server extends Lifecycle {
 
 
     /**
-     * Return the parent class loader for this component. If not set, return
+     * @return the parent class loader for this component. If not set, return
      * {@link #getCatalina()} {@link Catalina#getParentClassLoader()}. If
      * catalina has not been set, return the system class loader.
      */
@@ -130,18 +162,20 @@ public interface Server extends Lifecycle {
 
 
     /**
-     * Return the outer Catalina startup/shutdown component if present.
+     * @return the outer Catalina startup/shutdown component if present.
      */
     public Catalina getCatalina();
 
     /**
      * Set the outer Catalina startup/shutdown component if present.
+     *
+     * @param catalina the outer Catalina component
      */
     public void setCatalina(Catalina catalina);
 
 
     /**
-     * Obtain the configured base (instance) directory. Note that home and base
+     * @return the configured base (instance) directory. Note that home and base
      * may be the same (and are by default). If this is not set the value
      * returned by {@link #getCatalinaHome()} will be used.
      */
@@ -150,12 +184,14 @@ public interface Server extends Lifecycle {
     /**
      * Set the configured base (instance) directory. Note that home and base
      * may be the same (and are by default).
+     *
+     * @param catalinaBase the configured base directory
      */
     public void setCatalinaBase(File catalinaBase);
 
 
     /**
-     * Obtain the configured home (binary) directory. Note that home and base
+     * @return the configured home (binary) directory. Note that home and base
      * may be the same (and are by default).
      */
     public File getCatalinaHome();
@@ -163,8 +199,24 @@ public interface Server extends Lifecycle {
     /**
      * Set the configured home (binary) directory. Note that home and base
      * may be the same (and are by default).
+     *
+     * @param catalinaHome the configured home directory
      */
     public void setCatalinaHome(File catalinaHome);
+
+
+    /**
+     * Get the utility thread count.
+     * @return the thread count
+     */
+    public int getUtilityThreads();
+
+
+    /**
+     * Set the utility thread count.
+     * @param utilityThreads the new thread count
+     */
+    public void setUtilityThreads(int utilityThreads);
 
 
     // --------------------------------------------------------- Public Methods
@@ -185,16 +237,16 @@ public interface Server extends Lifecycle {
 
 
     /**
-     * Return the specified Service (if it exists); otherwise return
-     * <code>null</code>.
+     * Find the specified Service
      *
      * @param name Name of the Service to be returned
+     * @return the specified Service, or <code>null</code> if none exists.
      */
     public Service findService(String name);
 
 
     /**
-     * Return the set of Services defined within this Server.
+     * @return the set of Services defined within this Server.
      */
     public Service[] findServices();
 
@@ -209,8 +261,14 @@ public interface Server extends Lifecycle {
 
 
     /**
-     * Obtain the token necessary for operations on the associated JNDI naming
+     * @return the token necessary for operations on the associated JNDI naming
      * context.
      */
     public Object getNamingToken();
+
+    /**
+     * @return the utility executor managed by the Service.
+     */
+    public ScheduledExecutorService getUtilityExecutor();
+
 }

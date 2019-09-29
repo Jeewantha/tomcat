@@ -43,7 +43,7 @@ import org.apache.juli.logging.LogFactory;
 public final class EmbeddedServletOptions implements Options {
 
     // Logger
-    private final Log log = LogFactory.getLog(EmbeddedServletOptions.class);
+    private final Log log = LogFactory.getLog(EmbeddedServletOptions.class); // must not be static
 
     private Properties settings = new Properties();
 
@@ -63,9 +63,9 @@ public final class EmbeddedServletOptions implements Options {
     private boolean keepGenerated = true;
 
     /**
-     * Should white spaces between directives or actions be trimmed?
+     * How should template text that consists entirely of whitespace be handled?
      */
-    private boolean trimSpaces = false;
+    private TrimSpacesOption trimSpaces = TrimSpacesOption.FALSE;
 
     /**
      * Determines whether tag handler pooling is enabled.
@@ -163,7 +163,7 @@ public final class EmbeddedServletOptions implements Options {
      * Java platform encoding to generate the JSP
      * page servlet.
      */
-    private String javaEncoding = "UTF8";
+    private String javaEncoding = "UTF-8";
 
     /**
      * Modification test interval.
@@ -199,6 +199,18 @@ public final class EmbeddedServletOptions implements Options {
      */
     private int jspIdleTimeout = -1;
 
+    /**
+     * Should JSP.1.6 be applied strictly to attributes defined using scriptlet
+     * expressions?
+     */
+    private boolean strictQuoteEscaping = true;
+
+    /**
+     * When EL is used in JSP attribute values, should the rules for quoting of
+     * attributes described in JSP.1.6 be applied to the expression?
+     */
+    private boolean quoteAttributeEL = true;
+
     public String getProperty(String name ) {
         return settings.getProperty( name );
     }
@@ -209,6 +221,15 @@ public final class EmbeddedServletOptions implements Options {
         }
     }
 
+    public void setQuoteAttributeEL(boolean b) {
+        this.quoteAttributeEL = b;
+    }
+
+    @Override
+    public boolean getQuoteAttributeEL() {
+        return quoteAttributeEL;
+    }
+
     /**
      * Are we keeping generated code around?
      */
@@ -217,11 +238,8 @@ public final class EmbeddedServletOptions implements Options {
         return keepGenerated;
     }
 
-    /**
-     * Should white spaces between directives or actions be trimmed?
-     */
     @Override
-    public boolean getTrimSpaces() {
+    public TrimSpacesOption getTrimSpaces() {
         return trimSpaces;
     }
 
@@ -442,12 +460,18 @@ public final class EmbeddedServletOptions implements Options {
         return jspIdleTimeout;
     }
 
+    @Override
+    public boolean getStrictQuoteEscaping() {
+        return strictQuoteEscaping;
+    }
+
     /**
      * Create an EmbeddedServletOptions object using data available from
      * ServletConfig and ServletContext.
+     * @param config The Servlet config
+     * @param context The Servlet context
      */
-    public EmbeddedServletOptions(ServletConfig config,
-            ServletContext context) {
+    public EmbeddedServletOptions(ServletConfig config, ServletContext context) {
 
         Enumeration<String> enumeration=config.getInitParameterNames();
         while( enumeration.hasMoreElements() ) {
@@ -472,20 +496,17 @@ public final class EmbeddedServletOptions implements Options {
 
         String trimsp = config.getInitParameter("trimSpaces");
         if (trimsp != null) {
-            if (trimsp.equalsIgnoreCase("true")) {
-                trimSpaces = true;
-            } else if (trimsp.equalsIgnoreCase("false")) {
-                trimSpaces = false;
-            } else {
+            try {
+                trimSpaces = TrimSpacesOption.valueOf(trimsp.toUpperCase());
+            } catch (IllegalArgumentException iae) {
                 if (log.isWarnEnabled()) {
-                    log.warn(Localizer.getMessage("jsp.warning.trimspaces"));
+                    log.warn(Localizer.getMessage("jsp.warning.trimspaces"), iae);
                 }
             }
         }
 
         this.isPoolingEnabled = true;
-        String poolingEnabledParam
-        = config.getInitParameter("enablePooling");
+        String poolingEnabledParam = config.getInitParameter("enablePooling");
         if (poolingEnabledParam != null
                 && !poolingEnabledParam.equalsIgnoreCase("true")) {
             if (poolingEnabledParam.equalsIgnoreCase("false")) {
@@ -609,8 +630,7 @@ public final class EmbeddedServletOptions implements Options {
             }
         }
 
-        String errBeanClass =
-            config.getInitParameter("errorOnUseBeanInvalidClassAttribute");
+        String errBeanClass = config.getInitParameter("errorOnUseBeanInvalidClassAttribute");
         if (errBeanClass != null) {
             if (errBeanClass.equalsIgnoreCase("true")) {
                 errorOnUseBeanInvalidClassAttribute = true;
@@ -635,6 +655,10 @@ public final class EmbeddedServletOptions implements Options {
          * scratchdir
          */
         String dir = config.getInitParameter("scratchdir");
+        if (dir != null && Constants.IS_SECURITY_ENABLED) {
+            log.info(Localizer.getMessage("jsp.info.ignoreSetting", "scratchdir", dir));
+            dir = null;
+        }
         if (dir != null) {
             scratchDir = new File(dir);
         } else {
@@ -737,6 +761,32 @@ public final class EmbeddedServletOptions implements Options {
             } catch(NumberFormatException ex) {
                 if (log.isWarnEnabled()) {
                     log.warn(Localizer.getMessage("jsp.warning.jspIdleTimeout", ""+this.jspIdleTimeout));
+                }
+            }
+        }
+
+        String strictQuoteEscaping = config.getInitParameter("strictQuoteEscaping");
+        if (strictQuoteEscaping != null) {
+            if (strictQuoteEscaping.equalsIgnoreCase("true")) {
+                this.strictQuoteEscaping = true;
+            } else if (strictQuoteEscaping.equalsIgnoreCase("false")) {
+                this.strictQuoteEscaping = false;
+            } else {
+                if (log.isWarnEnabled()) {
+                    log.warn(Localizer.getMessage("jsp.warning.strictQuoteEscaping"));
+                }
+            }
+        }
+
+        String quoteAttributeEL = config.getInitParameter("quoteAttributeEL");
+        if (quoteAttributeEL != null) {
+            if (quoteAttributeEL.equalsIgnoreCase("true")) {
+                this.quoteAttributeEL = true;
+            } else if (quoteAttributeEL.equalsIgnoreCase("false")) {
+                this.quoteAttributeEL = false;
+            } else {
+                if (log.isWarnEnabled()) {
+                    log.warn(Localizer.getMessage("jsp.warning.quoteAttributeEL"));
                 }
             }
         }

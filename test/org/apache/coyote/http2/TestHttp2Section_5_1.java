@@ -36,10 +36,7 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
         sendWindowUpdate(3, 200);
 
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1);
     }
 
 
@@ -49,10 +46,7 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
         sendData(3, new byte[] {});
 
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1);
     }
 
 
@@ -70,12 +64,10 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
         output.clearTrace();
 
-        // This should trigger a stream error
+        // This should trigger a connection error
         sendData(3, new byte[] {});
-        parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[3]-[" + Http2Error.STREAM_CLOSED.getCode() + "]-["));
+        handleGoAwayResponse(3,  Http2Error.STREAM_CLOSED);
     }
 
 
@@ -111,12 +103,10 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
     public void testClosedInvalidFrame02() throws Exception {
         http2Connect();
 
-        // Stream 1 is closed. This should trigger a stream error
+        // Stream 1 is closed. This should trigger a connection error
         sendData(1, new byte[] {});
-        parser.readFrame(true);
 
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.STREAM_CLOSED.getCode() + "]-["));
+        handleGoAwayResponse(1,  Http2Error.STREAM_CLOSED);
     }
 
 
@@ -135,11 +125,7 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         buildSimpleGetRequestPart1(frameHeader, headersPayload, 4);
         writeFrame(frameHeader, headersPayload);
 
-        // headers
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1);
     }
 
 
@@ -153,18 +139,9 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
 
         // Build the simple request on an old stream
-        byte[] frameHeader = new byte[9];
-        ByteBuffer headersPayload = ByteBuffer.allocate(128);
-        buildSimpleGetRequest(frameHeader, headersPayload, null, 3);
+        sendSimpleGetRequest(3);
 
-        os.write(frameHeader);
-        os.flush();
-
-        // headers
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[5]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(5);
     }
 
 
@@ -184,10 +161,7 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         // closed.
         sendSimpleGetRequest(3);
 
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[5]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(5);
     }
 
 
@@ -219,8 +193,9 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
 
         sendSimpleGetRequest(5);
 
-        // Default connection window size is 64k - 1. Initial request will have
-        // used 8k (56k -1).
+        // Default connection window size is 64k-1.
+        // Initial request will have used 8k leaving 56k-1.
+        // Stream window will be 64k-1.
         // Expecting
         // 1 * headers
         // 56k-1 of body (7 * ~8k)
@@ -230,18 +205,79 @@ public class TestHttp2Section_5_1 extends Http2TestBase {
         }
         parser.readFrame(true);
 
+        Assert.assertTrue(output.getTrace(),
+                output.getTrace().contains("5-RST-[" +
+                        Http2Error.REFUSED_STREAM.getCode() + "]"));
+        output.clearTrace();
+
+        // Connection window is zero.
+        // Stream window is 8k
+
         // Release the remaining body
-        sendWindowUpdate(0, (1 << 31) - 1);
-        sendWindowUpdate(3, (1 << 31) - 1);
+        sendWindowUpdate(0, (1 << 31) - 2);
+        // Allow for the 8k still in the stream window
+        sendWindowUpdate(3, (1 << 31) - 8193);
 
         // 192k of body (24 * 8k)
         // 1 * error (could be in any order)
         for (int i = 0; i < 24; i++) {
             parser.readFrame(true);
         }
+    }
+
+
+    @Test
+    public void testErrorOnWaitingStream() throws Exception {
+        // http2Connect() - modified
+        enableHttp2(1);
+        configureAndStartWebApplication();
+        openClientConnection();
+        doHttpUpgrade();
+        sendClientPreface();
+
+        // validateHttp2InitialResponse() - modified
+        parser.readFrame(true);
+        parser.readFrame(true);
+        parser.readFrame(true);
+        parser.readFrame(true);
+        parser.readFrame(true);
+
+        Assert.assertEquals("0-Settings-[3]-[1]\n" +
+                "0-Settings-End\n" +
+                "0-Settings-Ack\n" +
+                "0-Ping-[0,0,0,0,0,0,0,1]\n" +
+                getSimpleResponseTrace(1)
+                , output.getTrace());
+        output.clearTrace();
+
+        sendLargeGetRequest(3);
+
+        sendSimpleGetRequest(5);
+
+        // Default connection window size is 64k-1.
+        // Initial request will have used 8k leaving 56k-1.
+        // Stream window will be 64k-1.
+        // Expecting
+        // 1 * headers
+        // 56k-1 of body (7 * ~8k)
+        // 1 * error (could be in any order)
+        for (int i = 0; i < 8; i++) {
+            parser.readFrame(true);
+        }
+        parser.readFrame(true);
 
         Assert.assertTrue(output.getTrace(),
                 output.getTrace().contains("5-RST-[" +
                         Http2Error.REFUSED_STREAM.getCode() + "]"));
+        output.clearTrace();
+
+        // Connection window is zero.
+        // Stream window is 8k
+
+        // Expand the stream window too much to trigger an error
+        // Allow for the 8k still in the stream window
+        sendWindowUpdate(3, (1 << 31) - 1);
+
+        parser.readFrame(true);
     }
 }

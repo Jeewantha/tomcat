@@ -24,21 +24,22 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TreeMap;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -52,6 +53,7 @@ import org.apache.catalina.startup.SimpleHttpClient;
 import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.tomcat.unittest.TesterRequest;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.apache.tomcat.util.descriptor.web.FilterMap;
@@ -80,41 +82,41 @@ public class TestRequest extends TomcatBaseTest {
 
         // Edge cases around zero
         client.doRequest(-1, false); // Unlimited
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
         client.reset();
         client.doRequest(0, false); // 0 bytes - too small should fail
-        assertTrue(client.isResponse413());
+        Assert.assertTrue(client.isResponse413());
         client.reset();
         client.doRequest(1, false); // 1 byte - too small should fail
-        assertTrue(client.isResponse413());
+        Assert.assertTrue(client.isResponse413());
 
         client.reset();
 
         // Edge cases around actual content length
         client.reset();
         client.doRequest(6, false); // Too small should fail
-        assertTrue(client.isResponse413());
+        Assert.assertTrue(client.isResponse413());
         client.reset();
         client.doRequest(7, false); // Just enough should pass
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
         client.reset();
         client.doRequest(8, false); // 1 extra - should pass
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
 
         // Much larger
         client.reset();
         client.doRequest(8096, false); // Plenty of space - should pass
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
 
         // Check for case insensitivity
         client.reset();
         client.doRequest(8096, true); // Plenty of space - should pass
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
     }
 
     /**
@@ -129,8 +131,8 @@ public class TestRequest extends TomcatBaseTest {
         client.reset();
         client.doRequest(6, false); // Too small should fail
         // Response code will be OK, but parameters list will be empty
-        assertTrue(client.isResponse200());
-        assertEquals("", client.getResponseBody());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertEquals("", client.getResponseBody());
     }
 
     private static class Bug37794Servlet extends HttpServlet {
@@ -176,7 +178,7 @@ public class TestRequest extends TomcatBaseTest {
             Tomcat tomcat = getTomcatInstance();
             Context root = tomcat.addContext("", TEMP_DIR);
             Tomcat.addServlet(root, "Bug37794", new Bug37794Servlet());
-            root.addServletMapping("/test", "Bug37794");
+            root.addServletMappingDecoded("/test", "Bug37794");
 
             if (createFilter) {
                 FilterDef failedRequestFilter = new FilterDef();
@@ -185,7 +187,7 @@ public class TestRequest extends TomcatBaseTest {
                         FailedRequestFilter.class.getName());
                 FilterMap failedRequestFilterMap = new FilterMap();
                 failedRequestFilterMap.setFilterName("failedRequestFilter");
-                failedRequestFilterMap.addURLPattern("/*");
+                failedRequestFilterMap.addURLPatternDecoded("/*");
                 root.addFilterDef(failedRequestFilter);
                 root.addFilterMap(failedRequestFilterMap);
             }
@@ -212,6 +214,7 @@ public class TestRequest extends TomcatBaseTest {
                 if (ucChunkedHead) {
                     request[0] =
                         "POST http://localhost:8080/test HTTP/1.1" + CRLF +
+                        "Host: localhost:8080" + CRLF +
                         "content-type: application/x-www-form-urlencoded" + CRLF +
                         "Transfer-Encoding: CHUNKED" + CRLF +
                         "Connection: close" + CRLF +
@@ -221,6 +224,7 @@ public class TestRequest extends TomcatBaseTest {
                 } else {
                     request[0] =
                         "POST http://localhost:8080/test HTTP/1.1" + CRLF +
+                        "Host: localhost:8080" + CRLF +
                         "content-type: application/x-www-form-urlencoded" + CRLF +
                         "Transfer-Encoding: chunked" + CRLF +
                         "Connection: close" + CRLF +
@@ -276,21 +280,21 @@ public class TestRequest extends TomcatBaseTest {
 
         // Add the Servlet
         Tomcat.addServlet(ctx, "servlet", new EchoQueryStringServlet());
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         tomcat.start();
 
         // No query string
         ByteChunk res = getUrl("http://localhost:" + getPort() + "/");
-        assertEquals("QueryString=null", res.toString());
+        Assert.assertEquals("QueryString=null", res.toString());
 
         // Query string
         res = getUrl("http://localhost:" + getPort() + "/?a=b");
-        assertEquals("QueryString=a=b", res.toString());
+        Assert.assertEquals("QueryString=a=b", res.toString());
 
         // Empty string
         res = getUrl("http://localhost:" + getPort() + "/?");
-        assertEquals("QueryString=", res.toString());
+        Assert.assertEquals("QueryString=", res.toString());
     }
 
     private static final class EchoQueryStringServlet extends HttpServlet {
@@ -324,7 +328,7 @@ public class TestRequest extends TomcatBaseTest {
         ctx.getPipeline().addValve(new BasicAuthenticator());
 
         Tomcat.addServlet(ctx, "servlet", new LoginLogoutServlet());
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         TesterMapRealm realm = new TesterMapRealm();
         realm.addUser(LoginLogoutServlet.USER, LoginLogoutServlet.PWD);
@@ -333,7 +337,7 @@ public class TestRequest extends TomcatBaseTest {
         tomcat.start();
 
         ByteChunk res = getUrl("http://localhost:" + getPort() + "/");
-        assertEquals(LoginLogoutServlet.OK, res.toString());
+        Assert.assertEquals(LoginLogoutServlet.OK, res.toString());
     }
 
     private static final class LoginLogoutServlet extends HttpServlet {
@@ -371,12 +375,12 @@ public class TestRequest extends TomcatBaseTest {
         Context root = tomcat.addContext("",
                 System.getProperty("java.io.tmpdir"));
         Tomcat.addServlet(root, "Bug37794", new Bug37794Servlet());
-        root.addServletMapping("/", "Bug37794");
+        root.addServletMappingDecoded("/", "Bug37794");
         tomcat.start();
 
         HttpURLConnection conn = getConnection("http://localhost:" + getPort() + "/");
         InputStream is = conn.getInputStream();
-        assertNotNull(is);
+        Assert.assertNotNull(is);
     }
 
     @Test
@@ -385,13 +389,13 @@ public class TestRequest extends TomcatBaseTest {
         Context root = tomcat.addContext("",
                 System.getProperty("java.io.tmpdir"));
         Tomcat.addServlet(root, "Bug37794", new Bug37794Servlet());
-        root.addServletMapping("/", "Bug37794");
+        root.addServletMappingDecoded("/", "Bug37794");
         tomcat.start();
 
         HttpURLConnection conn = getConnection("http://localhost:" + getPort() + "/");
         conn.setChunkedStreamingMode(8 * 1024);
         InputStream is = conn.getInputStream();
-        assertNotNull(is);
+        Assert.assertNotNull(is);
     }
 
     /**
@@ -407,9 +411,9 @@ public class TestRequest extends TomcatBaseTest {
         // Make sure GET works properly
         client.doRequest("GET", "foo=bar", null, null, false);
 
-        assertTrue("Non-200 response for GET request",
+        Assert.assertTrue("Non-200 response for GET request",
                    client.isResponse200());
-        assertEquals("Incorrect response for GET request",
+        Assert.assertEquals("Incorrect response for GET request",
                      "foo=bar",
                      client.getResponseBody());
 
@@ -421,9 +425,9 @@ public class TestRequest extends TomcatBaseTest {
         // POST with separate GET and POST parameters
         client.doRequest("POST", "foo=bar", "application/x-www-form-urlencoded", "bar=baz", true);
 
-        assertTrue("Non-200 response for POST request",
+        Assert.assertTrue("Non-200 response for POST request",
                    client.isResponse200());
-        assertEquals("Incorrect response for POST request",
+        Assert.assertEquals("Incorrect response for POST request",
                      "bar=baz,foo=bar",
                      client.getResponseBody());
 
@@ -432,9 +436,9 @@ public class TestRequest extends TomcatBaseTest {
         // POST with overlapping GET and POST parameters
         client.doRequest("POST", "foo=bar&bar=foo", "application/x-www-form-urlencoded", "bar=baz&foo=baz", true);
 
-        assertTrue("Non-200 response for POST request",
+        Assert.assertTrue("Non-200 response for POST request",
                    client.isResponse200());
-        assertEquals("Incorrect response for POST request",
+        Assert.assertEquals("Incorrect response for POST request",
                      "bar=baz,bar=foo,foo=bar,foo=baz",
                      client.getResponseBody());
 
@@ -443,9 +447,9 @@ public class TestRequest extends TomcatBaseTest {
         // PUT without POST-style parsing
         client.doRequest("PUT", "foo=bar&bar=foo", "application/x-www-form-urlencoded", "bar=baz&foo=baz", false);
 
-        assertTrue("Non-200 response for PUT/noparse request",
+        Assert.assertTrue("Non-200 response for PUT/noparse request",
                    client.isResponse200());
-        assertEquals("Incorrect response for PUT request",
+        Assert.assertEquals("Incorrect response for PUT request",
                      "bar=foo,foo=bar",
                      client.getResponseBody());
 
@@ -454,9 +458,9 @@ public class TestRequest extends TomcatBaseTest {
         // PUT with POST-style parsing
         client.doRequest("PUT", "foo=bar&bar=foo", "application/x-www-form-urlencoded", "bar=baz&foo=baz", true);
 
-        assertTrue("Non-200 response for PUT request",
+        Assert.assertTrue("Non-200 response for PUT request",
                    client.isResponse200());
-        assertEquals("Incorrect response for PUT/parse request",
+        Assert.assertEquals("Incorrect response for PUT/parse request",
                      "bar=baz,bar=foo,foo=bar,foo=baz",
                      client.getResponseBody());
 
@@ -478,7 +482,7 @@ public class TestRequest extends TomcatBaseTest {
                 System.getProperty("java.io.tmpdir"));
         root.setAllowCasualMultipartParsing(true);
         Tomcat.addServlet(root, "Bug54984", new Bug54984Servlet());
-        root.addServletMapping("/", "Bug54984");
+        root.addServletMappingDecoded("/", "Bug54984");
         tomcat.start();
 
         HttpURLConnection conn = getConnection("http://localhost:" + getPort()
@@ -555,7 +559,7 @@ public class TestRequest extends TomcatBaseTest {
             Tomcat tomcat = getTomcatInstance();
             Context root = tomcat.addContext("", TEMP_DIR);
             Tomcat.addServlet(root, "EchoParameters", new EchoParametersServlet());
-            root.addServletMapping("/echo", "EchoParameters");
+            root.addServletMappingDecoded("/echo", "EchoParameters");
             tomcat.start();
 
             setPort(tomcat.getConnector().getLocalPort());
@@ -590,7 +594,7 @@ public class TestRequest extends TomcatBaseTest {
                      method + " http://localhost:" + getPort() + "/echo"
                      + (null == queryString ? "" : ("?" + queryString))
                      + " HTTP/1.1" + CRLF
-                     + "Host: localhost" + CRLF
+                     + "Host: localhost:" + getPort() + CRLF
                      + (null == contentType ? ""
                         : ("Content-Type: " + contentType + CRLF))
                      + "Connection: close" + CRLF
@@ -686,10 +690,10 @@ public class TestRequest extends TomcatBaseTest {
                 while ((line = reader.readLine()) != null) {
                     response.add(line);
                 }
-                assertTrue(response.contains("Part äö"));
+                Assert.assertTrue(response.contains("Part äö"));
             }
         } else {
-            fail("OK status was expected: " + status);
+            Assert.fail("OK status was expected: " + status);
         }
     }
 
@@ -769,6 +773,26 @@ public class TestRequest extends TomcatBaseTest {
     }
 
     @Test
+    public void testBug56501p() throws Exception {
+        doBug56501("/path/abc", "/path;a=b/abc/xxx", "/path;a=b/abc");
+    }
+
+    @Test
+    public void testBug56501q() throws Exception {
+        doBug56501("/path/abc", "/path/abc;a=b/xxx", "/path/abc;a=b");
+    }
+
+    @Test
+    public void testBug56501r() throws Exception {
+        doBug56501("/path/abc", "/path/abc/xxx;a=b", "/path/abc");
+    }
+
+    @Test
+    public void testBug56501s() throws Exception {
+        doBug56501("/path/abc", "/.;a=b/path/abc/xxx", "/.;a=b/path/abc");
+    }
+
+    @Test
     public void testBug57215a() throws Exception {
         doBug56501("/path", "//path", "//path");
     }
@@ -806,9 +830,10 @@ public class TestRequest extends TomcatBaseTest {
 
         // No file system docBase required
         Context ctx = tomcat.addContext(deployPath, null);
+        ctx.setAllowMultipleLeadingForwardSlashInPath(true);
 
-        Tomcat.addServlet(ctx, "servlet", new Bug56501Servelet());
-        ctx.addServletMapping("/*", "servlet");
+        Tomcat.addServlet(ctx, "servlet", new Bug56501Servlet());
+        ctx.addServletMappingDecoded("/*", "servlet");
 
         tomcat.start();
 
@@ -817,10 +842,10 @@ public class TestRequest extends TomcatBaseTest {
         if (resultPath == null) {
             resultPath = "";
         }
-        assertEquals(expected, resultPath);
+        Assert.assertEquals(expected, resultPath);
     }
 
-    private class Bug56501Servelet extends HttpServlet {
+    private static class Bug56501Servlet extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
 
@@ -881,5 +906,73 @@ public class TestRequest extends TomcatBaseTest {
         long time = System.nanoTime() - start;
 
         System.out.println(time);
+    }
+
+
+    @Test
+    public void testGetReaderValidEncoding() throws Exception {
+        doTestGetReader("ISO-8859-1", true);
+    }
+
+
+    @Test
+    public void testGetReaderInvalidEbcoding() throws Exception {
+        doTestGetReader("X-Invalid", false);
+    }
+
+
+    private void doTestGetReader(String userAgentCharaceterEncoding, boolean expect200)
+            throws Exception {
+
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
+        Tomcat.addServlet(ctx, "servlet", new Bug61264GetReaderServlet());
+        ctx.addServletMappingDecoded("/", "servlet");
+
+        tomcat.start();
+
+        Charset charset = StandardCharsets.ISO_8859_1;
+        try {
+            charset = Charset.forName(userAgentCharaceterEncoding);
+        } catch (UnsupportedCharsetException e) {
+            // Ignore - use default set above
+        }
+        byte[] body = "Test".getBytes(charset);
+        ByteChunk bc = new ByteChunk();
+        Map<String,List<String>> reqHeaders = new HashMap<>();
+        reqHeaders.put("Content-Type",
+                Arrays.asList(new String[] {"text/plain;charset=" + userAgentCharaceterEncoding}));
+
+        int rc = postUrl(body, "http://localhost:" + getPort() + "/", bc, reqHeaders, null);
+
+        if (expect200) {
+            Assert.assertEquals(200, rc);
+        } else {
+            Assert.assertEquals(500, rc);
+        }
+    }
+
+
+    private static class Bug61264GetReaderServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            // This is intended for POST requests
+            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        }
+
+        @Override
+        protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            // Container will handle any errors
+            req.getReader();
+        }
     }
 }

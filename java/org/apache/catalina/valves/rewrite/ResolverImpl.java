@@ -16,12 +16,12 @@
  */
 package org.apache.catalina.valves.rewrite;
 
+import java.nio.charset.Charset;
 import java.util.Calendar;
 
 import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.connector.Request;
-
 import org.apache.tomcat.util.http.FastHttpDateFormat;
 
 public class ResolverImpl extends Resolver {
@@ -142,7 +142,12 @@ public class ResolverImpl extends Resolver {
 
     @Override
     public String resolveHttp(String key) {
-        return request.getHeader(key);
+        String header = request.getHeader(key);
+        if (header == null) {
+            return "";
+        } else {
+            return header;
+        }
     }
 
     @Override
@@ -154,11 +159,11 @@ public class ResolverImpl extends Resolver {
         } else {
             switch (type) {
             case 0:
-                return (resource.isDirectory());
+                return resource.isDirectory();
             case 1:
-                return (resource.isFile());
+                return resource.isFile();
             case 2:
-                return (resource.isFile() && resource.getContentLength() > 0);
+                return resource.isFile() && resource.getContentLength() > 0;
             default:
                 return false;
             }
@@ -171,5 +176,10 @@ public class ResolverImpl extends Resolver {
         } else {
             return value;
         }
+    }
+
+    @Override
+    public Charset getUriCharset() {
+        return request.getConnector().getURICharset();
     }
 }

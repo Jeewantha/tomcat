@@ -17,6 +17,7 @@
 package org.apache.catalina.loader;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 
@@ -35,8 +36,8 @@ public class TestWebappClassLoader extends TomcatBaseTest {
 
         String[] expected = new String[2];
         String warUrl = f.toURI().toURL().toExternalForm();
-        expected[0] = "jar:" + warUrl + "!/WEB-INF/classes/";
-        expected[1] = "jar:" + warUrl + "!/WEB-INF/lib/test.jar";
+        expected[0] = "war:" + warUrl + "*/WEB-INF/classes/";
+        expected[1] = "war:" + warUrl + "*/WEB-INF/lib/test.jar";
 
         Tomcat tomcat = getTomcatInstance();
 
@@ -57,6 +58,118 @@ public class TestWebappClassLoader extends TomcatBaseTest {
                 actual[i] = urls[i].toExternalForm();
             }
             Assert.assertArrayEquals(expected, actual);
+        }
+    }
+
+    @Test
+    public void testFilter() throws IOException {
+
+        String[] classSuffixes = new String[]{
+            "",
+            "some.package.Example"
+        };
+
+        String[] resourceSuffixes = new String[]{
+            "",
+            "some/path/test.properties",
+            "some/path/test"
+        };
+
+        String[] prefixes = new String[]{
+            "",
+            "resources",
+            "WEB-INF",
+            "WEB-INF.classes",
+            "WEB-INF.lib",
+            "org",
+            "org.apache",
+            "javax",
+            "com.mycorp"
+        };
+
+        String[] prefixesPermit = new String[]{
+            "org.apache.tomcat.jdbc",
+            "javax.servlet.jsp.jstl",
+        };
+
+        String[] prefixesDeny = new String[]{
+            "org.apache.catalina",
+            "org.apache.coyote",
+            "org.apache.el",
+            "org.apache.jasper",
+            "org.apache.juli",
+            "org.apache.naming",
+            "org.apache.tomcat",
+            "javax.el",
+            "javax.servlet",
+            "javax.websocket",
+            "javax.security.auth.message"
+        };
+
+        try (WebappClassLoader loader = new WebappClassLoader()) {
+            String name;
+
+            for (String prefix : prefixes) {
+                for (String suffix : classSuffixes) {
+                    name = prefix + "." + suffix;
+                    Assert.assertTrue("Class '" + name + "' failed permit filter",
+                               !loader.filter(name, true));
+                    if (prefix.equals("")) {
+                        name = suffix;
+                        Assert.assertTrue("Class '" + name + "' failed permit filter",
+                                   !loader.filter(name, true));
+                    }
+                    if (suffix.equals("")) {
+                        name = prefix;
+                        Assert.assertTrue("Class '" + name + "' failed permit filter",
+                                   !loader.filter(name, true));
+                    }
+                }
+                prefix = prefix.replace('.', '/');
+                for (String suffix : resourceSuffixes) {
+                    name = prefix + "/" + suffix;
+                    Assert.assertTrue("Resource '" + name + "' failed permit filter",
+                               !loader.filter(name, false));
+                    if (prefix.equals("")) {
+                        name = suffix;
+                        Assert.assertTrue("Resource '" + name + "' failed permit filter",
+                                   !loader.filter(name, false));
+                    }
+                    if (suffix.equals("")) {
+                        name = prefix;
+                        Assert.assertTrue("Resource '" + name + "' failed permit filter",
+                                   !loader.filter(name, false));
+                    }
+                }
+            }
+
+            for (String prefix : prefixesPermit) {
+                for (String suffix : classSuffixes) {
+                    name = prefix + "." + suffix;
+                    Assert.assertTrue("Class '" + name + "' failed permit filter",
+                               !loader.filter(name, true));
+                }
+                prefix = prefix.replace('.', '/');
+                for (String suffix : resourceSuffixes) {
+                    name = prefix + "/" + suffix;
+                    Assert.assertTrue("Resource '" + name + "' failed permit filter",
+                               !loader.filter(name, false));
+                }
+            }
+
+            for (String prefix : prefixesDeny) {
+                for (String suffix : classSuffixes) {
+                    name = prefix + "." + suffix;
+                    Assert.assertTrue("Class '" + name + "' failed deny filter",
+                               loader.filter(name, true));
+                }
+                prefix = prefix.replace('.', '/');
+                for (String suffix : resourceSuffixes) {
+                    name = prefix + "/" + suffix;
+                    Assert.assertTrue("Resource '" + name + "' failed deny filter",
+                               loader.filter(name, false));
+                }
+            }
         }
     }
 }

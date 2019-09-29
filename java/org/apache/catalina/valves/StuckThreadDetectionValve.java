@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -59,7 +60,7 @@ public class StuckThreadDetectionValve extends ValveBase {
     private final AtomicInteger stuckCount = new AtomicInteger(0);
 
     /**
-     * Keeps count of the number of stuck threads that have been interruoted
+     * Keeps count of the number of stuck threads that have been interrupted
      */
     private AtomicLong interruptedThreadsCount = new AtomicLong();
 
@@ -76,14 +77,11 @@ public class StuckThreadDetectionValve extends ValveBase {
     /**
      * The only references we keep to actual running Thread objects are in
      * this Map (which is automatically cleaned in invoke()s finally clause).
-     * That way, Threads can be GC'ed, eventhough the Valve still thinks they
+     * That way, Threads can be GC'ed, even though the Valve still thinks they
      * are stuck (caused by a long monitor interval)
      */
-    private final ConcurrentHashMap<Long, MonitoredThread> activeThreads =
-            new ConcurrentHashMap<>();
-    /**
-     *
-     */
+    private final Map<Long, MonitoredThread> activeThreads = new ConcurrentHashMap<>();
+
     private final Queue<CompletedStuckThread> completedStuckThreadsQueue =
             new ConcurrentLinkedQueue<>();
 
@@ -355,7 +353,7 @@ public class StuckThreadDetectionValve extends ValveBase {
                 // no need to release the semaphore, it will be GCed
             }
             //else the request went through before being marked as stuck, no need
-            //to sync agains the semaphore
+            //to sync against the semaphore
             return threadState;
         }
 
@@ -422,6 +420,6 @@ public class StuckThreadDetectionValve extends ValveBase {
     }
 
     private enum MonitoredThreadState {
-        RUNNING, STUCK, DONE;
+        RUNNING, STUCK, DONE
     }
 }

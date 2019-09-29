@@ -41,11 +41,7 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
         buildSimpleGetRequestPart1(frameHeader, headersPayload, 0);
         writeFrame(frameHeader, headersPayload);
 
-        // Go away
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1);
     }
 
 
@@ -70,11 +66,7 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
 
         sendSimpleGetRequest(3, padding);
 
-        // Goaway
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1);
     }
 
 
@@ -98,10 +90,7 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
         os.write(headerFrame);
         os.flush();
 
-        parser.readFrame(true);
-
-        String trace = output.getTrace();
-        Assert.assertTrue(trace, trace.startsWith("0-Goaway-[1]-[1]-["));
+        handleGoAwayResponse(1);
     }
 
 

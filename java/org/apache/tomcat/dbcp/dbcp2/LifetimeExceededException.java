@@ -21,7 +21,7 @@ package org.apache.tomcat.dbcp.dbcp2;
  *
  * @since 2.1
  */
- class LifetimeExceededException extends Exception {
+class LifetimeExceededException extends Exception {
 
     private static final long serialVersionUID = -3783783104516492659L;
 
@@ -34,9 +34,11 @@ package org.apache.tomcat.dbcp.dbcp2;
 
     /**
      * Create a LifetimeExceededException with the given message.
+     *
+     * @param message
+     *            The message with which to create the exception
      */
-    public LifetimeExceededException(String message) {
+    public LifetimeExceededException(final String message) {
         super(message);
     }
-
 }

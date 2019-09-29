@@ -16,6 +16,7 @@
  */
 package org.apache.jasper.compiler;
 
+import java.io.BufferedInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -23,8 +24,7 @@ import java.util.Stack;
 
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
-import org.apache.jasper.xmlparser.XMLEncodingDetector;
-import org.apache.tomcat.util.scan.Jar;
+import org.apache.tomcat.Jar;
 import org.xml.sax.Attributes;
 
 /**
@@ -88,9 +88,14 @@ class ParserController implements TagConstants {
      * Parses a JSP page or tag file. This is invoked by the compiler.
      *
      * @param inFileName The path to the JSP page or tag file to be parsed.
+     *
+     * @return The parsed nodes
+     *
+     * @throws JasperException If an error occurs during parsing
+     * @throws IOException If an I/O error occurs such as the file not being
+     *         found
      */
-    public Node.Nodes parse(String inFileName)
-    throws FileNotFoundException, JasperException, IOException {
+    public Node.Nodes parse(String inFileName) throws JasperException, IOException {
         // If we're parsing a packaged tag file or a resource included by it
         // (using an include directive), ctxt.getTagFileJar() returns the
         // JAR file from which to read the tag file or included resource,
@@ -105,9 +110,14 @@ class ParserController implements TagConstants {
      * compiler.
      *
      * @param inFileName The path to the JSP page or tag file to be parsed.
+     *
+     * @return The parsed directive nodes
+     *
+     * @throws JasperException If an error occurs during parsing
+     * @throws IOException If an I/O error occurs such as the file not being
+     *         found
      */
-    public Node.Nodes parseDirectives(String inFileName)
-    throws FileNotFoundException, JasperException, IOException {
+    public Node.Nodes parseDirectives(String inFileName) throws JasperException, IOException {
         // If we're parsing a packaged tag file or a resource included by it
         // (using an include directive), ctxt.getTagFileJar() returns the
         // JAR file from which to read the tag file or included resource,
@@ -125,9 +135,15 @@ class ParserController implements TagConstants {
      * @param parent The parent node of the include directive.
      * @param jar The JAR file from which to read the included resource,
      * or null of the included resource is to be read from the filesystem
+     *
+     * @return The parsed nodes
+     *
+     * @throws JasperException If an error occurs during parsing
+     * @throws IOException If an I/O error occurs such as the file not being
+     *         found
      */
     public Node.Nodes parse(String inFileName, Node parent, Jar jar)
-    throws FileNotFoundException, JasperException, IOException {
+            throws JasperException, IOException {
         // For files that are statically included, isTagfile and directiveOnly
         // remain unchanged.
         return doParse(inFileName, parent, jar);
@@ -140,9 +156,15 @@ class ParserController implements TagConstants {
      *
      * @param inFileName    The name of the tag file to be parsed.
      * @param jar The location of the tag file.
+     *
+     * @return The parsed tag file nodes
+     *
+     * @throws JasperException If an error occurs during parsing
+     * @throws IOException If an I/O error occurs such as the file not being
+     *         found
      */
     public Node.Nodes parseTagFileDirectives(String inFileName, Jar jar)
-            throws FileNotFoundException, JasperException, IOException {
+            throws JasperException, IOException {
         boolean isTagFileSave = isTagFile;
         boolean directiveOnlySave = directiveOnly;
         isTagFile = true;
@@ -216,7 +238,7 @@ class ParserController implements TagConstants {
         } else {
             // Standard syntax
             try (InputStreamReader inStreamReader = JspUtil.getReader(
-                    absFileName, sourceEnc, jar, ctxt, err, skip);) {
+                    absFileName, sourceEnc, jar, ctxt, err, skip)) {
                 JspReader jspReader = new JspReader(ctxt, absFileName,
                         inStreamReader, err);
                 parsedPage = Parser.parse(this, jspReader, parent, isTagFile,
@@ -296,16 +318,15 @@ class ParserController implements TagConstants {
             sourceEnc = "ISO-8859-1";
         } else {
             // XML syntax or unknown, (auto)detect encoding ...
-            Object[] ret = XMLEncodingDetector.getEncoding(absFileName, jar,
-                    ctxt, err);
-            sourceEnc = (String) ret[0];
-            if (((Boolean) ret[1]).booleanValue()) {
-                isEncodingSpecifiedInProlog = true;
+            EncodingDetector encodingDetector;
+            try (BufferedInputStream bis = JspUtil.getInputStream(absFileName, jar, ctxt)) {
+                encodingDetector = new EncodingDetector(bis);
             }
-            if (((Boolean) ret[2]).booleanValue()) {
-                isBomPresent = true;
-            }
-            skip = ((Integer) ret[3]).intValue();
+
+            sourceEnc = encodingDetector.getEncoding();
+            isEncodingSpecifiedInProlog = encodingDetector.isEncodingSpecifiedInProlog();
+            isBomPresent = (encodingDetector.getSkip() > 0);
+            skip = encodingDetector.getSkip();
 
             if (!isXml && sourceEnc.equals("UTF-8")) {
                 /*
@@ -501,7 +522,7 @@ class ParserController implements TagConstants {
         fileName = isAbsolute ? fileName
                 : baseDirStack.peek() + fileName;
         String baseDir =
-            fileName.substring(0, fileName.lastIndexOf("/") + 1);
+            fileName.substring(0, fileName.lastIndexOf('/') + 1);
         baseDirStack.push(baseDir);
         return fileName;
     }

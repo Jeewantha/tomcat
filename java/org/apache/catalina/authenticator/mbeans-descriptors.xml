@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -64,6 +64,10 @@
                description="The name of the LifecycleState that this component is currently in"
                type="java.lang.String"
                writeable="false"/>
+
+    <attribute name="trimCredentials"
+               description="Controls whether leading and/or trailing whitespace is removed from the parsed credentials"
+               type="boolean"/>
   </mbean>
 
 
@@ -235,7 +239,7 @@
                type="boolean"/>
 
     <attribute name="cookieDomain"
-               description="(Optiona) Domain to be used by sso cookies"
+               description="(Optional) Domain to be used by sso cookies"
                type="java.lang.String" />
 
     <attribute name="stateName"

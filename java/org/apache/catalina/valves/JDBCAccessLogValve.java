@@ -165,23 +165,23 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
     * Use long contentLength as you have more 4 GB output.
     * @since 6.0.15
     */
-    protected boolean useLongContentLength = false ;
+    boolean useLongContentLength = false;
 
    /**
      * The connection username to use when trying to connect to the database.
      */
-    protected String connectionName = null;
+    String connectionName = null;
 
 
     /**
      * The connection URL to use when trying to connect to the database.
      */
-    protected String connectionPassword = null;
+    String connectionPassword = null;
 
    /**
      * Instance of the JDBC Driver class we use as a connection factory.
      */
-    protected Driver driver = null;
+    Driver driver = null;
 
 
     private String driverName;
@@ -208,15 +208,19 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
     private long currentTimeMillis;
 
     /**
+     * Should this valve set request attributes for IP address, hostname,
+     * protocol and port used for the request.
+     * Default is <code>true</code>.
      * @see #setRequestAttributesEnabled(boolean)
      */
-    protected boolean requestAttributesEnabled = true;
+    boolean requestAttributesEnabled = true;
 
 
     // ------------------------------------------------------------- Properties
 
     /**
      * {@inheritDoc}
+     * Default is <code>true</code>.
      */
     @Override
     public void setRequestAttributesEnabled(boolean requestAttributesEnabled) {
@@ -232,8 +236,7 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
     }
 
     /**
-     * Return the username to use to connect to the database.
-     *
+     * @return the username to use to connect to the database.
      */
     public String getConnectionName() {
         return connectionName;
@@ -257,9 +260,8 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
         this.driverName = driverName;
     }
 
-   /**
-     * Return the password to use to connect to the database.
-     *
+    /**
+     * @return the password to use to connect to the database.
      */
     public String getConnectionPassword() {
         return connectionPassword;
@@ -356,11 +358,11 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
     }
 
 
-  /**
-   * Sets the name of the field containing the HTTP response status code.
-   *
-   * @param statusField The name of the HTTP response status code field.
-   */
+    /**
+     * Sets the name of the field containing the HTTP response status code.
+     *
+     * @param statusField The name of the HTTP response status code field.
+     */
     public void setStatusField(String statusField) {
         this.statusField = statusField;
     }
@@ -416,14 +418,15 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
      * is desired or not.
      */
     public void setResolveHosts(String resolveHosts) {
-        this.resolveHosts = Boolean.valueOf(resolveHosts).booleanValue();
+        this.resolveHosts = Boolean.parseBoolean(resolveHosts);
     }
 
     /**
-     * get useLongContentLength
+     * @return <code>true</code> if content length should be considered a long
+     *  rather than an int, defaults to <code>false</code>
      */
-    public  boolean getUseLongContentLength() {
-        return this.useLongContentLength ;
+    public boolean getUseLongContentLength() {
+        return this.useLongContentLength;
     }
 
     /**
@@ -565,7 +568,7 @@ public final class JDBCAccessLogValve extends ValveBase implements AccessLog {
         if (driver == null) {
             try {
                 Class<?> clazz = Class.forName(driverName);
-                driver = (Driver) clazz.newInstance();
+                driver = (Driver) clazz.getConstructor().newInstance();
             } catch (Throwable e) {
                 ExceptionUtils.handleThrowable(e);
                 throw new SQLException(e.getMessage(), e);

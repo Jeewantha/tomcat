@@ -17,6 +17,7 @@
 package org.apache.catalina.valves.rewrite;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,6 +31,8 @@ public class RewriteRule {
 
     protected String patternString = null;
     protected String substitutionString = null;
+    protected String flagsString = null;
+    protected boolean positive = true;
 
     public void parse(Map<String, RewriteMap> maps) {
         // Parse the substitution
@@ -37,8 +40,13 @@ public class RewriteRule {
             substitution = new Substitution();
             substitution.setSub(substitutionString);
             substitution.parse(maps);
+            substitution.setEscapeBackReferences(isEscapeBackReferences());
         }
         // Parse the pattern
+        if (patternString.startsWith("!")) {
+            positive = false;
+            patternString = patternString.substring(1);
+        }
         int flags = 0;
         if (isNocase()) {
             flags |= Pattern.CASE_INSENSITIVE;
@@ -66,18 +74,16 @@ public class RewriteRule {
     }
 
     public void addCondition(RewriteCond condition) {
-        RewriteCond[] conditions = new RewriteCond[this.conditions.length + 1];
-        for (int i = 0; i < this.conditions.length; i++) {
-            conditions[i] = this.conditions[i];
-        }
+        RewriteCond[] conditions = Arrays.copyOf(this.conditions, this.conditions.length + 1);
         conditions[this.conditions.length] = condition;
         this.conditions = conditions;
     }
 
     /**
      * Evaluate the rule based on the context
-     *
-     * @return null if no rewrite took place
+     * @param url The char sequence
+     * @param resolver Property resolver
+     * @return <code>null</code> if no rewrite took place
      */
     public CharSequence evaluate(CharSequence url, Resolver resolver) {
         Pattern pattern = this.pattern.get();
@@ -91,7 +97,8 @@ public class RewriteRule {
             this.pattern.set(pattern);
         }
         Matcher matcher = pattern.matcher(url);
-        if (!matcher.matches()) {
+        // Use XOR
+        if (positive ^ matcher.matches()) {
             // Evaluation done
             return null;
         }
@@ -145,10 +152,12 @@ public class RewriteRule {
      */
     @Override
     public String toString() {
-        // FIXME: Add flags if possible
-        return "RewriteRule " + patternString + " " + substitutionString;
+        return "RewriteRule " + patternString + " " + substitutionString
+                + ((flagsString != null) ? (" " + flagsString) : "");
     }
 
+
+    private boolean escapeBackReferences = false;
 
     /**
      *  This flag chains the current rule with the next rule (which itself
@@ -192,14 +201,14 @@ public class RewriteRule {
 
     /**
      *  This forces the current URL to be forbidden, i.e., it immediately sends
-     *  back a HTTP response of 403 (FORBIDDEN). Use this flag in conjunction
+     *  back an HTTP response of 403 (FORBIDDEN). Use this flag in conjunction
      *  with appropriate RewriteConds to conditionally block some URLs.
      */
     protected boolean forbidden = false;
 
     /**
      *  This forces the current URL to be gone, i.e., it immediately sends
-     *  back a HTTP response of 410 (GONE). Use this flag to mark pages which
+     *  back an HTTP response of 410 (GONE). Use this flag to mark pages which
      *  no longer exist as gone.
      */
     protected boolean gone = false;
@@ -264,14 +273,6 @@ public class RewriteRule {
     protected boolean nosubreq = false;
 
     /**
-     *  This flag forces the substitution part to be internally forced as a proxy
-     *  request and immediately (i.e., rewriting rule processing stops here) put
-     *  through the proxy module. You have to make sure that the substitution string
-     *  is a valid URI (e.g., typically starting with http://hostname) which can be
-     *  handled by the Apache proxy module. If not you get an error from the proxy
-     *  module. Use this flag to achieve a more powerful implementation of the
-     *  ProxyPass directive, to map some remote stuff into the namespace of
-     *  the local server.
      *  Note: No proxy
      */
 
@@ -288,20 +289,29 @@ public class RewriteRule {
     protected boolean qsappend = false;
 
     /**
+     *  When the requested URI contains a query string, and the target URI does
+     *  not, the default behavior of RewriteRule is to copy that query string
+     *  to the target URI. Using the [QSD] flag causes the query string
+     *  to be discarded.
+     *  Using [QSD] and [QSA] together will result in [QSD] taking precedence.
+     */
+    protected boolean qsdiscard = false;
+
+    /**
      *  Prefix Substitution with http://thishost[:thisport]/ (which makes the
      *  new URL a URI) to force a external redirection. If no code is given
-     *  a HTTP response of 302 (MOVED TEMPORARILY) is used. If you want to
-     *  use other response codes in the range 300-400 just specify them as
-     *  a number or use one of the following symbolic names: temp (default),
-     *  permanent, seeother. Use it for rules which should canonicalize the
-     *  URL and give it back to the client, e.g., translate ``/~'' into ``/u/''
-     *  or always append a slash to /u/user, etc. Note: When you use this flag,
-     *  make sure that the substitution field is a valid URL! If not, you are
-     *  redirecting to an invalid location! And remember that this flag itself
-     *  only prefixes the URL with http://thishost[:thisport]/, rewriting
-     *  continues. Usually you also want to stop and do the redirection
-     *  immediately. To stop the rewriting you also have to provide the
-     *  'L' flag.
+     *  an HTTP response of 302 (FOUND, previously MOVED TEMPORARILY) is used.
+     *  If you want to  use other response codes in the range 300-399 just
+     *  specify them as a number or use one of the following symbolic names:
+     *  temp (default), permanent, seeother. Use it for rules which should
+     *  canonicalize the URL and give it back to the client, e.g., translate
+     *  ``/~'' into ``/u/'' or always append a slash to /u/user, etc. Note:
+     *  When you use this flag, make sure that the substitution field is a
+     *  valid URL! If not, you are redirecting to an invalid location!
+     *  And remember that this flag itself only prefixes the URL with
+     *  http://thishost[:thisport]/, rewriting continues. Usually you also
+     *  want to stop and do the redirection immediately. To stop the
+     *  rewriting you also have to provide the 'L' flag.
      */
     protected boolean redirect = false;
     protected int redirectCode = 0;
@@ -324,6 +334,13 @@ public class RewriteRule {
      */
     protected boolean type = false;
     protected String typeValue = null;
+
+    public boolean isEscapeBackReferences() {
+        return escapeBackReferences;
+    }
+    public void setEscapeBackReferences(boolean escapeBackReferences) {
+        this.escapeBackReferences = escapeBackReferences;
+    }
     public boolean isChain() {
         return chain;
     }
@@ -429,6 +446,12 @@ public class RewriteRule {
     public void setQsappend(boolean qsappend) {
         this.qsappend = qsappend;
     }
+    public final boolean isQsdiscard() {
+        return qsdiscard;
+    }
+    public final void setQsdiscard(boolean qsdiscard) {
+        this.qsdiscard = qsdiscard;
+    }
     public boolean isRedirect() {
         return redirect;
     }
@@ -480,6 +503,14 @@ public class RewriteRule {
 
     public void setSubstitutionString(String substitutionString) {
         this.substitutionString = substitutionString;
+    }
+
+    public final String getFlagsString() {
+        return flagsString;
+    }
+
+    public final void setFlagsString(String flagsString) {
+        this.flagsString = flagsString;
     }
 
     public boolean isHost() {

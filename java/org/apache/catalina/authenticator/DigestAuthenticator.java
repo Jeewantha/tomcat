@@ -45,7 +45,7 @@ import org.apache.tomcat.util.security.MD5Encoder;
  */
 public class DigestAuthenticator extends AuthenticatorBase {
 
-    private static final Log log = LogFactory.getLog(DigestAuthenticator.class);
+    private final Log log = LogFactory.getLog(DigestAuthenticator.class); // must not be static
 
 
     // -------------------------------------------------------------- Constants
@@ -194,7 +194,7 @@ public class DigestAuthenticator extends AuthenticatorBase {
      * @exception IOException if an input/output error occurs
      */
     @Override
-    public boolean authenticate(Request request, HttpServletResponse response)
+    protected boolean doAuthenticate(Request request, HttpServletResponse response)
             throws IOException {
 
         // NOTE: We don't try to reauthenticate using any existing SSO session,
@@ -254,6 +254,10 @@ public class DigestAuthenticator extends AuthenticatorBase {
     /**
      * Removes the quotes on a string. RFC2617 states quotes are optional for
      * all parameters except realm.
+     *
+     * @param quotedString The quoted string
+     * @param quotesRequired <code>true</code> if quotes were required
+     * @return The unquoted string
      */
     protected static String removeQuotes(String quotedString,
                                          boolean quotesRequired) {
@@ -270,6 +274,9 @@ public class DigestAuthenticator extends AuthenticatorBase {
 
     /**
      * Removes the quotes on a string.
+     *
+     * @param quotedString The quoted string
+     * @return The unquoted string
      */
     protected static String removeQuotes(String quotedString) {
         return removeQuotes(quotedString, false);
@@ -281,6 +288,7 @@ public class DigestAuthenticator extends AuthenticatorBase {
      * time-stamp ":" private-key ) ).
      *
      * @param request HTTP Servlet request
+     * @return The generated nonce
      */
     protected String generateNonce(Request request) {
 
@@ -334,6 +342,7 @@ public class DigestAuthenticator extends AuthenticatorBase {
      * @param request HTTP Servlet request
      * @param response HTTP Servlet response
      * @param nonce nonce token
+     * @param isNonceStale <code>true</code> to add a stale parameter
      */
     protected void setAuthenticateHeader(HttpServletRequest request,
                                          HttpServletResponse response,
@@ -402,7 +411,7 @@ public class DigestAuthenticator extends AuthenticatorBase {
         };
     }
 
-    private static class DigestInfo {
+    public static class DigestInfo {
 
         private final String opaque;
         private final long nonceValidity;
@@ -519,7 +528,7 @@ public class DigestAuthenticator extends AuthenticatorBase {
             }
 
             // Validate nonce
-            int i = nonce.indexOf(":");
+            int i = nonce.indexOf(':');
             if (i < 0 || (i + 1) == nonce.length()) {
                 return false;
             }
@@ -608,7 +617,7 @@ public class DigestAuthenticator extends AuthenticatorBase {
 
     }
 
-    private static class NonceInfo {
+    public static class NonceInfo {
         private final long timestamp;
         private final boolean seen[];
         private final int offset;

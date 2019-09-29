@@ -379,26 +379,36 @@ public class HPackHuffman {
         assert data.remaining() >= length;
         int treePos = 0;
         boolean eosBits = true;
+        int eosBitCount = 0;
         for (int i = 0; i < length; ++i) {
             byte b = data.get();
             int bitPos = 7;
             while (bitPos >= 0) {
                 int val = DECODING_TABLE[treePos];
                 if (((1 << bitPos) & b) == 0) {
-                    eosBits = false;
                     //bit not set, we want the lower part of the tree
                     if ((val & LOW_TERMINAL_BIT) == 0) {
                         treePos = val & LOW_MASK;
+                        eosBits = false;
+                        eosBitCount = 0;
                     } else {
                         target.append((char) (val & LOW_MASK));
                         treePos = 0;
                         eosBits = true;
                     }
                 } else {
+                    if (eosBits) {
+                        eosBitCount++;
+                    }
                     //bit not set, we want the lower part of the tree
                     if ((val & HIGH_TERMINAL_BIT) == 0) {
                         treePos = (val >> 16) & LOW_MASK;
                     } else {
+                        if (eosBitCount != 0) {
+                            // This must be the EOS symbol which MUST be treated
+                            // as an error
+                            throw new HpackException(sm.getString("hpackhuffman.stringLiteralEOS"));
+                        }
                         target.append((char) ((val >> 16) & LOW_MASK));
                         treePos = 0;
                         eosBits = true;
@@ -406,6 +416,10 @@ public class HPackHuffman {
                 }
                 bitPos--;
             }
+        }
+        if (eosBitCount > 7) {
+            throw new HpackException(sm.getString(
+                    "hpackhuffman.stringLiteralTooMuchPadding"));
         }
         if (!eosBits) {
             throw new HpackException(sm.getString(
@@ -434,7 +448,11 @@ public class HPackHuffman {
         //so we end up iterating twice
         int length = 0;
         for (int i = 0; i < toEncode.length(); ++i) {
-            byte c = (byte) toEncode.charAt(i);
+            char c = toEncode.charAt(i);
+            if (c > 255) {
+                throw new IllegalArgumentException(sm.getString("hpack.invalidCharacter",
+                        Character.toString(c), Integer.valueOf(c)));
+            }
             if(forceLowercase) {
                 c = Hpack.toLower(c);
             }
@@ -450,7 +468,7 @@ public class HPackHuffman {
         int bytePos = 0;
         byte currentBufferByte = 0;
         for (int i = 0; i < toEncode.length(); ++i) {
-            byte c = (byte) toEncode.charAt(i);
+            char c = toEncode.charAt(i);
             if(forceLowercase) {
                 c = Hpack.toLower(c);
             }
@@ -513,7 +531,7 @@ public class HPackHuffman {
 
     protected static class HuffmanCode {
         /**
-         * The value of the least significan't bits of the code
+         * The value of the least significant bits of the code
          */
         int value;
         /**

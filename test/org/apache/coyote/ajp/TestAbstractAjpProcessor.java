@@ -82,7 +82,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "snoop", new SnoopServlet());
-        ctx.addServletMapping("/", "snoop");
+        ctx.addServletMappingDecoded("/", "snoop");
 
         SimpleAjpClient ajpClient = new SimpleAjpClient(ajpPacketSize);
 
@@ -121,7 +121,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
                     ajpClient.setServerName(value);
                     break;
                 case "REQUEST-SERVER-PORT":
-                    ajpClient.setServerPort(Integer.valueOf(value).intValue());
+                    ajpClient.setServerPort(Integer.parseInt(value));
                     break;
                 case "REQUEST-IS-SECURE":
                     ajpClient.setSsl(Boolean.parseBoolean(value));
@@ -302,7 +302,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         } else {
             TesterAjpMessage bodyMessage = ajpClient.createBodyMessage(new byte[bodySize]);
             responseHeaders = ajpClient.sendMessage(forwardMessage, bodyMessage);
-            // Expect back a request for more data (which will be emty and
+            // Expect back a request for more data (which will be empty and
             // trigger end of stream in Servlet)
             validateGetBody(responseHeaders);
             bodyMessage = ajpClient.createBodyMessage(new byte[0]);
@@ -497,7 +497,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "helloWorld", new HelloWorldServlet());
-        ctx.addServletMapping("/", "helloWorld");
+        ctx.addServletMappingDecoded("/", "helloWorld");
 
         SimpleAjpClient ajpClient = new SimpleAjpClient();
 
@@ -512,8 +512,8 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         TesterAjpMessage responseHeaders = ajpClient.sendMessage(forwardMessage);
         // Expect 3 packets: headers, body, end
         validateResponseHeaders(responseHeaders, 403, "403");
-        //TesterAjpMessage responseBody = ajpClient.readMessage();
-        //validateResponseBody(responseBody, HelloWorldServlet.RESPONSE_TEXT);
+        TesterAjpMessage responseBody = ajpClient.readMessage();
+        validateResponseBody(responseBody, "<p><b>Type</b> Status Report</p>");
         validateResponseEnd(ajpClient.readMessage(), false);
 
         ajpClient.connect();
@@ -526,8 +526,8 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         responseHeaders = ajpClient.sendMessage(forwardMessage);
         // Expect 3 packets: headers, body, end
         validateResponseHeaders(responseHeaders, 403, "403");
-        //responseBody = ajpClient.readMessage();
-        //validateResponseBody(responseBody, HelloWorldServlet.RESPONSE_TEXT);
+        responseBody = ajpClient.readMessage();
+        validateResponseBody(responseBody, "<p><b>Type</b> Status Report</p>");
         validateResponseEnd(ajpClient.readMessage(), false);
 
         ajpClient.connect();
@@ -540,7 +540,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         responseHeaders = ajpClient.sendMessage(forwardMessage);
         // Expect 3 packets: headers, body, end
         validateResponseHeaders(responseHeaders, 200, "200");
-        TesterAjpMessage responseBody = ajpClient.readMessage();
+        responseBody = ajpClient.readMessage();
         validateResponseBody(responseBody, HelloWorldServlet.RESPONSE_TEXT);
         validateResponseEnd(ajpClient.readMessage(), true);
 
@@ -557,7 +557,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "helloWorld", new HelloWorldServlet());
-        ctx.addServletMapping("/", "helloWorld");
+        ctx.addServletMappingDecoded("/", "helloWorld");
 
         SimpleAjpClient ajpClient = new SimpleAjpClient();
 
@@ -641,7 +641,9 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
             // Double check the connection is still open
             validateCpong(ajpClient.cping());
         } else {
-            // Expect 2 messages: headers, end for an invalid request
+            // Expect 3 messages: headers, error report body, end for an invalid request
+            TesterAjpMessage responseBody = ajpClient.readMessage();
+            validateResponseBody(responseBody, "<p><b>Type</b> Status Report</p>");
             validateResponseEnd(ajpClient.readMessage(), false);
         }
 
@@ -662,7 +664,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "bug55453", new Tester304WithBodyServlet());
-        ctx.addServletMapping("/", "bug55453");
+        ctx.addServletMappingDecoded("/", "bug55453");
 
         tomcat.start();
 
@@ -719,7 +721,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
 
         ReadBodyServlet servlet = new ReadBodyServlet(callAvailable);
         Tomcat.addServlet(ctx, "ReadBody", servlet);
-        ctx.addServletMapping("/", "ReadBody");
+        ctx.addServletMappingDecoded("/", "ReadBody");
 
         tomcat.start();
 
@@ -776,7 +778,7 @@ public class TestAbstractAjpProcessor extends TomcatBaseTest {
 
         FixedResponseSizeServlet servlet = new FixedResponseSizeServlet(15000, 16000);
         Tomcat.addServlet(ctx, "FixedResponseSizeServlet", servlet);
-        ctx.addServletMapping("/", "FixedResponseSizeServlet");
+        ctx.addServletMappingDecoded("/", "FixedResponseSizeServlet");
 
         tomcat.start();
 

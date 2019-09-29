@@ -18,10 +18,6 @@ package org.apache.catalina.loader;
 
 import java.io.InputStream;
 import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Filter;
-import java.util.logging.LogManager;
-import java.util.logging.LogRecord;
 
 import javax.servlet.http.HttpServletResponse;
 
@@ -34,6 +30,7 @@ import org.apache.catalina.core.JreMemoryLeakPreventionListener;
 import org.apache.catalina.core.StandardHost;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.tomcat.unittest.TesterLogValidationFilter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 
@@ -68,7 +65,7 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
         Tomcat.addServlet(ctx, "leakServlet1",
                 "org.apache.tomcat.unittest.TesterLeakingServlet1");
-        ctx.addServletMapping("/leak1", "leakServlet1");
+        ctx.addServletMappingDecoded("/leak1", "leakServlet1");
 
         tomcat.start();
 
@@ -76,17 +73,16 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
         ((ThreadPoolExecutor) executor).setThreadRenewalDelay(-1);
 
         // Configure logging filter to check leak message appears
-        LogValidationFilter f = new LogValidationFilter(
-                "The web application [ROOT] created a ThreadLocal with key of");
-        LogManager.getLogManager().getLogger(
-                "org.apache.catalina.loader.WebappClassLoaderBase").setFilter(f);
+        TesterLogValidationFilter f = TesterLogValidationFilter.add(null,
+                "The web application [ROOT] created a ThreadLocal with key of", null,
+                "org.apache.catalina.loader.WebappClassLoaderBase");
 
         // Need to force loading of all web application classes via the web
         // application class loader
         loadClass("TesterCounter",
-                (WebappClassLoader) ctx.getLoader().getClassLoader());
+                (WebappClassLoaderBase) ctx.getLoader().getClassLoader());
         loadClass("TesterLeakingServlet1",
-                (WebappClassLoader) ctx.getLoader().getClassLoader());
+                (WebappClassLoaderBase) ctx.getLoader().getClassLoader());
 
         // This will trigger the ThreadLocal creation
         int rc = getUrl("http://localhost:" + getPort() + "/leak1",
@@ -124,7 +120,7 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
 
         Tomcat.addServlet(ctx, "leakServlet2",
                 "org.apache.tomcat.unittest.TesterLeakingServlet2");
-        ctx.addServletMapping("/leak2", "leakServlet2");
+        ctx.addServletMappingDecoded("/leak2", "leakServlet2");
 
         tomcat.start();
 
@@ -132,19 +128,18 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
         ((ThreadPoolExecutor) executor).setThreadRenewalDelay(-1);
 
         // Configure logging filter to check leak message appears
-        LogValidationFilter f = new LogValidationFilter(
-                "The web application [ROOT] created a ThreadLocal with key of");
-        LogManager.getLogManager().getLogger(
-                "org.apache.catalina.loader.WebappClassLoaderBase").setFilter(f);
+        TesterLogValidationFilter f = TesterLogValidationFilter.add(null,
+                "The web application [ROOT] created a ThreadLocal with key of", null,
+                "org.apache.catalina.loader.WebappClassLoaderBase");
 
         // Need to force loading of all web application classes via the web
         // application class loader
         loadClass("TesterCounter",
-                (WebappClassLoader) ctx.getLoader().getClassLoader());
+                (WebappClassLoaderBase) ctx.getLoader().getClassLoader());
         loadClass("TesterThreadScopedHolder",
-                (WebappClassLoader) ctx.getLoader().getClassLoader());
+                (WebappClassLoaderBase) ctx.getLoader().getClassLoader());
         loadClass("TesterLeakingServlet2",
-                (WebappClassLoader) ctx.getLoader().getClassLoader());
+                (WebappClassLoaderBase) ctx.getLoader().getClassLoader());
 
         // This will trigger the ThreadLocal creation
         int rc = getUrl("http://localhost:" + getPort() + "/leak2",
@@ -179,7 +174,7 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
      *
      * This method assumes that all classes are in the current package.
      */
-    private void loadClass(String name, WebappClassLoader cl) throws Exception {
+    private void loadClass(String name, WebappClassLoaderBase cl) throws Exception {
         try (InputStream is = cl.getResourceAsStream(
                 "org/apache/tomcat/unittest/" + name + ".class")) {
             // We know roughly how big the class will be (~ 1K) so allow 2k as a
@@ -201,36 +196,7 @@ public class TestWebappClassLoaderThreadLocalMemoryLeak extends TomcatBaseTest {
                     "org.apache.tomcat.unittest." + name, classBytes, 0,
                     offset, cl.getClass().getProtectionDomain());
             // Make sure we can create an instance
-            Object obj = lpClass.newInstance();
-            obj.toString();
-        }
-    }
-
-
-    private class LogValidationFilter implements Filter {
-
-        private String targetMessage;
-        private AtomicInteger messageCount = new AtomicInteger(0);
-
-
-        public LogValidationFilter(String targetMessage) {
-            this.targetMessage = targetMessage;
-        }
-
-
-        public int getMessageCount() {
-            return messageCount.get();
-        }
-
-
-        @Override
-        public boolean isLoggable(LogRecord record) {
-            String msg = record.getMessage();
-            if (msg != null && msg.contains(targetMessage)) {
-                messageCount.incrementAndGet();
-            }
-
-            return true;
+            lpClass.getConstructor().newInstance();
         }
     }
 }

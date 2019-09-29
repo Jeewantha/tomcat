@@ -43,7 +43,7 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class ReplicatedContext extends StandardContext implements MapOwner {
     private int mapSendOptions = Channel.SEND_OPTIONS_DEFAULT;
-    private static final Log log = LogFactory.getLog( ReplicatedContext.class );
+    private static final Log log = LogFactory.getLog(ReplicatedContext.class);
     protected static final long DEFAULT_REPL_TIMEOUT = 15000;//15 seconds
     private static final StringManager sm = StringManager.getManager(ReplicatedContext.class);
 
@@ -56,19 +56,16 @@ public class ReplicatedContext extends StandardContext implements MapOwner {
      */
     @Override
     protected synchronized void startInternal() throws LifecycleException {
-
+        super.startInternal();
         try {
             CatalinaCluster catclust = (CatalinaCluster)this.getCluster();
-            if (this.context == null) this.context = new ReplApplContext(this);
             if ( catclust != null ) {
                 ReplicatedMap<String,Object> map = new ReplicatedMap<>(
                         this, catclust.getChannel(),DEFAULT_REPL_TIMEOUT,
                         getName(),getClassLoaders());
                 map.setChannelSendOptions(mapSendOptions);
                 ((ReplApplContext)this.context).setAttributeMap(map);
-                if (getAltDDName() != null) context.setAttribute(Globals.ALT_DD_ATTR, getAltDDName());
             }
-            super.startInternal();
         }  catch ( Exception x ) {
             log.error(sm.getString("replicatedContext.startUnable", getName()),x);
             throw new LifecycleException(sm.getString("replicatedContext.startFailed", getName()),x);
@@ -132,8 +129,7 @@ public class ReplicatedContext extends StandardContext implements MapOwner {
 
 
     protected static class ReplApplContext extends ApplicationContext {
-        protected final ConcurrentHashMap<String, Object> tomcatAttributes =
-            new ConcurrentHashMap<>();
+        protected final Map<String, Object> tomcatAttributes = new ConcurrentHashMap<>();
 
         public ReplApplContext(ReplicatedContext context) {
             super(context);

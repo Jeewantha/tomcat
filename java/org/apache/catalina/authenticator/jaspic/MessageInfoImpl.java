@@ -23,9 +23,11 @@ import javax.security.auth.message.MessageInfo;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.catalina.connector.Request;
+import org.apache.tomcat.util.res.StringManager;
 
 public class MessageInfoImpl implements MessageInfo {
+    protected static final StringManager sm = StringManager.getManager(MessageInfoImpl.class);
+
     public static final String IS_MANDATORY = "javax.security.auth.message.MessagePolicy.isMandatory";
 
     private final Map<String, Object> map = new HashMap<>();
@@ -35,7 +37,7 @@ public class MessageInfoImpl implements MessageInfo {
     public MessageInfoImpl() {
     }
 
-    public MessageInfoImpl(Request request, HttpServletResponse response, boolean authMandatory) {
+    public MessageInfoImpl(HttpServletRequest request, HttpServletResponse response, boolean authMandatory) {
         this.request = request;
         this.response = response;
         map.put(IS_MANDATORY, Boolean.toString(authMandatory));
@@ -61,8 +63,8 @@ public class MessageInfoImpl implements MessageInfo {
     @Override
     public void setRequestMessage(Object request) {
         if (!(request instanceof HttpServletRequest)) {
-            throw new IllegalArgumentException("Request is not a servlet request but "
-                    + request.getClass().getName());
+            throw new IllegalArgumentException(sm.getString("authenticator.jaspic.badRequestType",
+                    request.getClass().getName()));
         }
         this.request = (HttpServletRequest) request;
     }
@@ -70,8 +72,8 @@ public class MessageInfoImpl implements MessageInfo {
     @Override
     public void setResponseMessage(Object response) {
         if (!(response instanceof HttpServletResponse)) {
-            throw new IllegalArgumentException("response is not a servlet response but "
-                    + response.getClass().getName());
+            throw new IllegalArgumentException(sm.getString("authenticator.jaspic.badResponseType",
+                    response.getClass().getName()));
         }
         this.response = (HttpServletResponse) response;
     }

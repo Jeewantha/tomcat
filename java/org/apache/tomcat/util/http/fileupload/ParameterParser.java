@@ -119,7 +119,7 @@ public class ParameterParser {
     /**
      * Tests if the given character is present in the array of characters.
      *
-     * @param ch the character to test for presense in the array of characters
+     * @param ch the character to test for presence in the array of characters
      * @param charray the array of characters to test against
      *
      * @return {@code true} if the character is present in the array of
@@ -226,7 +226,7 @@ public class ParameterParser {
      *
      * @return a map of name/value pairs
      */
-    public Map<String,String> parse(final String str, char[] separators) {
+    public Map<String, String> parse(final String str, char[] separators) {
         if (separators == null || separators.length == 0) {
             return new HashMap<>();
         }
@@ -253,7 +253,7 @@ public class ParameterParser {
      *
      * @return a map of name/value pairs
      */
-    public Map<String,String> parse(final String str, char separator) {
+    public Map<String, String> parse(final String str, char separator) {
         if (str == null) {
             return new HashMap<>();
         }
@@ -270,7 +270,7 @@ public class ParameterParser {
      *
      * @return a map of name/value pairs
      */
-    public Map<String,String> parse(final char[] charArray, char separator) {
+    public Map<String, String> parse(final char[] charArray, char separator) {
         if (charArray == null) {
             return new HashMap<>();
         }
@@ -289,7 +289,7 @@ public class ParameterParser {
      *
      * @return a map of name/value pairs
      */
-    public Map<String,String> parse(
+    public Map<String, String> parse(
         final char[] charArray,
         int offset,
         int length,
@@ -298,7 +298,7 @@ public class ParameterParser {
         if (charArray == null) {
             return new HashMap<>();
         }
-        HashMap<String,String> params = new HashMap<>();
+        HashMap<String, String> params = new HashMap<>();
         this.chars = charArray;
         this.pos = offset;
         this.len = length;

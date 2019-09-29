@@ -18,6 +18,8 @@ package javax.servlet.http;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import javax.servlet.ServletResponseWrapper;
 
@@ -92,8 +94,7 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * @deprecated As of Version 3.0 of the Java Servlet API
      */
     @Override
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public String encodeUrl(String url) {
         return this._getHttpServletResponse().encodeUrl(url);
     }
@@ -105,8 +106,7 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * @deprecated As of Version 3.0 of the Java Servlet API
      */
     @Override
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public String encodeRedirectUrl(String url) {
         return this._getHttpServletResponse().encodeRedirectUrl(url);
     }
@@ -208,8 +208,7 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * @deprecated As of Version 3.0 of the Java Servlet API
      */
     @Override
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public void setStatus(int sc, String sm) {
         this._getHttpServletResponse().setStatus(sc, sm);
     }
@@ -219,7 +218,7 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * <p>
      * The default implementation is to call
      * {@link HttpServletResponse#getStatus()}
-     * on the wrapper {@link HttpServletResponse}.
+     * on the wrapped {@link HttpServletResponse}.
      *
      * @since Servlet 3.0
      */
@@ -233,7 +232,7 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * <p>
      * The default implementation is to call
      * {@link HttpServletResponse#getHeader(String)}
-     * on the wrapper {@link HttpServletResponse}.
+     * on the wrapped {@link HttpServletResponse}.
      *
      * @since Servlet 3.0
      */
@@ -247,7 +246,7 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * <p>
      * The default implementation is to call
      * {@link HttpServletResponse#getHeaders(String)}
-     * on the wrapper {@link HttpServletResponse}.
+     * on the wrapped {@link HttpServletResponse}.
      *
      * @since Servlet 3.0
      */
@@ -261,12 +260,40 @@ public class HttpServletResponseWrapper extends ServletResponseWrapper
      * <p>
      * The default implementation is to call
      * {@link HttpServletResponse#getHeaderNames()}
-     * on the wrapper {@link HttpServletResponse}.
+     * on the wrapped {@link HttpServletResponse}.
      *
      * @since Servlet 3.0
      */
     @Override
     public Collection<String> getHeaderNames() {
         return this._getHttpServletResponse().getHeaderNames();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The default implementation is to call
+     * {@link HttpServletResponse#setTrailerFields(Supplier)}
+     * on the wrapped {@link HttpServletResponse}.
+     *
+     * @since Servlet 4.0
+     */
+    @Override
+    public void setTrailerFields(Supplier<Map<String, String>> supplier) {
+        this._getHttpServletResponse().setTrailerFields(supplier);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The default implementation is to call
+     * {@link HttpServletResponse#getTrailerFields()}
+     * on the wrapped {@link HttpServletResponse}.
+     *
+     * @since Servlet 4.0
+     */
+    @Override
+    public Supplier<Map<String, String>> getTrailerFields() {
+        return this._getHttpServletResponse().getTrailerFields();
     }
 }

@@ -20,8 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.startup.Tomcat;
@@ -29,11 +28,11 @@ import org.apache.tomcat.util.buf.ByteChunk;
 
 /**
  * Test case for {@link LegacyCookieProcessor}. <b>Note</b> because of the use
- * of <code>final static</code> constants in {@link CookieSupport}, each of
- * these tests must be executed in a new JVM instance. The tests have been place
- * in separate classes to facilitate this when running the unit tests via Ant.
+ * of <code>final static</code> constants in {@link javax.servlet.http.Cookie},
+ * each of these tests must be executed in a new JVM instance. The tests have
+ * been placed in separate classes to facilitate this when running the unit
+ * tests via Ant.
  */
-@SuppressWarnings("javadoc")
 public class TestCookiesStrictSysProps extends CookiesBaseTest {
 
     @Override
@@ -50,26 +49,24 @@ public class TestCookiesStrictSysProps extends CookiesBaseTest {
         tomcat.start();
 
         ByteChunk res = getUrl("http://localhost:" + getPort() + "/invalid");
-        assertEquals("Cookie name fail", res.toString());
+        Assert.assertEquals("Cookie name fail", res.toString());
         res = getUrl("http://localhost:" + getPort() + "/null");
-        assertEquals("Cookie name fail", res.toString());
+        Assert.assertEquals("Cookie name fail", res.toString());
         res = getUrl("http://localhost:" + getPort() + "/blank");
-        assertEquals("Cookie name fail", res.toString());
+        Assert.assertEquals("Cookie name fail", res.toString());
         res = getUrl("http://localhost:" + getPort() + "/invalidFwd");
-        assertEquals("Cookie name fail", res.toString());
+        Assert.assertEquals("Cookie name fail", res.toString());
         res = getUrl("http://localhost:" + getPort() + "/invalidStrict");
-        assertEquals("Cookie name fail", res.toString());
+        Assert.assertEquals("Cookie name fail", res.toString());
         res = getUrl("http://localhost:" + getPort() + "/valid");
-        assertEquals("Cookie name ok", res.toString());
+        Assert.assertEquals("Cookie name ok", res.toString());
 
         // Need to read response headers to test version switching
         Map<String,List<String>> headers = new HashMap<>();
         getUrl("http://localhost:" + getPort() + "/switch", res, headers);
         List<String> cookieHeaders = headers.get("Set-Cookie");
         for (String cookieHeader : cookieHeaders) {
-            assertEquals("name=\"val?ue\"; Version=1", cookieHeader);
+            Assert.assertEquals("name=\"val?ue\"; Version=1", cookieHeader);
         }
-
     }
-
 }

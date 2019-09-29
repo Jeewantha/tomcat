@@ -27,6 +27,7 @@ import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
+import org.apache.juli.logging.Log;
 
 /**
  * Implementation of a Valve that performs filtering based on comparing the
@@ -131,12 +132,20 @@ public abstract class RequestFilterValve extends ValveBase {
      */
     private boolean invalidAuthenticationWhenDeny = false;
 
+    /**
+     * Flag deciding whether we add the server connector port to the property
+     * compared in the filtering method. The port will be appended
+     * using a ";" as a separator.
+     */
+    private volatile boolean addConnectorPort = false;
+
     // ------------------------------------------------------------- Properties
 
 
     /**
      * Return the regular expression used to test for allowed requests for this
      * Valve, if any; otherwise, return <code>null</code>.
+     * @return the regular expression
      */
     public String getAllow() {
         return allowValue;
@@ -170,6 +179,7 @@ public abstract class RequestFilterValve extends ValveBase {
     /**
      * Return the regular expression used to test for denied requests for this
      * Valve, if any; otherwise, return <code>null</code>.
+     * @return the regular expression
      */
     public String getDeny() {
         return denyValue;
@@ -204,6 +214,7 @@ public abstract class RequestFilterValve extends ValveBase {
      * Returns {@code false} if the last change to the {@code allow} pattern did
      * not apply successfully. E.g. if the pattern is syntactically
      * invalid.
+     * @return <code>false</code> if the current pattern is invalid
      */
     public final boolean isAllowValid() {
         return allowValid;
@@ -214,6 +225,7 @@ public abstract class RequestFilterValve extends ValveBase {
      * Returns {@code false} if the last change to the {@code deny} pattern did
      * not apply successfully. E.g. if the pattern is syntactically
      * invalid.
+     * @return <code>false</code> if the current pattern is invalid
      */
     public final boolean isDenyValid() {
         return denyValid;
@@ -221,7 +233,7 @@ public abstract class RequestFilterValve extends ValveBase {
 
 
     /**
-     * Return response status code that is used to reject denied request.
+     * @return response status code that is used to reject denied request.
      */
     public int getDenyStatus() {
         return denyStatus;
@@ -230,6 +242,7 @@ public abstract class RequestFilterValve extends ValveBase {
 
     /**
      * Set response status code that is used to reject denied request.
+     * @param denyStatus The status code
      */
     public void setDenyStatus(int denyStatus) {
         this.denyStatus = denyStatus;
@@ -237,7 +250,7 @@ public abstract class RequestFilterValve extends ValveBase {
 
 
     /**
-     * Return true if a deny is handled by setting an invalid auth header.
+     * @return <code>true</code> if a deny is handled by setting an invalid auth header.
      */
     public boolean getInvalidAuthenticationWhenDeny() {
         return invalidAuthenticationWhenDeny;
@@ -246,11 +259,34 @@ public abstract class RequestFilterValve extends ValveBase {
 
     /**
      * Set invalidAuthenticationWhenDeny property.
+     * @param value <code>true</code> to handle a deny by setting an invalid auth header
      */
     public void setInvalidAuthenticationWhenDeny(boolean value) {
         invalidAuthenticationWhenDeny = value;
     }
 
+
+    /**
+     * Get the flag deciding whether we add the server connector port to the
+     * property compared in the filtering method. The port will be appended
+     * using a ";" as a separator.
+     * @return <code>true</code> to add the connector port
+     */
+    public boolean getAddConnectorPort() {
+        return addConnectorPort;
+    }
+
+
+    /**
+     * Set the flag deciding whether we add the server connector port to the
+     * property compared in the filtering method. The port will be appended
+     * using a ";" as a separator.
+     *
+     * @param addConnectorPort The new flag
+     */
+    public void setAddConnectorPort(boolean addConnectorPort) {
+        this.addConnectorPort = addConnectorPort;
+    }
 
     // --------------------------------------------------------- Public Methods
 
@@ -313,10 +349,17 @@ public abstract class RequestFilterValve extends ValveBase {
             return;
         }
 
+        if (getLog().isDebugEnabled()) {
+            getLog().debug(sm.getString("requestFilterValve.deny",
+                    request.getRequestURI(), property));
+        }
+
         // Deny this request
         denyRequest(request, response);
-
     }
+
+
+    protected abstract Log getLog();
 
 
     /**
@@ -352,8 +395,8 @@ public abstract class RequestFilterValve extends ValveBase {
      * called through JMX, e.g. to test whether certain IP address is allowed or
      * denied by the valve configuration.
      *
-     * @param property
-     *            The request property value on which to filter
+     * @param property The request property value on which to filter
+     * @return <code>true</code> if the request is allowed
      */
     public boolean isAllowed(String property) {
         // Use local copies for thread safety

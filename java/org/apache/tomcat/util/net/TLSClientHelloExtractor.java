@@ -16,6 +16,8 @@
  */
 package org.apache.tomcat.util.net;
 
+import java.io.IOException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -23,11 +25,13 @@ import java.util.List;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.net.jsse.openssl.Cipher;
+import org.apache.tomcat.util.http.parser.HttpParser;
+import org.apache.tomcat.util.net.openssl.ciphers.Cipher;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * This class extracts the SNI host name from a TLS client-hello message.
+ * This class extracts the SNI host name and ALPN protocols from a TLS
+ * client-hello message.
  */
 public class TLSClientHelloExtractor {
 
@@ -37,8 +41,19 @@ public class TLSClientHelloExtractor {
     private final ExtractorResult result;
     private final List<Cipher> clientRequestedCiphers;
     private final String sniValue;
+    private final List<String> clientRequestedApplicationProtocols;
 
     private static final int TLS_RECORD_HEADER_LEN = 5;
+
+    private static final int TLS_EXTENSION_SERVER_NAME = 0;
+    private static final int TLS_EXTENSION_ALPN = 16;
+
+    public static byte[] USE_TLS_RESPONSE = ("HTTP/1.1 400 \r\n" +
+            "Content-Type: text/plain;charset=ISO-8859-1\r\n" +
+            "Connection: close\r\n" +
+            "\r\n" +
+            "Bad Request\r\n" +
+            "This combination of host and port requires TLS.\r\n").getBytes(StandardCharsets.ISO_8859_1);
 
 
     /**
@@ -48,17 +63,16 @@ public class TLSClientHelloExtractor {
      * exits.
      *
      * @param netInBuffer The buffer containing the TLS data to process
+     * @throws IOException If the client hello message is malformed
      */
-    public TLSClientHelloExtractor(ByteBuffer netInBuffer) {
-        // TODO: Detect use of http on a secure connection and provide a simple
-        //       error page.
-
+    public TLSClientHelloExtractor(ByteBuffer netInBuffer) throws IOException {
         // Buffer is in write mode at this point. Record the current position so
         // the buffer state can be restored at the end of this method.
         int pos = netInBuffer.position();
         int limit = netInBuffer.limit();
         ExtractorResult result = ExtractorResult.NOT_PRESENT;
         List<Cipher> clientRequestedCiphers = new ArrayList<>();
+        List<String> clientRequestedApplicationProtocols = new ArrayList<>();
         String sniValue = null;
         try {
             // Switch to read mode.
@@ -72,6 +86,10 @@ public class TLSClientHelloExtractor {
             }
 
             if (!isTLSHandshake(netInBuffer)) {
+                // Is the client trying to use clear text HTTP?
+                if (isHttp(netInBuffer)) {
+                    result = ExtractorResult.NON_SECURE;
+                }
                 return;
             }
 
@@ -116,16 +134,34 @@ public class TLSClientHelloExtractor {
 
             // Extension length
             skipBytes(netInBuffer, 2);
-            // Read the extensions until we run out of data or find the SNI
-            while (netInBuffer.hasRemaining() && sniValue == null) {
-                sniValue = readSniExtension(netInBuffer);
+            // Read the extensions until we run out of data or find the data
+            // we need
+            while (netInBuffer.hasRemaining() &&
+                    (sniValue == null || clientRequestedApplicationProtocols.size() == 0)) {
+                // Extension type is two byte
+                char extensionType = netInBuffer.getChar();
+                // Extension size is another two bytes
+                char extensionDataSize = netInBuffer.getChar();
+                switch (extensionType) {
+                case TLS_EXTENSION_SERVER_NAME: {
+                    sniValue = readSniExtension(netInBuffer);
+                    break;
+                }
+                case TLS_EXTENSION_ALPN:
+                    readAlpnExtension(netInBuffer, clientRequestedApplicationProtocols);
+                    break;
+                default: {
+                    skipBytes(netInBuffer, extensionDataSize);
+                }
+                }
             }
-            if (sniValue != null) {
-                result = ExtractorResult.COMPLETE;
-            }
+            result = ExtractorResult.COMPLETE;
+        } catch (BufferUnderflowException | IllegalArgumentException e) {
+            throw new IOException(sm.getString("sniExtractor.clientHelloInvalid"), e);
         } finally {
             this.result = result;
             this.clientRequestedCiphers = clientRequestedCiphers;
+            this.clientRequestedApplicationProtocols = clientRequestedApplicationProtocols;
             this.sniValue = sniValue;
             // Whatever happens, return the buffer to its original state
             netInBuffer.limit(limit);
@@ -151,6 +187,15 @@ public class TLSClientHelloExtractor {
     public List<Cipher> getClientRequestedCiphers() {
         if (result == ExtractorResult.COMPLETE || result == ExtractorResult.NOT_PRESENT) {
             return clientRequestedCiphers;
+        } else {
+            throw new IllegalStateException();
+        }
+    }
+
+
+    public List<String> getClientRequestedApplicationProtocols() {
+        if (result == ExtractorResult.COMPLETE || result == ExtractorResult.NOT_PRESENT) {
+            return clientRequestedApplicationProtocols;
         } else {
             throw new IllegalStateException();
         }
@@ -192,6 +237,67 @@ public class TLSClientHelloExtractor {
     }
 
 
+    private static boolean isHttp(ByteBuffer bb) {
+        // Based on code in Http11InputBuffer
+        // Note: The actual request is not important. This code only checks that
+        //       the buffer contains a correctly formatted HTTP request line.
+        //       The method, target and protocol are not validated.
+        byte chr = 0;
+        bb.position(0);
+
+        // Skip blank lines
+        do {
+            if (!bb.hasRemaining()) {
+                return false;
+            }
+            chr = bb.get();
+        } while (chr == '\r' || chr == '\n');
+
+        // Read the method
+        do {
+            if (!HttpParser.isToken(chr) || !bb.hasRemaining()) {
+                return false;
+            }
+            chr = bb.get();
+        } while (chr != ' ' && chr != '\t');
+
+        // Whitespace between method and target
+        while (chr == ' ' || chr == '\t') {
+            if (!bb.hasRemaining()) {
+                return false;
+            }
+            chr = bb.get();
+        }
+
+        // Read the target
+        while (chr != ' ' && chr != '\t') {
+            if (HttpParser.isNotRequestTarget(chr) || !bb.hasRemaining()) {
+                return false;
+            }
+            chr = bb.get();
+        }
+
+        // Whitespace between target and protocol
+        while (chr == ' ' || chr == '\t') {
+            if (!bb.hasRemaining()) {
+                return false;
+            }
+            chr = bb.get();
+        }
+
+        // Read protocol
+        do {
+            if (!HttpParser.isHttpProtocol(chr) || !bb.hasRemaining()) {
+                return false;
+            }
+            chr = bb.get();
+
+        } while (chr != '\r' && chr != '\n');
+
+        return true;
+    }
+
+
     private static boolean isAllRecordAvailable(ByteBuffer bb) {
         // Next two bytes (unsigned) are the size of the record. We need all of
         // it.
@@ -223,30 +329,38 @@ public class TLSClientHelloExtractor {
 
 
     private static String readSniExtension(ByteBuffer bb) {
-        // SNI extension is type 0
-        char extensionType = bb.getChar();
-        // Next byte is data size
-        char extensionDataSize = bb.getChar();
-        if (extensionType == 0) {
-            // First 2 bytes are size of server name list (only expecting one)
-            // Next byte is type (0 for hostname)
-            skipBytes(bb, 3);
-            // Next 2 bytes are length of host name
-            char serverNameSize = bb.getChar();
-            byte[] serverNameBytes = new byte[serverNameSize];
-            bb.get(serverNameBytes);
-            return new String(serverNameBytes, StandardCharsets.UTF_8);
-        } else {
-            skipBytes(bb, extensionDataSize);
-        }
-        return null;
+        // First 2 bytes are size of server name list (only expecting one)
+        // Next byte is type (0 for hostname)
+        skipBytes(bb, 3);
+        // Next 2 bytes are length of host name
+        char serverNameSize = bb.getChar();
+        byte[] serverNameBytes = new byte[serverNameSize];
+        bb.get(serverNameBytes);
+        return new String(serverNameBytes, StandardCharsets.UTF_8);
     }
 
 
-    public static enum ExtractorResult {
+    private static void readAlpnExtension(ByteBuffer bb, List<String> protocolNames) {
+        // First 2 bytes are size of the protocol list
+        char toRead = bb.getChar();
+        byte[] inputBuffer = new byte[255];
+        while (toRead > 0) {
+            // Each list entry has one byte for length followed by a string of
+            // that length
+            int len = bb.get() & 0xFF;
+            bb.get(inputBuffer, 0, len);
+            protocolNames.add(new String(inputBuffer, 0, len, StandardCharsets.UTF_8));
+            toRead--;
+            toRead -= len;
+        }
+    }
+
+
+    public enum ExtractorResult {
         COMPLETE,
         NOT_PRESENT,
         UNDERFLOW,
-        NEED_READ
+        NEED_READ,
+        NON_SECURE
     }
 }

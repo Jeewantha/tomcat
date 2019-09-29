@@ -27,7 +27,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -50,7 +49,7 @@ public class TestWebappClassLoaderExecutorMemoryLeak extends TomcatBaseTest {
 
         ExecutorServlet executorServlet = new ExecutorServlet();
         Tomcat.addServlet(ctx, "taskServlet", executorServlet);
-        ctx.addServletMapping("/", "taskServlet");
+        ctx.addServletMappingDecoded("/", "taskServlet");
 
         tomcat.start();
 
@@ -84,7 +83,7 @@ public class TestWebappClassLoaderExecutorMemoryLeak extends TomcatBaseTest {
         long n = 1000L;
         int tpSize = 10;
 
-        public volatile ThreadPoolExecutor tpe;
+        public transient volatile ThreadPoolExecutor tpe;
 
         @Override
         protected void doGet(HttpServletRequest req, HttpServletResponse resp)
@@ -105,7 +104,7 @@ public class TestWebappClassLoaderExecutorMemoryLeak extends TomcatBaseTest {
             resp.getWriter().flush();
         }
 
-        class Task implements Runnable {
+        static class Task implements Runnable {
 
             String _id;
 

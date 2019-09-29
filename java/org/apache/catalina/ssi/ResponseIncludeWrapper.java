@@ -20,21 +20,16 @@ package org.apache.catalina.ssi;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.Locale;
-import java.util.TimeZone;
 
-import javax.servlet.ServletContext;
 import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
 
-import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.http.FastHttpDateFormat;
 
 /**
- * A HttpServletResponseWrapper, used from
+ * An HttpServletResponseWrapper, used from
  * <code>SSIServletExternalResolver</code>
  *
  * @author Bip Thelin
@@ -44,13 +39,9 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
     /**
      * The names of some headers we want to capture.
      */
-    private static final String CONTENT_TYPE = "content-type";
     private static final String LAST_MODIFIED = "last-modified";
-    private static final DateFormat RFC1123_FORMAT;
-    private static final String RFC1123_PATTERN = "EEE, dd MMM yyyy HH:mm:ss z";
 
     protected long lastModified = -1;
-    private String contentType = null;
 
     /**
      * Our ServletOutputStream
@@ -59,29 +50,16 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
     protected ServletOutputStream servletOutputStream;
     protected PrintWriter printWriter;
 
-    private final ServletContext context;
-    private final HttpServletRequest request;
-
-    static {
-        RFC1123_FORMAT = new SimpleDateFormat(RFC1123_PATTERN, Locale.US);
-        RFC1123_FORMAT.setTimeZone(TimeZone.getTimeZone("GMT"));
-    }
-
     /**
      * Initialize our wrapper with the current HttpServletResponse and
      * ServletOutputStream.
      *
-     * @param context The servlet context
-     * @param request The HttpServletResponse to use
      * @param response The response to use
      * @param captureServletOutputStream The ServletOutputStream to use
      */
-    public ResponseIncludeWrapper(ServletContext context,
-            HttpServletRequest request, HttpServletResponse response,
+    public ResponseIncludeWrapper(HttpServletResponse response,
             ServletOutputStream captureServletOutputStream) {
         super(response);
-        this.context = context;
-        this.request = request;
         this.captureServletOutputStream = captureServletOutputStream;
     }
 
@@ -90,6 +68,7 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
      * Flush the servletOutputStream or printWriter ( only one will be non-null )
      * This must be called after a requestDispatcher.include, since we can't
      * assume that the included servlet flushed its stream.
+     * @throws IOException an IO error occurred
      */
     public void flushOutputStreamOrWriter() throws IOException {
         if (servletOutputStream != null) {
@@ -153,48 +132,8 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
      *   known.
      */
     public long getLastModified() {
-        if (lastModified == -1) {
-            // javadocs say to return -1 if date not known, if you want another
-            // default, put it here
-            return -1;
-        }
         return lastModified;
     }
-
-    /**
-     * Returns the value of the <code>content-type</code> header field.
-     *
-     * @return the content type of the resource referenced by this
-     *   <code>ResponseIncludeWrapper</code>, or <code>null</code> if not known.
-     */
-    @Override
-    public String getContentType() {
-        if (contentType == null) {
-            String url = request.getRequestURI();
-            String mime = context.getMimeType(url);
-            if (mime != null) {
-                setContentType(mime);
-            } else {
-                // return a safe value
-                setContentType("application/x-octet-stream");
-            }
-        }
-        return contentType;
-    }
-
-    /**
-     * Sets the value of the <code>content-type</code> header field.
-     *
-     * @param mime a mime type
-     */
-    @Override
-    public void setContentType(String mime) {
-        contentType = mime;
-        if (contentType != null) {
-            getResponse().setContentType(contentType);
-        }
-    }
-
 
     @Override
     public void addDateHeader(String name, long value) {
@@ -210,15 +149,10 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
         super.addHeader(name, value);
         String lname = name.toLowerCase(Locale.ENGLISH);
         if (lname.equals(LAST_MODIFIED)) {
-            try {
-                synchronized(RFC1123_FORMAT) {
-                    lastModified = RFC1123_FORMAT.parse(value).getTime();
-                }
-            } catch (Throwable ignore) {
-                ExceptionUtils.handleThrowable(ignore);
+            long lastModified = FastHttpDateFormat.parseDate(value);
+            if (lastModified != -1) {
+                this.lastModified = lastModified;
             }
-        } else if (lname.equals(CONTENT_TYPE)) {
-            contentType = value;
         }
     }
 
@@ -236,17 +170,10 @@ public class ResponseIncludeWrapper extends HttpServletResponseWrapper {
         super.setHeader(name, value);
         String lname = name.toLowerCase(Locale.ENGLISH);
         if (lname.equals(LAST_MODIFIED)) {
-            try {
-                synchronized(RFC1123_FORMAT) {
-                    lastModified = RFC1123_FORMAT.parse(value).getTime();
-                }
-            } catch (Throwable ignore) {
-                ExceptionUtils.handleThrowable(ignore);
+            long lastModified = FastHttpDateFormat.parseDate(value);
+            if (lastModified != -1) {
+                this.lastModified = lastModified;
             }
-        }
-        else if (lname.equals(CONTENT_TYPE))
-        {
-            contentType = value;
         }
     }
 }

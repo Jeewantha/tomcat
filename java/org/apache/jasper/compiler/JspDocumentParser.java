@@ -21,7 +21,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.AccessController;
 import java.util.Collection;
-import java.util.Iterator;
 
 import javax.servlet.jsp.tagext.TagFileInfo;
 import javax.servlet.jsp.tagext.TagInfo;
@@ -32,10 +31,10 @@ import javax.xml.parsers.SAXParserFactory;
 import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.descriptor.DigesterFactory;
 import org.apache.tomcat.util.descriptor.LocalResolver;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
-import org.apache.tomcat.util.scan.Jar;
 import org.apache.tomcat.util.security.PrivilegedGetTccl;
 import org.apache.tomcat.util.security.PrivilegedSetTccl;
 import org.xml.sax.Attributes;
@@ -239,14 +238,12 @@ class JspDocumentParser
      */
     private void addInclude(Node parent, Collection<String> files) throws SAXException {
         if (files != null) {
-            Iterator<String> iter = files.iterator();
-            while (iter.hasNext()) {
-                String file = iter.next();
+            for (String file : files) {
                 AttributesImpl attrs = new AttributesImpl();
                 attrs.addAttribute("", "file", "file", "CDATA", file);
 
                 // Create a dummy Include directive node
-                    Node includeDir =
+                Node includeDir =
                         new Node.IncludeDirective(attrs, null, // XXX
     parent);
                 processIncludeDirective(file, includeDir);
@@ -651,7 +648,7 @@ class JspDocumentParser
 
         if (current instanceof Node.NamedAttribute) {
             boolean isTrim = ((Node.NamedAttribute)current).isTrim();
-            Node.Nodes subElems = ((Node.NamedAttribute)current).getBody();
+            Node.Nodes subElems = current.getBody();
             for (int i = 0; subElems != null && i < subElems.size(); i++) {
                 Node subElem = subElems.getNode(i);
                 if (!(subElem instanceof Node.TemplateText)) {
@@ -738,8 +735,7 @@ class JspDocumentParser
             startMark = new Mark(ctxt, path, locator.getLineNumber(),
                     locator.getColumnNumber());
             @SuppressWarnings("unused")
-            Node unused = new Node.Comment(
-                    new String(buf, offset, len), startMark, current);
+            Node unused = new Node.Comment(new String(buf, offset, len), startMark, current);
         }
     }
 

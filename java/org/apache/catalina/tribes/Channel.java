@@ -17,6 +17,11 @@
 package org.apache.catalina.tribes;
 
 import java.io.Serializable;
+import java.util.StringJoiner;
+import java.util.concurrent.ScheduledExecutorService;
+
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 
 /**
  * Channel interface<br>
@@ -253,6 +258,7 @@ public interface Channel {
      * send a pure byte array
      * @param options int - sender options, see class documentation for each interceptor that is configured in order to trigger interceptors
      * @return a unique Id that identifies the message that is sent
+     * @throws ChannelException if a serialization error happens.
      * @see ByteMessage
      * @see #SEND_OPTIONS_USE_ACK
      * @see #SEND_OPTIONS_ASYNCHRONOUS
@@ -356,5 +362,112 @@ public interface Channel {
      */
     public Member getMember(Member mbr);
 
+    /**
+     * Return the name of this channel.
+     * @return channel name
+     */
+    public String getName();
+
+    /**
+     * Set the name of this channel
+     * @param name The new channel name
+     */
+    public void setName(String name);
+
+    /**
+     * Return executor that can be used for utility tasks.
+     * @return the executor
+     */
+    public ScheduledExecutorService getUtilityExecutor();
+
+    /**
+     * Set the executor that can be used for utility tasks.
+     * @param utilityExecutor the executor
+     */
+    public void setUtilityExecutor(ScheduledExecutorService utilityExecutor);
+
+    /**
+     * Translates the name of an option to its integer value.  Valid option names are "asynchronous" (alias "async"),
+     * "byte_message" (alias "byte"), "multicast", "secure", "synchronized_ack" (alias "sync"), "udp", "use_ack"
+     * @param opt The name of the option
+     * @return the int value of the passed option name
+     */
+    public static int getSendOptionValue(String opt){
+
+        switch (opt){
+
+            case "asynchronous":
+            case "async":
+                return SEND_OPTIONS_ASYNCHRONOUS;
+
+            case "byte_message":
+            case "byte":
+                return SEND_OPTIONS_BYTE_MESSAGE;
+
+            case "multicast":
+                return SEND_OPTIONS_MULTICAST;
+
+            case "secure":
+                return SEND_OPTIONS_SECURE;
+
+            case "synchronized_ack":
+            case "sync":
+                return SEND_OPTIONS_SYNCHRONIZED_ACK;
+
+            case "udp":
+                return SEND_OPTIONS_UDP;
+
+            case "use_ack":
+                return SEND_OPTIONS_USE_ACK;
+        }
+
+        throw new IllegalArgumentException(String.format("[%s] is not a valid option", opt));
+    }
+
+    /**
+     * Translates a comma separated list of option names to their bitwise-ORd value
+     * @param input A comma separated list of options, e.g. "async, multicast"
+     * @return a bitwise ORd value of the passed option names
+     */
+    public static int parseSendOptions(String input){
+
+        try {
+            return Integer.parseInt(input);
+        } catch (NumberFormatException nfe){
+            final Log log = LogFactory.getLog(Channel.class);
+            log.trace(String.format("Failed to parse [%s] as integer, channelSendOptions possibly set by name(s)", input));
+        }
+
+        String[] options = input.split("\\s*,\\s*");
+
+        int result = 0;
+        for (String opt : options) {
+            result |= getSendOptionValue(opt);
+        }
+
+        return result;
+    }
+
+    /**
+     * Translates an integer value of SendOptions to its human-friendly comma separated value list for use in JMX and such.
+     * @param input the int value of SendOptions
+     * @return the human-friendly string representation in a reverse order (i.e. the last option will be shown first)
+     */
+    public static String getSendOptionsAsString(int input){
+
+        // allOptionNames must be in order of the bits of the available options
+        final String[] allOptionNames = new String[]{ "byte", "use_ack", "sync", "async", "secure", "udp", "multicast" };
+
+        StringJoiner names = new StringJoiner(", ");
+        for (int bit=allOptionNames.length - 1; bit >= 0; bit--){
+
+            // if the bit is set then add the name to the result
+            if (((1 << bit) & input) > 0){
+                names.add(allOptionNames[bit]);
+            }
+        }
+
+        return names.toString();
+    }
 
 }

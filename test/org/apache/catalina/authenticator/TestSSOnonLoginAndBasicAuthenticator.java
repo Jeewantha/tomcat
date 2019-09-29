@@ -24,11 +24,7 @@ import java.util.Map;
 
 import javax.servlet.http.HttpServletResponse;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -269,7 +265,7 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
 
         // verify the sessionID was encoded in the absolute URL
         String firstEncodedURL = encodedURL;
-        assertTrue(firstEncodedURL.contains(ENCODE_SESSION_PARAM));
+        Assert.assertTrue(firstEncodedURL.contains(ENCODE_SESSION_PARAM));
 
         // access the protected resource with the encoded url (with session id)
         doTestBasic(firstEncodedURL + forwardParam,
@@ -279,8 +275,8 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         // verify the sessionID has not changed
         // verify the SSO sessionID was not encoded
         String secondEncodedURL = encodedURL;
-        assertEquals(firstEncodedURL, secondEncodedURL);
-        assertFalse(firstEncodedURL.contains(ENCODE_SSOSESSION_PARAM));
+        Assert.assertEquals(firstEncodedURL, secondEncodedURL);
+        Assert.assertFalse(firstEncodedURL.contains(ENCODE_SSOSESSION_PARAM));
 
         // extract the first container's session ID
         int ix = secondEncodedURL.indexOf(ENCODE_SESSION_PARAM);
@@ -363,11 +359,11 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
                 respHeaders);
 
         if (expectedRC != HttpServletResponse.SC_OK) {
-            assertEquals(expectedRC, rc);
-            assertTrue(bc.getLength() > 0);
+            Assert.assertEquals(expectedRC, rc);
+            Assert.assertTrue(bc.getLength() > 0);
         }
         else {
-            assertEquals("OK", bc.toString());
+            Assert.assertEquals("OK", bc.toString());
         }
 }
 
@@ -393,26 +389,26 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         int rc = getUrl(HTTP_PREFIX + getPort() + uri, bc, reqHeaders,
                 respHeaders);
 
-        assertEquals("Unexpected Return Code", expectedRC, rc);
+        Assert.assertEquals("Unexpected Return Code", expectedRC, rc);
         if (expectedRC != HttpServletResponse.SC_OK) {
-            assertTrue(bc.getLength() > 0);
+            Assert.assertTrue(bc.getLength() > 0);
             if (expectedRC == HttpServletResponse.SC_UNAUTHORIZED) {
                 // The server should identify the acceptable method(s)
                 boolean methodFound = false;
                 List<String> authHeaders = respHeaders.get(SERVER_AUTH_HEADER);
                 for (String authHeader : authHeaders) {
-                    if (authHeader.indexOf(NICE_METHOD) > -1) {
+                    if (authHeader.contains(NICE_METHOD)) {
                         methodFound = true;
                         break;
                     }
                 }
-                assertTrue(methodFound);
+                Assert.assertTrue(methodFound);
             }
         }
         else {
             String thePage = bc.toString();
-            assertNotNull(thePage);
-            assertTrue(thePage.startsWith("OK"));
+            Assert.assertNotNull(thePage);
+            Assert.assertTrue(thePage.startsWith("OK"));
             if (useCookie) {
                 List<String> newCookies = respHeaders.get(SERVER_COOKIE_HEADER);
                 if (newCookies != null) {
@@ -484,10 +480,10 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         // Add protected servlet to the context
         Tomcat.addServlet(nonloginContext, "TesterServlet1",
                 new TesterServletEncodeUrl());
-        nonloginContext.addServletMapping(URI_PROTECTED, "TesterServlet1");
+        nonloginContext.addServletMappingDecoded(URI_PROTECTED, "TesterServlet1");
 
         SecurityCollection collection1 = new SecurityCollection();
-        collection1.addPattern(URI_PROTECTED);
+        collection1.addPatternDecoded(URI_PROTECTED);
         SecurityConstraint sc1 = new SecurityConstraint();
         sc1.addAuthRole(ROLE);
         sc1.addCollection(collection1);
@@ -496,10 +492,10 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         // Add unprotected servlet to the context
         Tomcat.addServlet(nonloginContext, "TesterServlet2",
                 new TesterServletEncodeUrl());
-        nonloginContext.addServletMapping(URI_PUBLIC, "TesterServlet2");
+        nonloginContext.addServletMappingDecoded(URI_PUBLIC, "TesterServlet2");
 
         SecurityCollection collection2 = new SecurityCollection();
-        collection2.addPattern(URI_PUBLIC);
+        collection2.addPatternDecoded(URI_PUBLIC);
         SecurityConstraint sc2 = new SecurityConstraint();
         // do not add a role - which signals access permitted without one
         sc2.addCollection(collection2);
@@ -523,9 +519,9 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         // Add protected servlet to the context
         Tomcat.addServlet(basicContext, "TesterServlet3",
                 new TesterServletEncodeUrl());
-        basicContext.addServletMapping(URI_PROTECTED, "TesterServlet3");
+        basicContext.addServletMappingDecoded(URI_PROTECTED, "TesterServlet3");
         SecurityCollection collection = new SecurityCollection();
-        collection.addPattern(URI_PROTECTED);
+        collection.addPatternDecoded(URI_PROTECTED);
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
         sc.addCollection(collection);
@@ -534,9 +530,9 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         // Add unprotected servlet to the context
         Tomcat.addServlet(basicContext, "TesterServlet4",
                 new TesterServletEncodeUrl());
-        basicContext.addServletMapping(URI_PUBLIC, "TesterServlet4");
+        basicContext.addServletMappingDecoded(URI_PUBLIC, "TesterServlet4");
         SecurityCollection collection2 = new SecurityCollection();
-        collection2.addPattern(URI_PUBLIC);
+        collection2.addPatternDecoded(URI_PUBLIC);
         SecurityConstraint sc2 = new SecurityConstraint();
         // do not add a role - which signals access permitted without one
         sc2.addCollection(collection2);
@@ -640,7 +636,7 @@ public class TestSSOnonLoginAndBasicAuthenticator extends TomcatBaseTest {
         }
 
         sessions = manager.findSessions();
-        assertTrue(sessions.length == 0);
+        Assert.assertTrue(sessions.length == 0);
     }
 
     /*

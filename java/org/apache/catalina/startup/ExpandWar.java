@@ -68,7 +68,7 @@ public class ExpandWar {
      * @exception IOException if an input/output error was encountered
      *  during expansion
      *
-     * @return The absolute path to the expanded directory foe the given WAR
+     * @return The absolute path to the expanded directory for the given WAR
      */
     public static String expand(Host host, URL war, String pathname)
         throws IOException {
@@ -100,7 +100,7 @@ public class ExpandWar {
             if (!warTracker.exists() || warTracker.lastModified() == warLastModified) {
                 // No (detectable) changes to the WAR
                 success = true;
-                return (docBase.getAbsolutePath());
+                return docBase.getAbsolutePath();
             }
 
             // WAR must have been modified. Remove expanded directory.
@@ -157,23 +157,32 @@ public class ExpandWar {
                 }
 
                 try (InputStream input = jarFile.getInputStream(jarEntry)) {
-                    if (null == input)
+                    if (null == input) {
                         throw new ZipException(sm.getString("expandWar.missingJarEntry",
                                 jarEntry.getName()));
+                    }
 
                     // Bugzilla 33636
                     expand(input, expandedFile);
                     long lastModified = jarEntry.getTime();
                     if ((lastModified != -1) && (lastModified != 0)) {
-                        expandedFile.setLastModified(lastModified);
+                        if (!expandedFile.setLastModified(lastModified)) {
+                            throw new IOException(
+                                    sm.getString("expandWar.lastModifiedFailed", expandedFile));
+                        }
                     }
                 }
-
-                // Create the warTracker file and align the last modified time
-                // with the last modified time of the WAR
-                warTracker.createNewFile();
-                warTracker.setLastModified(warLastModified);
             }
+
+            // Create the warTracker file and align the last modified time
+            // with the last modified time of the WAR
+            if (!warTracker.createNewFile()) {
+                throw new IOException(sm.getString("expandWar.createFileFailed", warTracker));
+            }
+            if (!warTracker.setLastModified(warLastModified)) {
+                throw new IOException(sm.getString("expandWar.lastModifiedFailed", warTracker));
+            }
+
             success = true;
         } catch (IOException e) {
             throw e;
@@ -241,6 +250,7 @@ public class ExpandWar {
      *
      * @param src File object representing the source
      * @param dest File object representing the destination
+     * @return <code>true</code> if the copy was successful
      */
     public static boolean copy(File src, File dest) {
 
@@ -281,6 +291,7 @@ public class ExpandWar {
      * sub-directories recursively. Any failure will be logged.
      *
      * @param dir File object representing the directory to be deleted
+     * @return <code>true</code> if the deletion was successful
      */
     public static boolean delete(File dir) {
         // Log failure by default
@@ -295,6 +306,7 @@ public class ExpandWar {
      * @param dir File object representing the directory to be deleted
      * @param logFailure <code>true</code> if failure to delete the resource
      *                   should be logged
+     * @return <code>true</code> if the deletion was successful
      */
     public static boolean delete(File dir, boolean logFailure) {
         boolean result;
@@ -320,6 +332,7 @@ public class ExpandWar {
      * sub-directories recursively. Any failure will be logged.
      *
      * @param dir File object representing the directory to be deleted
+     * @return <code>true</code> if the deletion was successful
      */
     public static boolean deleteDir(File dir) {
         return deleteDir(dir, true);
@@ -333,6 +346,7 @@ public class ExpandWar {
      * @param dir File object representing the directory to be deleted
      * @param logFailure <code>true</code> if failure to delete the resource
      *                   should be logged
+     * @return <code>true</code> if the deletion was successful
      */
     public static boolean deleteDir(File dir, boolean logFailure) {
 

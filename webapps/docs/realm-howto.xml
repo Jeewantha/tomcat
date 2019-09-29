@@ -26,7 +26,7 @@
         <author email="craigmcc@apache.org">Craig R. McClanahan</author>
         <author email="yoavs@apache.org">Yoav Shapira</author>
         <author email="arjaquith@mindspring.com">Andrew R. Jaquith</author>
-        <title>Realm Configuration HOW-TO</title>
+        <title>Realm Configuration How-To</title>
     </properties>
 
 <body>
@@ -47,7 +47,7 @@ to authenticate themselves.  If you are not utilizing these features, you can
 safely skip this document.</p>
 
 <p>For fundamental background information about container managed security,
-see the <a href="http://wiki.apache.org/tomcat/Specifications">Servlet
+see the <a href="https://wiki.apache.org/tomcat/Specifications">Servlet
 Specification (Version 2.4)</a>, Section 12.</p>
 
 <p>For information about utilizing the <em>Single Sign On</em> feature of
@@ -109,7 +109,7 @@ and integrate it with Tomcat.  To do so, you need to:</p>
   <li>Implement <code>org.apache.catalina.Realm</code>,</li>
   <li>Place your compiled realm in $CATALINA_HOME/lib,</li>
   <li>Declare your realm as described in the "Configuring a Realm" section below,</li>
-  <li>Declare your realm to the <a href="mbeans-descriptor-howto.html">MBeans Descriptor</a>.</li>
+  <li>Declare your realm to the <a href="mbeans-descriptors-howto.html">MBeans Descriptors</a>.</li>
 </ul>
 
 </subsection>
@@ -168,13 +168,15 @@ authentication.</p>
 
 <p>When a standard realm authenticates by retrieving the stored
 password and comparing it with the value presented by the user, you
-can select digested passwords by specifying the <code>digest</code>
-attribute on your <code>&lt;Realm&gt;</code> element.  The value for
-this attribute must be one of the digest algorithms supported by the
-<code>java.security.MessageDigest</code> class (SHA, MD2, or MD5).
-When you select this option, the contents of the password that is
-stored in the <code>Realm</code> must be the cleartext version of the
-password, as digested by the specified algorithm.</p>
+can select digested passwords by placing a <a href="config/credentialhandler.html">
+<code>CredentialHandler</code></a> element inside your <code>&lt;Realm&gt;</code>
+element. An easy choice to support one of the algorithms SSHA, SHA or MD5
+would be the usage of the <code>MessageDigestCredentialHandler</code>.
+This element must be configured to one of the digest algorithms supported
+by the <code>java.security.MessageDigest</code> class (SSHA, SHA or MD5).
+When you select this option, the contents of the password that is stored
+in the <code>Realm</code> must be the cleartext version of the password,
+as digested by the specified algorithm.</p>
 
 <p>When the <code>authenticate()</code> method of the Realm is called, the
 (cleartext) password specified by the user is itself digested by the same
@@ -451,8 +453,11 @@ as your database structure conforms to the following requirements:</p>
     at least read only access to the tables described above.  (Tomcat will
     never attempt to write to these tables.)</li>
 <li>Configure a JNDI named JDBC DataSource for your database.  Refer to the
-    <a href="jndi-datasource-examples-howto.html">JNDI DataSource Example HOW-TO</a>
-    for information on how to configure a JNDI named JDBC DataSource.</li>
+    <a href="jndi-datasource-examples-howto.html">JNDI DataSource Example
+    How-To</a> for information on how to configure a JNDI named JDBC DataSource.
+    Be sure to set the <code>Realm</code>&apos;s <code>localDataSource</code>
+    attribute appropriately, depending on where the JNDI DataSource is
+    defined.</li>
 <li>Set up a <code>&lt;Realm&gt;</code> element, as described below, in your
     <code>$CATALINA_BASE/conf/server.xml</code> file.</li>
 <li>Restart Tomcat if it is already running.</li>
@@ -721,7 +726,7 @@ scope of this document, because it is unique to each directory server
 implementation.  In the examples below, we will assume that you are using a
 distribution of the OpenLDAP directory server (version 2.0.11 or later), which
 can be downloaded from
-<a href="http://www.openldap.org">http://www.openldap.org</a>.  Assume that
+<a href="https://www.openldap.org">https://www.openldap.org</a>.  Assume that
 your <code>slapd.conf</code> file contains the following settings
 (among others):</p>
 <source>database ldbm
@@ -1027,7 +1032,7 @@ provided as part of the standard Java SE API.</p>
 practically any conceivable security realm with Tomcat's CMA. </p>
         <p>JAASRealm is prototype for Tomcat of the JAAS-based
 J2EE authentication framework for J2EE v1.4, based on the <a
- href="http://www.jcp.org/en/jsr/detail?id=196">JCP Specification
+ href="https://www.jcp.org/en/jsr/detail?id=196">JCP Specification
 Request 196</a> to enhance container-managed security and promote
 'pluggable' authentication mechanisms whose implementations would be
 container-independent.

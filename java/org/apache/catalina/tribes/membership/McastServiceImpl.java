@@ -26,8 +26,6 @@ import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.SocketTimeoutException;
 import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.catalina.tribes.Channel;
@@ -36,7 +34,6 @@ import org.apache.catalina.tribes.MembershipListener;
 import org.apache.catalina.tribes.MessageListener;
 import org.apache.catalina.tribes.io.ChannelData;
 import org.apache.catalina.tribes.io.XByteBuffer;
-import org.apache.catalina.tribes.util.ExecutorFactory;
 import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -50,7 +47,7 @@ import org.apache.juli.logging.LogFactory;
  * Need to fix this, could use java.nio and only need one thread to send and receive, or
  * just use a timeout on the receive
  */
-public class McastServiceImpl {
+public class McastServiceImpl extends MembershipProviderBase {
 
     private static final Log log = LogFactory.getLog(McastService.class);
 
@@ -62,7 +59,7 @@ public class McastServiceImpl {
      */
     protected volatile boolean doRunSender = false;
     protected volatile boolean doRunReceiver = false;
-    protected int startLevel = 0;
+    protected volatile int startLevel = 0;
     /**
      * Socket that we intend to listen to
      */
@@ -95,10 +92,7 @@ public class McastServiceImpl {
      * Reuse the receivePacket, no need to create a new one everytime
      */
     protected DatagramPacket receivePacket;
-    /**
-     * The membership, used so that we calculate memberships when they arrive or don't arrive
-     */
-    protected Membership membership;
+
     /**
      * The actual listener, for callback when stuff goes down
      */
@@ -145,27 +139,26 @@ public class McastServiceImpl {
     protected boolean recoveryEnabled = true;
 
     /**
-     * Dont interrupt the sender/receiver thread, but pass off to an executor
-     */
-    protected final ExecutorService executor =
-            ExecutorFactory.newThreadPool(0, 2, 2, TimeUnit.SECONDS);
-
-    /**
      * disable/enable local loopback message
      */
     protected final boolean localLoopbackDisabled;
 
+    private Channel channel;
+
     /**
-     * Create a new mcast service impl
+     * Create a new mcast service instance.
      * @param member - the local member
      * @param sendFrequency - the time (ms) in between pings sent out
      * @param expireTime - the time (ms) for a member to expire
      * @param port - the mcast port
      * @param bind - the bind address (not sure this is used yet)
      * @param mcastAddress - the mcast address
+     * @param ttl multicast ttl that will be set on the socket
+     * @param soTimeout Socket timeout
      * @param service - the callback service
+     * @param msgservice Message listener
      * @param localLoopbackDisabled - disable loopbackMode
-     * @throws IOException
+     * @throws IOException Init error
      */
     public McastServiceImpl(
         MemberImpl member,
@@ -251,6 +244,7 @@ public class McastServiceImpl {
      * @throws IOException if the service fails to start
      * @throws IllegalStateException if the service is already started
      */
+    @Override
     public synchronized void start(int level) throws IOException {
         boolean valid = false;
         if ( (level & Channel.MBR_RX_SEQ)==Channel.MBR_RX_SEQ ) {
@@ -298,9 +292,12 @@ public class McastServiceImpl {
     }
 
     /**
-     * Stops the service
+     * Stops the service.
+     * @param level Stop status
+     * @return <code>true</code> if the stop is complete
      * @throws IOException if the service fails to disconnect from the sockets
      */
+    @Override
     public synchronized boolean stop(int level) throws IOException {
         boolean valid = false;
 
@@ -336,7 +333,7 @@ public class McastServiceImpl {
 
     /**
      * Receive a datagram packet, locking wait
-     * @throws IOException
+     * @throws IOException Received failed
      */
     public void receive() throws IOException {
         boolean checkexpired = true;
@@ -477,16 +474,17 @@ public class McastServiceImpl {
     }
 
     /**
-     * Send a ping
-     * @throws IOException
+     * Send a ping.
+     * @param checkexpired <code>true</code> to check for expiration
+     * @throws IOException Send error
      */
-    public void send(boolean checkexpired) throws IOException{
+    public void send(boolean checkexpired) throws IOException {
         send(checkexpired,null);
     }
 
     private final Object sendLock = new Object();
 
-    public void send(boolean checkexpired, DatagramPacket packet) throws IOException{
+    public void send(boolean checkexpired, DatagramPacket packet) throws IOException {
         checkexpired = (checkexpired && (packet==null));
         //ignore if we haven't started the sender
         //if ( (startLevel&Channel.MBR_TX_SEQ) != Channel.MBR_TX_SEQ ) return;
@@ -525,11 +523,21 @@ public class McastServiceImpl {
         return recoverySleepTime;
     }
 
+    public Channel getChannel() {
+        return channel;
+    }
+
+    public void setChannel(Channel channel) {
+        this.channel = channel;
+    }
+
     public class ReceiverThread extends Thread {
         int errorCounter = 0;
         public ReceiverThread() {
             super();
-            setName("Tribes-MembershipReceiver");
+            String channelName = "";
+            if (channel.getName() != null) channelName = "[" + channel.getName() + "]";
+            setName("Tribes-MembershipReceiver" + channelName);
         }
         @Override
         public void run() {
@@ -562,7 +570,9 @@ public class McastServiceImpl {
         int errorCounter=0;
         public SenderThread(long time) {
             this.time = time;
-            setName("Tribes-MembershipSender");
+            String channelName = "";
+            if (channel.getName() != null) channelName = "[" + channel.getName() + "]";
+            setName("Tribes-MembershipSender" + channelName);
 
         }
         @Override
@@ -599,8 +609,9 @@ public class McastServiceImpl {
             }
 
             Thread t = new RecoveryThread(parent);
-
-            t.setName("Tribes-MembershipRecovery");
+            String channelName = "";
+            if (parent.channel.getName() != null) channelName = "[" + parent.channel.getName() + "]";
+            t.setName("Tribes-MembershipRecovery" + channelName);
             t.setDaemon(true);
             t.start();
         }

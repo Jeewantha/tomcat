@@ -23,10 +23,22 @@ import org.apache.coyote.http2.HpackDecoder.HeaderEmitter;
  * the connection close process has started if headers for new streams are
  * received.
  */
-public class HeaderSink implements HeaderEmitter {
+class HeaderSink implements HeaderEmitter {
 
     @Override
-    public void emitHeader(String name, String value, boolean neverIndex) {
+    public void emitHeader(String name, String value) {
         // NO-OP
+    }
+
+    @Override
+    public void validateHeaders() throws StreamException {
+        // NO-OP
+    }
+
+    @Override
+    public void setHeaderException(StreamException streamException) {
+        // NO-OP
+        // The connection is already closing so no need to process additional
+        // errors
     }
 }

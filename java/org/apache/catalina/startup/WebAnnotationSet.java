@@ -23,10 +23,13 @@ import javax.annotation.Resource;
 import javax.annotation.Resources;
 import javax.annotation.security.DeclareRoles;
 import javax.annotation.security.RunAs;
+import javax.servlet.ServletSecurityElement;
+import javax.servlet.annotation.ServletSecurity;
 
 import org.apache.catalina.Container;
 import org.apache.catalina.Context;
 import org.apache.catalina.Wrapper;
+import org.apache.catalina.core.ApplicationServletRegistration;
 import org.apache.catalina.util.Introspection;
 import org.apache.tomcat.util.descriptor.web.ContextEnvironment;
 import org.apache.tomcat.util.descriptor.web.ContextResource;
@@ -37,79 +40,82 @@ import org.apache.tomcat.util.descriptor.web.MessageDestinationRef;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * <p><strong>AnnotationSet</strong> for processing the annotations of the web application
- * classes (<code>/WEB-INF/classes</code> and <code>/WEB-INF/lib</code>).</p>
- *
- * @author Fabien Carrion
+ * <strong>AnnotationSet</strong> for processing the annotations of the web
+ * application classes (<code>/WEB-INF/classes</code> and
+ * <code>/WEB-INF/lib</code>).
  */
 public class WebAnnotationSet {
 
     private static final String SEPARATOR = "/";
+    private static final String MAPPED_NAME_PROPERTY = "mappedName";
+
 
     /**
      * The string resources for this package.
      */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
 
-    // --------------------------------------------------------- Public Methods
+    // ---------------------------------------------------------- Public Methods
 
     /**
      * Process the annotations on a context.
+     *
+     * @param context The context which will have its annotations processed
      */
     public static void loadApplicationAnnotations(Context context) {
-
         loadApplicationListenerAnnotations(context);
         loadApplicationFilterAnnotations(context);
         loadApplicationServletAnnotations(context);
-
-
     }
 
 
-    // -------------------------------------------------------- protected Methods
-
+    // ------------------------------------------------------- Protected Methods
 
     /**
      * Process the annotations for the listeners.
+     *
+     * @param context The context which will have its annotations processed
      */
     protected static void loadApplicationListenerAnnotations(Context context) {
         String[] applicationListeners = context.findApplicationListeners();
         for (String className : applicationListeners) {
-            Class<?> classClass = Introspection.loadClass(context, className);
-            if (classClass == null) {
+            Class<?> clazz = Introspection.loadClass(context, className);
+            if (clazz == null) {
                 continue;
             }
 
-            loadClassAnnotation(context, classClass);
-            loadFieldsAnnotation(context, classClass);
-            loadMethodsAnnotation(context, classClass);
+            loadClassAnnotation(context, clazz);
+            loadFieldsAnnotation(context, clazz);
+            loadMethodsAnnotation(context, clazz);
         }
     }
 
 
     /**
      * Process the annotations for the filters.
+     *
+     * @param context The context which will have its annotations processed
      */
     protected static void loadApplicationFilterAnnotations(Context context) {
         FilterDef[] filterDefs = context.findFilterDefs();
         for (FilterDef filterDef : filterDefs) {
-            Class<?> classClass = Introspection.loadClass(context,
-                    filterDef.getFilterClass());
-            if (classClass == null) {
+            Class<?> clazz = Introspection.loadClass(context, filterDef.getFilterClass());
+            if (clazz == null) {
                 continue;
             }
 
-            loadClassAnnotation(context, classClass);
-            loadFieldsAnnotation(context, classClass);
-            loadMethodsAnnotation(context, classClass);
+            loadClassAnnotation(context, clazz);
+            loadFieldsAnnotation(context, clazz);
+            loadMethodsAnnotation(context, clazz);
         }
     }
 
 
     /**
      * Process the annotations for the servlets.
+     *
+     * @param context The context which will have its annotations processed
      */
     protected static void loadApplicationServletAnnotations(Context context) {
 
@@ -122,46 +128,55 @@ public class WebAnnotationSet {
                     continue;
                 }
 
-                Class<?> classClass = Introspection.loadClass(context,
-                        wrapper.getServletClass());
-                if (classClass == null) {
+                Class<?> clazz = Introspection.loadClass(context, wrapper.getServletClass());
+                if (clazz == null) {
                     continue;
                 }
 
-                loadClassAnnotation(context, classClass);
-                loadFieldsAnnotation(context, classClass);
-                loadMethodsAnnotation(context, classClass);
+                loadClassAnnotation(context, clazz);
+                loadFieldsAnnotation(context, clazz);
+                loadMethodsAnnotation(context, clazz);
 
                 /* Process RunAs annotation which can be only on servlets.
                  * Ref JSR 250, equivalent to the run-as element in
                  * the deployment descriptor
                  */
-                RunAs annotation = classClass.getAnnotation(RunAs.class);
-                if (annotation != null) {
-                    wrapper.setRunAs(annotation.value());
+                RunAs runAs = clazz.getAnnotation(RunAs.class);
+                if (runAs != null) {
+                    wrapper.setRunAs(runAs.value());
+                }
+
+                // Process ServletSecurity annotation
+                ServletSecurity servletSecurity = clazz.getAnnotation(ServletSecurity.class);
+                if (servletSecurity != null) {
+                    context.addServletSecurity(
+                            new ApplicationServletRegistration(wrapper, context),
+                            new ServletSecurityElement(servletSecurity));
                 }
             }
         }
-
     }
 
 
     /**
      * Process the annotations on a context for a given className.
+     *
+     * @param context The context which will have its annotations processed
+     * @param clazz The class to examine for Servlet annotations
      */
     protected static void loadClassAnnotation(Context context,
-            Class<?> classClass) {
+            Class<?> clazz) {
         /* Process Resource annotation.
          * Ref JSR 250
          */
-        Resource resourceAnnotation = classClass.getAnnotation(Resource.class);
+        Resource resourceAnnotation = clazz.getAnnotation(Resource.class);
         if (resourceAnnotation != null) {
             addResource(context, resourceAnnotation);
         }
         /* Process Resources annotation.
          * Ref JSR 250
          */
-        Resources resourcesAnnotation = classClass.getAnnotation(Resources.class);
+        Resources resourcesAnnotation = clazz.getAnnotation(Resources.class);
         if (resourcesAnnotation != null && resourcesAnnotation.value() != null) {
             for (Resource resource : resourcesAnnotation.value()) {
                 addResource(context, resource);
@@ -171,7 +186,7 @@ public class WebAnnotationSet {
          * Ref JSR 224, equivalent to the ejb-ref or ejb-local-ref
          * element in the deployment descriptor.
         {
-            EJB annotation = classClass.getAnnotation(EJB.class);
+            EJB annotation = clazz.getAnnotation(EJB.class);
             if (annotation != null) {
 
                 if ((annotation.mappedName().length() == 0)
@@ -208,7 +223,7 @@ public class WebAnnotationSet {
          * the deployment descriptor.
          * The service-ref registration is not implemented
         {
-            WebServiceRef annotation = classClass
+            WebServiceRef annotation = clazz
                     .getAnnotation(WebServiceRef.class);
             if (annotation != null) {
                 ContextService service = new ContextService();
@@ -240,8 +255,7 @@ public class WebAnnotationSet {
          * Ref JSR 250, equivalent to the security-role element in
          * the deployment descriptor
          */
-        DeclareRoles declareRolesAnnotation = classClass
-                .getAnnotation(DeclareRoles.class);
+        DeclareRoles declareRolesAnnotation = clazz.getAnnotation(DeclareRoles.class);
         if (declareRolesAnnotation != null && declareRolesAnnotation.value() != null) {
             for (String role : declareRolesAnnotation.value()) {
                 context.addSecurityRole(role);
@@ -250,15 +264,14 @@ public class WebAnnotationSet {
     }
 
 
-    protected static void loadFieldsAnnotation(Context context,
-            Class<?> classClass) {
+    protected static void loadFieldsAnnotation(Context context, Class<?> clazz) {
         // Initialize the annotations
-        Field[] fields = Introspection.getDeclaredFields(classClass);
+        Field[] fields = Introspection.getDeclaredFields(clazz);
         if (fields != null && fields.length > 0) {
             for (Field field : fields) {
                 Resource annotation = field.getAnnotation(Resource.class);
                 if (annotation != null) {
-                    String defaultName = classClass.getName() + SEPARATOR + field.getName();
+                    String defaultName = clazz.getName() + SEPARATOR + field.getName();
                     Class<?> defaultType = field.getType();
                     addResource(context, annotation, defaultName, defaultType);
                 }
@@ -267,10 +280,9 @@ public class WebAnnotationSet {
     }
 
 
-    protected static void loadMethodsAnnotation(Context context,
-            Class<?> classClass) {
+    protected static void loadMethodsAnnotation(Context context, Class<?> clazz) {
         // Initialize the annotations
-        Method[] methods = Introspection.getDeclaredMethods(classClass);
+        Method[] methods = Introspection.getDeclaredMethods(clazz);
         if (methods != null && methods.length > 0) {
             for (Method method : methods) {
                 Resource annotation = method.getAnnotation(Resource.class);
@@ -280,29 +292,32 @@ public class WebAnnotationSet {
                                 "webAnnotationSet.invalidInjection"));
                     }
 
-                    String defaultName = classClass.getName() + SEPARATOR +
+                    String defaultName = clazz.getName() + SEPARATOR +
                             Introspection.getPropertyName(method);
 
-                    Class<?> defaultType =
-                            (method.getParameterTypes()[0]);
+                    Class<?> defaultType = (method.getParameterTypes()[0]);
                     addResource(context, annotation, defaultName, defaultType);
                 }
             }
         }
     }
 
+
     /**
      * Process a Resource annotation to set up a Resource.
      * Ref JSR 250, equivalent to the resource-ref,
      * message-destination-ref, env-ref, resource-env-ref
      * or service-ref element in the deployment descriptor.
+     * @param context The context which will have its annotations processed
+     * @param annotation The annotation that was found
      */
     protected static void addResource(Context context, Resource annotation) {
         addResource(context, annotation, null, null);
     }
 
-    protected static void addResource(Context context, Resource annotation,
-            String defaultName, Class<?> defaultType) {
+
+    protected static void addResource(Context context, Resource annotation, String defaultName,
+            Class<?> defaultType) {
         String name = getName(annotation, defaultName);
         String type = getType(annotation, defaultType);
 
@@ -316,15 +331,14 @@ public class WebAnnotationSet {
                 type.equals("java.lang.Long") ||
                 type.equals("java.lang.Float")) {
 
-            // env-ref element
+            // env-entry element
             ContextEnvironment resource = new ContextEnvironment();
 
             resource.setName(name);
             resource.setType(type);
-
             resource.setDescription(annotation.description());
-
-            resource.setValue(annotation.mappedName());
+            resource.setProperty(MAPPED_NAME_PROPERTY, annotation.mappedName());
+            resource.setLookupName(annotation.lookup());
 
             context.getNamingResources().addEnvironment(resource);
 
@@ -335,9 +349,9 @@ public class WebAnnotationSet {
 
             service.setName(name);
             service.setWsdlfile(annotation.mappedName());
-
             service.setType(type);
             service.setDescription(annotation.description());
+            service.setLookupName(annotation.lookup());
 
             context.getNamingResources().addService(service);
 
@@ -357,17 +371,16 @@ public class WebAnnotationSet {
             resource.setName(name);
             resource.setType(type);
 
-            if (annotation.authenticationType()
-                    == Resource.AuthenticationType.CONTAINER) {
+            if (annotation.authenticationType() == Resource.AuthenticationType.CONTAINER) {
                 resource.setAuth("Container");
-            } else if (annotation.authenticationType()
-                    == Resource.AuthenticationType.APPLICATION) {
+            } else if (annotation.authenticationType() == Resource.AuthenticationType.APPLICATION) {
                 resource.setAuth("Application");
             }
 
             resource.setScope(annotation.shareable() ? "Shareable" : "Unshareable");
-            resource.setProperty("mappedName", annotation.mappedName());
+            resource.setProperty(MAPPED_NAME_PROPERTY, annotation.mappedName());
             resource.setDescription(annotation.description());
+            resource.setLookupName(annotation.lookup());
 
             context.getNamingResources().addResource(resource);
 
@@ -379,27 +392,29 @@ public class WebAnnotationSet {
 
             resource.setName(name);
             resource.setType(type);
-
             resource.setUsage(annotation.mappedName());
             resource.setDescription(annotation.description());
+            resource.setLookupName(annotation.lookup());
 
             context.getNamingResources().addMessageDestinationRef(resource);
 
-        } else if (type.equals("javax.resource.cci.InteractionSpec") ||
-                type.equals("javax.transaction.UserTransaction") ||
-                true) {
+        } else {
+            /*
+             * General case. Also used for:
+             * - javax.resource.cci.InteractionSpec
+             * - javax.transaction.UserTransaction
+             */
 
             // resource-env-ref
             ContextResourceEnvRef resource = new ContextResourceEnvRef();
 
             resource.setName(name);
             resource.setType(type);
-
-            resource.setProperty("mappedName", annotation.mappedName());
+            resource.setProperty(MAPPED_NAME_PROPERTY, annotation.mappedName());
             resource.setDescription(annotation.description());
+            resource.setLookupName(annotation.lookup());
 
             context.getNamingResources().addResourceEnvRef(resource);
-
         }
     }
 

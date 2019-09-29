@@ -21,6 +21,8 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,12 +33,14 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 class Util {
+
+    private static final Class<?>[] EMPTY_CLASS_ARRAY = new Class<?>[0];
+    private static final Object[] EMPTY_OBJECT_ARRAY = new Object[0];
 
     /**
      * Checks whether the supplied Throwable is one that needs to be
@@ -80,8 +84,7 @@ class Util {
 
 
     private static final CacheValue nullTcclFactory = new CacheValue();
-    private static final ConcurrentMap<CacheKey, CacheValue> factoryCache =
-            new ConcurrentHashMap<>();
+    private static final Map<CacheKey, CacheValue> factoryCache = new ConcurrentHashMap<>();
 
     /**
      * Provides a per class loader cache of ExpressionFactory instances without
@@ -89,7 +92,8 @@ class Util {
      */
     static ExpressionFactory getExpressionFactory() {
 
-        ClassLoader tccl = Thread.currentThread().getContextClassLoader();
+        ClassLoader tccl = getContextClassLoader();
+
         CacheValue cacheValue = null;
         ExpressionFactory factory = null;
 
@@ -210,12 +214,8 @@ class Util {
 
         List<Wrapper> wrappers = Wrapper.wrap(methods, methodName);
 
-        Wrapper result = findWrapper(
-                clazz, wrappers, methodName, paramTypes, paramValues);
+        Wrapper result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
 
-        if (result == null) {
-            return null;
-        }
         return getMethod(clazz, (Method) result.unWrap());
     }
 
@@ -229,12 +229,7 @@ class Util {
 
         Map<Wrapper,MatchResult> candidates = new HashMap<>();
 
-        int paramCount;
-        if (paramTypes == null) {
-            paramCount = 0;
-        } else {
-            paramCount = paramTypes.length;
-        }
+        int paramCount = paramTypes.length;
 
         for (Wrapper w : wrappers) {
             Class<?>[] mParamTypes = w.getParameterTypes();
@@ -246,9 +241,27 @@ class Util {
             }
 
             // Check the number of parameters
-            if (!(paramCount == mParamCount ||
-                    (w.isVarArgs() && paramCount >= mParamCount))) {
+            // Multiple tests to improve readability
+            if (!w.isVarArgs() && paramCount != mParamCount) {
                 // Method has wrong number of parameters
+                continue;
+            }
+            if (w.isVarArgs() && paramCount < mParamCount -1) {
+                // Method has wrong number of parameters
+                continue;
+            }
+            if (w.isVarArgs() && paramCount == mParamCount && paramValues != null &&
+                    paramValues.length > paramCount && !paramTypes[mParamCount -1].isArray()) {
+                // Method arguments don't match
+                continue;
+            }
+            if (w.isVarArgs() && paramCount > mParamCount && paramValues != null &&
+                    paramValues.length != paramCount) {
+                // Might match a different varargs method
+                continue;
+            }
+            if (!w.isVarArgs() && paramValues != null && paramCount != paramValues.length) {
+                // Might match a different varargs method
                 continue;
             }
 
@@ -259,9 +272,12 @@ class Util {
             boolean noMatch = false;
             for (int i = 0; i < mParamCount; i++) {
                 // Can't be null
-                if (mParamTypes[i].equals(paramTypes[i])) {
-                    exactMatch++;
-                } else if (i == (mParamCount - 1) && w.isVarArgs()) {
+                if (w.isVarArgs() && i == (mParamCount - 1)) {
+                    if (i == paramCount || (paramValues != null && paramValues.length == i)) {
+                        // Nothing is passed as varargs
+                        assignableMatch++;
+                        break;
+                    }
                     Class<?> varType = mParamTypes[i].getComponentType();
                     for (int j = i; j < paramCount; j++) {
                         if (isAssignableFrom(paramTypes[j], varType)) {
@@ -283,18 +299,22 @@ class Util {
                         // lead to a varArgs method matching when the result
                         // should be ambiguous
                     }
-                } else if (isAssignableFrom(paramTypes[i], mParamTypes[i])) {
-                    assignableMatch++;
                 } else {
-                    if (paramValues == null) {
-                        noMatch = true;
-                        break;
+                    if (mParamTypes[i].equals(paramTypes[i])) {
+                        exactMatch++;
+                    } else if (paramTypes[i] != null && isAssignableFrom(paramTypes[i], mParamTypes[i])) {
+                        assignableMatch++;
                     } else {
-                        if (isCoercibleFrom(paramValues[i], mParamTypes[i])) {
-                            coercibleMatch++;
-                        } else {
+                        if (paramValues == null) {
                             noMatch = true;
                             break;
+                        } else {
+                            if (isCoercibleFrom(paramValues[i], mParamTypes[i])) {
+                                coercibleMatch++;
+                            } else {
+                                noMatch = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -500,7 +520,7 @@ class Util {
 
     private static Class<?>[] getTypesFromValues(Object[] values) {
         if (values == null) {
-            return null;
+            return EMPTY_CLASS_ARRAY;
         }
 
         Class<?> result[] = new Class<?>[values.length];
@@ -559,7 +579,7 @@ class Util {
 
         if (clazz == null) {
             throw new MethodNotFoundException(
-                    message(null, "util.method.notfound", clazz, methodName,
+                    message(null, "util.method.notfound", null, methodName,
                     paramString(paramTypes)));
         }
 
@@ -571,12 +591,8 @@ class Util {
 
         List<Wrapper> wrappers = Wrapper.wrap(constructors);
 
-        Wrapper result = findWrapper(
-                clazz, wrappers, methodName, paramTypes, paramValues);
+        Wrapper result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
 
-        if (result == null) {
-            return null;
-        }
         return getConstructor(clazz, (Constructor<?>) result.unWrap());
     }
 
@@ -608,7 +624,11 @@ class Util {
         Object[] parameters = null;
         if (parameterTypes.length > 0) {
             parameters = new Object[parameterTypes.length];
-            int paramCount = params.length;
+            int paramCount;
+            if (params == null) {
+                params = EMPTY_OBJECT_ARRAY;
+            }
+            paramCount = params.length;
             if (isVarArgs) {
                 int varArgIndex = parameterTypes.length - 1;
                 // First argCount-1 parameters are standard
@@ -636,6 +656,19 @@ class Util {
             }
         }
         return parameters;
+    }
+
+
+    static ClassLoader getContextClassLoader() {
+        ClassLoader tccl;
+        if (System.getSecurityManager() != null) {
+            PrivilegedAction<ClassLoader> pa = new PrivilegedGetTccl();
+            tccl = AccessController.doPrivileged(pa);
+        } else {
+            tccl = Thread.currentThread().getContextClassLoader();
+        }
+
+        return tccl;
     }
 
 
@@ -773,6 +806,34 @@ class Util {
                 }
             }
             return cmp;
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            return o == this || (null != o &&
+                    this.getClass().equals(o.getClass()) &&
+                    ((MatchResult)o).getExact() == this.getExact() &&
+                    ((MatchResult)o).getAssignable() == this.getAssignable() &&
+                    ((MatchResult)o).getCoercible() == this.getCoercible() &&
+                    ((MatchResult)o).isBridge() == this.isBridge());
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return (this.isBridge() ? 1 << 24 : 0) ^
+                    this.getExact() << 16 ^
+                    this.getAssignable() << 8 ^
+                    this.getCoercible();
+        }
+    }
+
+
+    private static class PrivilegedGetTccl implements PrivilegedAction<ClassLoader> {
+        @Override
+        public ClassLoader run() {
+            return Thread.currentThread().getContextClassLoader();
         }
     }
 }

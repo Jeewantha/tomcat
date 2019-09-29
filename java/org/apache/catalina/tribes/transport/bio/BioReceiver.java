@@ -53,7 +53,9 @@ public class BioReceiver extends ReceiverBase implements Runnable {
         try {
             getBind();
             bind();
-            Thread t = new Thread(this, "BioReceiver");
+            String channelName = "";
+            if (getChannel().getName() != null) channelName = "[" + getChannel().getName() + "]";
+            Thread t = new Thread(this, "BioReceiver" + channelName);
             t.setDaemon(true);
             t.start();
         } catch (Exception x) {
@@ -128,9 +130,9 @@ public class BioReceiver extends ReceiverBase implements Runnable {
                 if ( doListen() ) throw x;
             }
             if ( !doListen() ) {
-                task.setDoRun(false);
                 task.serviceSocket(null,null);
                 getExecutor().execute(task);
+                task.close();
                 break; //regular shutdown
             }
             if ( socket == null ) continue;

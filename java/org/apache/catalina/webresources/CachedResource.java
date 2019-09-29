@@ -41,6 +41,7 @@ public class CachedResource implements WebResource {
     private final String webAppPath;
     private final long ttl;
     private final int objectMaxSizeBytes;
+    private final boolean usesClassLoaderResources;
 
     private volatile WebResource webResource;
     private volatile WebResource[] webResources;
@@ -57,15 +58,27 @@ public class CachedResource implements WebResource {
 
 
     public CachedResource(Cache cache, StandardRoot root, String path, long ttl,
-            int objectMaxSizeBytes) {
+            int objectMaxSizeBytes, boolean usesClassLoaderResources) {
         this.cache = cache;
         this.root = root;
         this.webAppPath = path;
         this.ttl = ttl;
         this.objectMaxSizeBytes = objectMaxSizeBytes;
+        this.usesClassLoaderResources = usesClassLoaderResources;
     }
 
     protected boolean validateResource(boolean useClassLoaderResources) {
+        // It is possible that some resources will only be visible for a given
+        // value of useClassLoaderResources. Therefore, if the lookup is made
+        // with a different value of useClassLoaderResources than was used when
+        // creating the cache entry, invalidate the entry. This should have
+        // minimal performance impact as it would be unusual for a resource to
+        // be looked up both as a static resource and as a class loader
+        // resource.
+        if (usesClassLoaderResources != useClassLoaderResources) {
+            return false;
+        }
+
         long now = System.currentTimeMillis();
 
         if (webResource == null) {
@@ -92,23 +105,26 @@ public class CachedResource implements WebResource {
             return true;
         }
 
-        WebResource webResourceInternal = root.getResourceInternal(
-                webAppPath, useClassLoaderResources);
-        if (!webResource.exists() && webResourceInternal.exists()) {
-            return false;
-        }
+        // Assume resources inside WARs will not change
+        if (!root.isPackedWarFile()) {
+            WebResource webResourceInternal = root.getResourceInternal(
+                    webAppPath, useClassLoaderResources);
+            if (!webResource.exists() && webResourceInternal.exists()) {
+                return false;
+            }
 
-        // If modified date or length change - resource has changed / been
-        // removed etc.
-        if (webResource.getLastModified() != getLastModified() ||
-                webResource.getContentLength() != getContentLength()) {
-            return false;
-        }
+            // If modified date or length change - resource has changed / been
+            // removed etc.
+            if (webResource.getLastModified() != getLastModified() ||
+                    webResource.getContentLength() != getContentLength()) {
+                return false;
+            }
 
-        // Has a resource been inserted / removed in a different resource set
-        if (webResource.getLastModified() != webResourceInternal.getLastModified() ||
-                webResource.getContentLength() != webResourceInternal.getContentLength()) {
-            return false;
+            // Has a resource been inserted / removed in a different resource set
+            if (webResource.getLastModified() != webResourceInternal.getLastModified() ||
+                    webResource.getContentLength() != webResourceInternal.getContentLength()) {
+                return false;
+            }
         }
 
         nextCheck = ttl + now;
@@ -133,9 +149,15 @@ public class CachedResource implements WebResource {
             return true;
         }
 
-        // At this point, always expire the entry as re-populating it is likely
-        // to be as expensive as validating it.
-        return false;
+        // Assume resources inside WARs will not change
+        if (root.isPackedWarFile()) {
+            nextCheck = ttl + now;
+            return true;
+        } else {
+            // At this point, always expire the entry and re-populating it is
+            // likely to be as expensive as validating it.
+            return false;
+        }
     }
 
     protected long getNextCheck() {
@@ -264,7 +286,7 @@ public class CachedResource implements WebResource {
 
     @Override
     public InputStream getInputStream() {
-        byte[] content = cachedContent;
+        byte[] content = getContent();
         if (content == null) {
             // Can't cache InputStreams
             return webResource.getInputStream();

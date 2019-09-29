@@ -17,13 +17,13 @@
 package org.apache.catalina.filters;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
 
-import javax.servlet.Filter;
 import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
+import javax.servlet.GenericFilter;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
@@ -44,11 +44,13 @@ import org.apache.juli.logging.LogFactory;
  * <p>When using this Filter, it is strongly recommended that the
  * <code>org.apache.catalina.filter.RequestDumperFilter</code> logger is
  * directed to a dedicated file and that the
- * <code>org.apache.juli.VerbatimFormmater</code> is used.</p>
+ * <code>org.apache.juli.VerbatimFormatter</code> is used.</p>
  *
  * @author Craig R. McClanahan
  */
-public class RequestDumperFilter implements Filter {
+public class RequestDumperFilter extends GenericFilter {
+
+    private static final long serialVersionUID = 1L;
 
     private static final String NON_HTTP_REQ_MSG =
         "Not available. Non-http request.";
@@ -63,10 +65,9 @@ public class RequestDumperFilter implements Filter {
         }
     };
 
-    /**
-     * The logger for this class.
-     */
-    private static final Log log = LogFactory.getLog(RequestDumperFilter.class);
+    // Log must be non-static as loggers are created per class-loader and this
+    // Filter may be used in multiple class loaders
+    private transient Log log = LogFactory.getLog(RequestDumperFilter.class);
 
 
     /**
@@ -108,7 +109,7 @@ public class RequestDumperFilter implements Filter {
 
         doLog(" characterEncoding", request.getCharacterEncoding());
         doLog("     contentLength",
-                Integer.valueOf(request.getContentLength()).toString());
+                Long.toString(request.getContentLengthLong()));
         doLog("       contentType", request.getContentType());
 
         if (hRequest == null) {
@@ -186,7 +187,7 @@ public class RequestDumperFilter implements Filter {
         doLog("            scheme", request.getScheme());
         doLog("        serverName", request.getServerName());
         doLog("        serverPort",
-                Integer.valueOf(request.getServerPort()).toString());
+                Integer.toString(request.getServerPort()));
 
         if (hRequest == null) {
             doLog("       servletPath", NON_HTTP_REQ_MSG);
@@ -232,10 +233,10 @@ public class RequestDumperFilter implements Filter {
         }
 
         if (hResponse == null) {
-            doLog("        remoteUser", NON_HTTP_RES_MSG);
+            doLog("            status", NON_HTTP_RES_MSG);
         } else {
             doLog("            status",
-                    Integer.valueOf(hResponse.getStatus()).toString());
+                    Integer.toString(hResponse.getStatus()));
         }
 
         doLog("END TIME          ", getTimestamp());
@@ -264,15 +265,17 @@ public class RequestDumperFilter implements Filter {
         return ts.dateString;
     }
 
-    @Override
-    public void init(FilterConfig filterConfig) throws ServletException {
-        // NOOP
+
+    /*
+     * Log objects are not Serializable but this Filter is because it extends
+     * GenericFilter. Tomcat won't serialize a Filter but in case something else
+     * does...
+     */
+    private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
+        ois.defaultReadObject();
+        log = LogFactory.getLog(RequestDumperFilter.class);
     }
 
-    @Override
-    public void destroy() {
-        // NOOP
-    }
 
     private static final class Timestamp {
         private final Date date = new Date(0);

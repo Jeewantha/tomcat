@@ -30,7 +30,7 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.SSLSessionManager;
 import org.apache.tomcat.util.net.SSLSupport;
-import org.apache.tomcat.util.net.jsse.openssl.Cipher;
+import org.apache.tomcat.util.net.openssl.ciphers.Cipher;
 import org.apache.tomcat.util.res.StringManager;
 
 /** JSSESupport
@@ -118,7 +118,7 @@ public class JSSESupport implements SSLSupport, SSLSessionManager {
                             cf.generateCertificate(stream);
                 } catch(Exception ex) {
                     log.info(sm.getString(
-                            "jseeSupport.certTranslationError", certs[i]), ex);
+                            "jsseSupport.certTranslationError", certs[i]), ex);
                     return null;
                 }
             }

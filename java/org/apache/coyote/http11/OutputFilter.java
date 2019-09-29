@@ -14,12 +14,8 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote.http11;
 
-import java.io.IOException;
-
-import org.apache.coyote.OutputBuffer;
 import org.apache.coyote.Response;
 
 /**
@@ -27,8 +23,7 @@ import org.apache.coyote.Response;
  *
  * @author Remy Maucherat
  */
-public interface OutputFilter extends OutputBuffer {
-
+public interface OutputFilter extends HttpOutputBuffer {
 
     /**
      * Some filters need additional parameters from the response. All the
@@ -51,19 +46,5 @@ public interface OutputFilter extends OutputBuffer {
      *
      * @param buffer The next buffer instance
      */
-    public void setBuffer(OutputBuffer buffer);
-
-
-    /**
-     * End the current request. It is acceptable to write extra bytes using
-     * buffer.doWrite during the execution of this method.
-     *
-     * @return Should return 0 unless the filter does some content length
-     * delimitation, in which case the number is the amount of extra bytes or
-     * missing bytes, which would indicate an error.
-     * Note: It is recommended that extra bytes be swallowed by the filter.
-     *
-     * @throws IOException If an I/O error occurs while writing to the client
-     */
-    public long end() throws IOException;
+    public void setBuffer(HttpOutputBuffer buffer);
 }

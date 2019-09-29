@@ -35,6 +35,7 @@ import javax.servlet.jsp.JspTagException;
 import javax.servlet.jsp.PageContext;
 
 import org.apache.jasper.Constants;
+import org.apache.jasper.compiler.Localizer;
 
 /**
  * Util contains some often used consts, static methods and embedded class
@@ -90,16 +91,18 @@ public class Util {
     }
 
     /**
-     * Returns <tt>true</tt> if our current URL is absolute,
-     * <tt>false</tt> otherwise.
+     * Returns <code>true</code> if our current URL is absolute,
+     * <code>false</code> otherwise.
      * taken from org.apache.taglibs.standard.tag.common.core.ImportSupport
+     * @param url The URL
+     * @return <code>true</code> if the URL is absolute
      */
     public static boolean isAbsoluteUrl(String url){
         if(url == null){
             return false;
         }
 
-        int colonPos = url.indexOf(":");
+        int colonPos = url.indexOf(':');
         if(colonPos == -1){
             return false;
         }
@@ -117,6 +120,9 @@ public class Util {
      * Get the value associated with a content-type attribute.
      * Syntax defined in RFC 2045, section 5.1.
      * taken from org.apache.taglibs.standard.tag.common.core.Util
+     * @param input The attribute string
+     * @param name The attribute name
+     * @return the attribute value
      */
     public static String getContentTypeAttribute(String input, String name) {
         int begin;
@@ -144,20 +150,22 @@ public class Util {
     }
 
     /**
-     * Strips a servlet session ID from <tt>url</tt>.  The session ID
+     * Strips a servlet session ID from <code>url</code>.  The session ID
      * is encoded as a URL "path parameter" beginning with "jsessionid=".
      * We thus remove anything we find between ";jsessionid=" (inclusive)
      * and either EOS or a subsequent ';' (exclusive).
      *
      * taken from org.apache.taglibs.standard.tag.common.core.ImportSupport
+     * @param url The URL
+     * @return the URL without a user submitted session id parameter
      */
     public static String stripSession(String url) {
         StringBuilder u = new StringBuilder(url);
         int sessionStart;
         while ((sessionStart = u.toString().indexOf(";" + Constants.SESSION_PARAMETER_NAME + "=")) != -1) {
-            int sessionEnd = u.toString().indexOf(";", sessionStart + 1);
+            int sessionEnd = u.toString().indexOf(';', sessionStart + 1);
             if (sessionEnd == -1)
-                sessionEnd = u.toString().indexOf("?", sessionStart + 1);
+                sessionEnd = u.toString().indexOf('?', sessionStart + 1);
             if (sessionEnd == -1) // still
                 sessionEnd = u.length();
             u.delete(sessionStart, sessionEnd);
@@ -179,6 +187,8 @@ public class Util {
      * See also OutSupport.writeEscapedXml().
      *
      * taken from org.apache.taglibs.standard.tag.common.core.Util
+     * @param buffer Data to escape
+     * @return escaped data
      */
     public static String escapeXml(String buffer) {
         String result = escapeXml(buffer.toCharArray(), buffer.length());
@@ -224,8 +234,14 @@ public class Util {
         return escapedBuffer.toString();
     }
 
-    /** Utility methods
+    /**
+     * Utility methods
      * taken from org.apache.taglibs.standard.tag.common.core.UrlSupport
+     * @param url The URL
+     * @param context The context
+     * @param pageContext The page context
+     * @return the absolute URL
+     * @throws JspException If the URL doesn't start with '/'
      */
     public static String resolveUrl(
             String url, String context, PageContext pageContext)
@@ -239,13 +255,12 @@ public class Util {
             (HttpServletRequest) pageContext.getRequest();
         if (context == null) {
             if (url.startsWith("/"))
-                return (request.getContextPath() + url);
+                return request.getContextPath() + url;
             else
                 return url;
         } else {
             if (!context.startsWith("/") || !url.startsWith("/")) {
-                throw new JspTagException(
-                "In URL tags, when the \"context\" attribute is specified, values of both \"context\" and \"url\" must start with \"/\".");
+                throw new JspTagException(Localizer.getMessage("jstl.urlMustStartWithSlash"));
             }
             if (context.equals("/")) {
                 // Don't produce string starting with '//', many
@@ -253,7 +268,7 @@ public class Util {
                 // path on same host.
                 return url;
             } else {
-                return (context + url);
+                return context + url;
             }
         }
     }
@@ -293,14 +308,12 @@ public class Util {
 
         public ImportResponseWrapper(HttpServletResponse arg0) {
             super(arg0);
-            // TODO Auto-generated constructor stub
         }
 
         @Override
         public PrintWriter getWriter() {
             if (isStreamUsed)
-                throw new IllegalStateException("Unexpected internal error during &lt;import&gt: " +
-                "Target servlet called getWriter(), then getOutputStream()");
+                throw new IllegalStateException(Localizer.getMessage("jstl.writerAfterOS"));
             isWriterUsed = true;
             return new PrintWriter(sw);
         }
@@ -308,19 +321,16 @@ public class Util {
         @Override
         public ServletOutputStream getOutputStream() {
             if (isWriterUsed)
-                throw new IllegalStateException("Unexpected internal error during &lt;import&gt: " +
-                "Target servlet called getOutputStream(), then getWriter()");
+                throw new IllegalStateException(Localizer.getMessage("jstl.OSAfterWriter"));
             isStreamUsed = true;
             return sos;
         }
 
-        /** Has no effect. */
         @Override
         public void setContentType(String x) {
             // ignore
         }
 
-        /** Has no effect. */
         @Override
         public void setLocale(Locale x) {
             // ignore

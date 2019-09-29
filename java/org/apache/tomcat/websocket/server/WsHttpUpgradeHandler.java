@@ -16,7 +16,6 @@
  */
 package org.apache.tomcat.websocket.server;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -27,15 +26,15 @@ import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.DeploymentException;
 import javax.websocket.Endpoint;
-import javax.websocket.EndpointConfig;
 import javax.websocket.Extension;
+import javax.websocket.server.ServerEndpointConfig;
 
 import org.apache.coyote.http11.upgrade.InternalHttpUpgradeHandler;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SSLSupport;
-import org.apache.tomcat.util.net.SocketStatus;
+import org.apache.tomcat.util.net.SocketEvent;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.websocket.Transformation;
@@ -47,7 +46,7 @@ import org.apache.tomcat.websocket.WsSession;
  */
 public class WsHttpUpgradeHandler implements InternalHttpUpgradeHandler {
 
-    private static final Log log = LogFactory.getLog(WsHttpUpgradeHandler.class);
+    private final Log log = LogFactory.getLog(WsHttpUpgradeHandler.class); // must not be static
     private static final StringManager sm = StringManager.getManager(WsHttpUpgradeHandler.class);
 
     private final ClassLoader applicationClassLoader;
@@ -55,7 +54,7 @@ public class WsHttpUpgradeHandler implements InternalHttpUpgradeHandler {
     private SocketWrapperBase<?> socketWrapper;
 
     private Endpoint ep;
-    private EndpointConfig endpointConfig;
+    private ServerEndpointConfig serverEndpointConfig;
     private WsServerContainer webSocketContainer;
     private WsHandshakeRequest handshakeRequest;
     private List<Extension> negotiatedExtensions;
@@ -81,13 +80,13 @@ public class WsHttpUpgradeHandler implements InternalHttpUpgradeHandler {
     }
 
 
-    public void preInit(Endpoint ep, EndpointConfig endpointConfig,
+    public void preInit(Endpoint ep, ServerEndpointConfig serverEndpointConfig,
             WsServerContainer wsc, WsHandshakeRequest handshakeRequest,
             List<Extension> negotiatedExtensionsPhase2, String subProtocol,
             Transformation transformation, Map<String,String> pathParameters,
             boolean secure) {
         this.ep = ep;
-        this.endpointConfig = endpointConfig;
+        this.serverEndpointConfig = serverEndpointConfig;
         this.webSocketContainer = wsc;
         this.handshakeRequest = handshakeRequest;
         this.negotiatedExtensions = negotiatedExtensionsPhase2;
@@ -125,13 +124,14 @@ public class WsHttpUpgradeHandler implements InternalHttpUpgradeHandler {
                     handshakeRequest.getQueryString(),
                     handshakeRequest.getUserPrincipal(), httpSessionId,
                     negotiatedExtensions, subProtocol, pathParameters, secure,
-                    endpointConfig);
-            wsFrame = new WsFrameServer(socketWrapper, wsSession, transformation);
+                    serverEndpointConfig);
+            wsFrame = new WsFrameServer(socketWrapper, wsSession, transformation,
+                    applicationClassLoader);
             // WsFrame adds the necessary final transformations. Copy the
             // completed transformation chain to the remote end point.
             wsRemoteEndpointServer.setTransformation(wsFrame.getTransformation());
-            ep.onOpen(wsSession, endpointConfig);
-            webSocketContainer.registerSession(ep, wsSession);
+            ep.onOpen(wsSession, serverEndpointConfig);
+            webSocketContainer.registerSession(serverEndpointConfig.getPath(), wsSession);
         } catch (DeploymentException e) {
             throw new IllegalArgumentException(e);
         } finally {
@@ -141,30 +141,26 @@ public class WsHttpUpgradeHandler implements InternalHttpUpgradeHandler {
 
 
     @Override
-    public SocketState upgradeDispatch(SocketStatus status) {
+    public SocketState upgradeDispatch(SocketEvent status) {
         switch (status) {
             case OPEN_READ:
                 try {
-                    wsFrame.onDataAvailable();
+                    return wsFrame.notifyDataAvailable();
                 } catch (WsIOException ws) {
                     close(ws.getCloseReason());
-                } catch (EOFException eof) {
-                    CloseReason cr = new CloseReason(
-                            CloseCodes.CLOSED_ABNORMALLY, eof.getMessage());
-                    close(cr);
                 } catch (IOException ioe) {
                     onError(ioe);
                     CloseReason cr = new CloseReason(
                             CloseCodes.CLOSED_ABNORMALLY, ioe.getMessage());
                     close(cr);
                 }
-                break;
+                return SocketState.CLOSED;
             case OPEN_WRITE:
                 wsRemoteEndpointServer.onWritePossible(false);
                 break;
             case STOP:
-                // TODO i18n
-                CloseReason cr = new CloseReason(CloseCodes.GOING_AWAY, "");
+                CloseReason cr = new CloseReason(CloseCodes.GOING_AWAY,
+                        sm.getString("wsHttpUpgradeHandler.serverStop"));
                 try {
                     wsSession.close(cr);
                 } catch (IOException ioe) {
@@ -172,18 +168,31 @@ public class WsHttpUpgradeHandler implements InternalHttpUpgradeHandler {
                     cr = new CloseReason(
                             CloseCodes.CLOSED_ABNORMALLY, ioe.getMessage());
                     close(cr);
+                    return SocketState.CLOSED;
                 }
                 break;
-            case ASYNC_READ_ERROR:
-            case ASYNC_WRITE_ERROR:
-            case CLOSE_NOW:
-            case DISCONNECT:
             case ERROR:
+                String msg = sm.getString("wsHttpUpgradeHandler.closeOnError");
+                wsSession.doClose(new CloseReason(CloseCodes.GOING_AWAY, msg),
+                        new CloseReason(CloseCodes.CLOSED_ABNORMALLY, msg));
+                //$FALL-THROUGH$
+            case DISCONNECT:
             case TIMEOUT:
+            case CONNECT_FAIL:
                 return SocketState.CLOSED;
 
         }
-        return SocketState.UPGRADED;
+        if (wsFrame.isOpen()) {
+            return SocketState.UPGRADED;
+        } else {
+            return SocketState.CLOSED;
+        }
+    }
+
+
+    @Override
+    public void timeoutAsync(long now) {
+        // NO-OP
     }
 
 

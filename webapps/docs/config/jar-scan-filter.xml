@@ -97,8 +97,8 @@
     case-sensitively. The following two special characters are supported:</p>
 
     <ul>
-      <li>'*' &#151; means zero or more characters,</li>
-      <li>'?' &#151; means one and only one character.</li>
+      <li>'*' - means zero or more characters,</li>
+      <li>'?' - means one and only one character.</li>
     </ul>
 
     <p>Note that excluding a JAR from the pluggability scan will prevent a
@@ -176,13 +176,13 @@
 
 
 <section name="Nested Components">
-  <p>No components may be nested inside a <strong>Jar Scanner</strong> element.
+  <p>No components may be nested inside a <strong>Jar Scan Filter</strong> element.
   </p>
 </section>
 
 
 <section name="Special Features">
-  <p>No special features are associated with a <strong>Jar Scanner</strong>
+  <p>No special features are associated with a <strong>Jar Scan Filter</strong>
   element.</p>
 </section>
 

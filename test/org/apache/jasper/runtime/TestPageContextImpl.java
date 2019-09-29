@@ -28,7 +28,6 @@ import javax.servlet.jsp.JspWriter;
 import javax.servlet.jsp.PageContext;
 
 import org.junit.Assert;
-
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -65,7 +64,7 @@ public class TestPageContextImpl extends TomcatBaseTest {
 
         // Add the Servlet
         Tomcat.addServlet(ctx, "bug56010", new Bug56010());
-        ctx.addServletMapping("/bug56010", "bug56010");
+        ctx.addServletMappingDecoded("/bug56010", "bug56010");
 
         tomcat.start();
 

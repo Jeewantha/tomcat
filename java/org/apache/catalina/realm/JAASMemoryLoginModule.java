@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import javax.security.auth.Subject;
 import javax.security.auth.callback.Callback;
@@ -33,29 +34,36 @@ import javax.security.auth.login.LoginException;
 import javax.security.auth.spi.LoginModule;
 import javax.servlet.http.HttpServletRequest;
 
+import org.apache.catalina.CredentialHandler;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.digester.Digester;
-
 
 /**
  * <p>Implementation of the JAAS <strong>LoginModule</strong> interface,
  * primarily for use in testing <code>JAASRealm</code>.  It utilizes an
  * XML-format data file of username/password/role information identical to
- * that supported by <code>org.apache.catalina.realm.MemoryRealm</code>
- * (except that digested passwords are not supported).</p>
+ * that supported by <code>org.apache.catalina.realm.MemoryRealm</code>.</p>
  *
  * <p>This class recognizes the following string-valued options, which are
- * specified in the configuration file (and passed to our constructor in
- * the <code>options</code> argument:</p>
+ * specified in the configuration file and passed to {@link
+ * #initialize(Subject, CallbackHandler, Map, Map)} in the <code>options</code>
+ * argument:</p>
  * <ul>
- * <li><strong>debug</strong> - Set to "true" to get debugging messages
- *     generated to System.out.  The default value is <code>false</code>.</li>
  * <li><strong>pathname</strong> - Relative (to the pathname specified by the
  *     "catalina.base" system property) or absolute pathname to the
  *     XML file containing our user information, in the format supported by
  *     {@link MemoryRealm}.  The default value matches the MemoryRealm
  *     default.</li>
+ * <li><strong>credentialHandlerClassName</strong> - The fully qualified class
+ *     name of the CredentialHandler to use. If not specified, {@link
+ *     MessageDigestCredentialHandler} will be used.</li>
+ * <li>Any additional options will be used to identify and call setters on the
+ *     {@link CredentialHandler}. For example, <code>algorithm=SHA256</code>
+ *     would result in a call to {@link
+ *     MessageDigestCredentialHandler#setAlgorithm(String)} with a parameter of
+ *     <code>"SHA256"</code></li>
  * </ul>
  *
  * <p><strong>IMPLEMENTATION NOTE</strong> - This class implements
@@ -120,7 +128,9 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
     // --------------------------------------------------------- Public Methods
 
     public JAASMemoryLoginModule() {
-        log.debug("MEMORY LOGIN MODULE");
+        if (log.isDebugEnabled()) {
+            log.debug("MEMORY LOGIN MODULE");
+        }
     }
 
     /**
@@ -138,19 +148,21 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
     public boolean abort() throws LoginException {
 
         // If our authentication was not successful, just return false
-        if (principal == null)
+        if (principal == null) {
             return false;
+        }
 
         // Clean up if overall authentication failed
-        if (committed)
+        if (committed) {
             logout();
-        else {
+        } else {
             committed = false;
             principal = null;
         }
-        log.debug("Abort");
+        if (log.isDebugEnabled()) {
+            log.debug("Abort");
+        }
         return true;
-
     }
 
 
@@ -167,11 +179,14 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
      */
     @Override
     public boolean commit() throws LoginException {
-        log.debug("commit " + principal);
+        if (log.isDebugEnabled()) {
+            log.debug("commit " + principal);
+        }
 
         // If authentication was not successful, just return false
-        if (principal == null)
+        if (principal == null) {
             return false;
+        }
 
         // Add our Principal to the Subject if needed
         if (!subject.getPrincipals().contains(principal)) {
@@ -181,8 +196,7 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
             if (principal instanceof GenericPrincipal) {
                 String roles[] = ((GenericPrincipal) principal).getRoles();
                 for (int i = 0; i < roles.length; i++) {
-                    subject.getPrincipals().add(
-                            new GenericPrincipal(roles[i], null, null));
+                    subject.getPrincipals().add(new GenericPrincipal(roles[i], null, null));
                 }
 
             }
@@ -190,7 +204,6 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
 
         committed = true;
         return true;
-
     }
 
 
@@ -209,7 +222,9 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
     @Override
     public void initialize(Subject subject, CallbackHandler callbackHandler,
                            Map<String,?> sharedState, Map<String,?> options) {
-        log.debug("Init");
+        if (log.isDebugEnabled()) {
+            log.debug("Init");
+        }
 
         // Save configuration values
         this.subject = subject;
@@ -218,12 +233,43 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
         this.options = options;
 
         // Perform instance-specific initialization
-        if (options.get("pathname") != null)
-            this.pathname = (String) options.get("pathname");
+        Object option = options.get("pathname");
+        if (option instanceof String) {
+            this.pathname = (String) option;
+        }
+
+        CredentialHandler credentialHandler = null;
+        option = options.get("credentialHandlerClassName");
+        if (option instanceof String) {
+            try {
+                Class<?> clazz = Class.forName((String) option);
+                credentialHandler = (CredentialHandler) clazz.getConstructor().newInstance();
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalArgumentException(e);
+            }
+        }
+        if (credentialHandler == null) {
+            credentialHandler = new MessageDigestCredentialHandler();
+        }
+
+        for (Entry<String,?> entry : options.entrySet()) {
+            if ("pathname".equals(entry.getKey())) {
+                continue;
+            }
+            if ("credentialHandlerClassName".equals(entry.getKey())) {
+                continue;
+            }
+            // Skip any non-String values since any value we are interested in
+            // will be a String.
+            if (entry.getValue() instanceof String) {
+                IntrospectionUtils.setProperty(credentialHandler, entry.getKey(),
+                        (String) entry.getValue());
+            }
+        }
+        setCredentialHandler(credentialHandler);
 
         // Load our defined Principals
         load();
-
     }
 
 
@@ -238,10 +284,10 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
      */
     @Override
     public boolean login() throws LoginException {
-
         // Set up our CallbackHandler requests
-        if (callbackHandler == null)
-            throw new LoginException("No CallbackHandler specified");
+        if (callbackHandler == null) {
+            throw new LoginException(sm.getString("jaasMemoryLoginModule.noCallbackHandler"));
+        }
         Callback callbacks[] = new Callback[9];
         callbacks[0] = new NameCallback("Username: ");
         callbacks[1] = new PasswordCallback("Password: ", false);
@@ -276,10 +322,8 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
             realmName = ((TextInputCallback) callbacks[6]).getText();
             md5a2 = ((TextInputCallback) callbacks[7]).getText();
             authMethod = ((TextInputCallback) callbacks[8]).getText();
-        } catch (IOException e) {
-            throw new LoginException(e.toString());
-        } catch (UnsupportedCallbackException e) {
-            throw new LoginException(e.toString());
+        } catch (IOException | UnsupportedCallbackException e) {
+            throw new LoginException(sm.getString("jaasMemoryLoginModule.callbackHandlerError", e.toString()));
         }
 
         // Validate the username and password we have received
@@ -292,19 +336,19 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
         } else if (authMethod.equals(HttpServletRequest.CLIENT_CERT_AUTH)) {
             principal = super.getPrincipal(username);
         } else {
-            throw new LoginException("Unknown authentication method");
+            throw new LoginException(sm.getString("jaasMemoryLoginModule.unknownAuthenticationMethod"));
         }
 
-        log.debug("login " + username + " " + principal);
+        if (log.isDebugEnabled()) {
+            log.debug("login " + username + " " + principal);
+        }
 
         // Report results based on success or failure
         if (principal != null) {
             return true;
         } else {
-            throw new
-                FailedLoginException("Username or password is incorrect");
+            throw new FailedLoginException(sm.getString("jaasMemoryLoginModule.invalidCredentials"));
         }
-
     }
 
 
@@ -318,37 +362,33 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
      */
     @Override
     public boolean logout() throws LoginException {
-
         subject.getPrincipals().remove(principal);
         committed = false;
         principal = null;
         return true;
-
     }
 
 
     // ---------------------------------------------------------- Realm Methods
     // ------------------------------------------------------ Protected Methods
 
-
     /**
      * Load the contents of our configuration file.
      */
     protected void load() {
-
         // Validate the existence of our configuration file
         File file = new File(pathname);
         if (!file.isAbsolute()) {
             String catalinaBase = getCatalinaBase();
             if (catalinaBase == null) {
-                log.warn("Unable to determine Catalina base to load file " + pathname);
+                log.error(sm.getString("jaasMemoryLoginModule.noCatalinaBase", pathname));
                 return;
             } else {
                 file = new File(catalinaBase, pathname);
             }
         }
-        if (!file.exists() || !file.canRead()) {
-            log.warn("Cannot load configuration file " + file.getAbsolutePath());
+        if (!file.canRead()) {
+            log.error(sm.getString("jaasMemoryLoginModule.noConfig", file.getAbsolutePath()));
             return;
         }
 
@@ -360,9 +400,7 @@ public class JAASMemoryLoginModule extends MemoryRealm implements LoginModule {
             digester.push(this);
             digester.parse(file);
         } catch (Exception e) {
-            log.warn("Error processing configuration file " +
-                file.getAbsolutePath(), e);
-            return;
+            log.error(sm.getString("jaasMemoryLoginModule.parseError", file.getAbsolutePath()), e);
         } finally {
             digester.reset();
         }

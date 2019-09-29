@@ -86,7 +86,7 @@ public interface ChannelInterceptor extends MembershipListener, Heartbeat {
      * @param destination Member[] - the destination for this message
      * @param msg ChannelMessage - the message to be sent
      * @param payload InterceptorPayload - the payload, carrying an error handler and future useful data, can be null
-     * @throws ChannelException
+     * @throws ChannelException if a serialization error happens.
      * @see ErrorHandler
      * @see InterceptorPayload
      */
@@ -167,6 +167,18 @@ public interface ChannelInterceptor extends MembershipListener, Heartbeat {
     public void stop(int svc) throws ChannelException;
 
     public void fireInterceptorEvent(InterceptorEvent event);
+
+    /**
+     * Return the channel that is related to this interceptor
+     * @return Channel
+     */
+    public Channel getChannel();
+
+    /**
+     * Set the channel that is related to this interceptor
+     * @param channel The channel
+     */
+    public void setChannel(Channel channel);
 
     interface InterceptorEvent {
         int getEventType();

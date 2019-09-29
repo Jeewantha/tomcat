@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
  Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +15,10 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+  http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -32,7 +34,7 @@
   <packaging>jar</packaging>
 
   <name>jdbc-pool</name>
-  <url>http://people.apache.org/~fhanik/jdbc-pool/</url>
+  <url>https://people.apache.org/~fhanik/jdbc-pool/</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -56,7 +58,7 @@
   <scm>
     <connection>scm:svn:https://svn.apache.org/repos/asf/tomcat/trunk/modules/jdbc-pool</connection>
     <developerConnection>scm:svn:https://svn.apache.org/repos/asf/tomcat/trunk/modules/jdbc-pool</developerConnection>
-    <url>http://svn.apache.org/viewvc/tomcat/trunk/modules/jdbc-pool</url>
+    <url>https://svn.apache.org/viewvc/tomcat/trunk/modules/jdbc-pool</url>
   </scm>
 
   <dependencies>

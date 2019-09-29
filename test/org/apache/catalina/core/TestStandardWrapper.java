@@ -18,6 +18,7 @@ package org.apache.catalina.core;
 
 import java.io.File;
 import java.io.IOException;
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,15 +43,13 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.authenticator.BasicAuthenticator;
+import org.apache.catalina.realm.MessageDigestCredentialHandler;
 import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
@@ -153,7 +152,8 @@ public class TestStandardWrapper extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         File appDir = new File("test/webapp-fragments");
-        tomcat.addWebapp(null, "", appDir.getAbsolutePath());
+        Context ctx = tomcat.addWebapp(null, "", appDir.getAbsolutePath());
+        skipTldsForResourceJars(ctx);
 
         tomcat.start();
 
@@ -163,8 +163,8 @@ public class TestStandardWrapper extends TomcatBaseTest {
                 "/testStandardWrapper/securityAnnotationsWebXmlPriority",
                 bc, null, null);
 
-        assertTrue(bc.getLength() > 0);
-        assertEquals(403, rc);
+        Assert.assertTrue(bc.getLength() > 0);
+        Assert.assertEquals(403, rc);
     }
 
     @Test
@@ -177,8 +177,8 @@ public class TestStandardWrapper extends TomcatBaseTest {
                 "/test/testStandardWrapper/securityAnnotationsMetaDataPriority",
                 bc, null, null);
 
-        assertEquals("OK", bc.toString());
-        assertEquals(200, rc);
+        Assert.assertEquals("OK", bc.toString());
+        Assert.assertEquals(200, rc);
     }
 
     @Test
@@ -206,8 +206,8 @@ public class TestStandardWrapper extends TomcatBaseTest {
         rc = getUrl("http://localhost:" + getPort() + "/",
                 bc, null, null);
 
-        assertTrue(bc.getLength() > 0);
-        assertEquals(403, rc);
+        Assert.assertTrue(bc.getLength() > 0);
+        Assert.assertEquals(403, rc);
     }
 
     @Test
@@ -225,16 +225,98 @@ public class TestStandardWrapper extends TomcatBaseTest {
         rc = getUrl("http://localhost:" + getPort() + "/protected.jsp",
                 bc, null, null);
 
-        assertTrue(bc.getLength() > 0);
-        assertEquals(403, rc);
+        Assert.assertTrue(bc.getLength() > 0);
+        Assert.assertEquals(403, rc);
 
         bc.recycle();
 
         rc = getUrl("http://localhost:" + getPort() + "/unprotected.jsp",
                 bc, null, null);
 
-        assertEquals(200, rc);
-        assertTrue(bc.toString().contains("00-OK"));
+        Assert.assertEquals(200, rc);
+        Assert.assertTrue(bc.toString().contains("00-OK"));
+    }
+
+    @Test
+    public void testRoleMappingInEngine() throws Exception {
+        doTestRoleMapping("engine");
+    }
+
+    @Test
+    public void testRoleMappingInHost() throws Exception {
+        doTestRoleMapping("host");
+    }
+
+    @Test
+    public void testRoleMappingInContext() throws Exception {
+        doTestRoleMapping("context");
+    }
+
+    private void doTestRoleMapping(String realmContainer)
+            throws Exception {
+        // Setup Tomcat instance
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+        ctx.addRoleMapping("testRole", "very-complex-role-name");
+
+        Wrapper wrapper = Tomcat.addServlet(ctx, "servlet", RoleAllowServlet.class.getName());
+        ctx.addServletMappingDecoded("/", "servlet");
+
+        ctx.setLoginConfig(new LoginConfig("BASIC", null, null, null));
+        ctx.getPipeline().addValve(new BasicAuthenticator());
+
+        TesterMapRealm realm = new TesterMapRealm();
+        MessageDigestCredentialHandler ch = new MessageDigestCredentialHandler();
+        ch.setAlgorithm("SHA");
+        realm.setCredentialHandler(ch);
+
+        /* Attach the realm to the appropriate container, but role mapping must
+         * always succeed because it is evaluated at context level.
+         */
+        if (realmContainer.equals("engine")) {
+            tomcat.getEngine().setRealm(realm);
+        } else if (realmContainer.equals("host")) {
+            tomcat.getHost().setRealm(realm);
+        } else if (realmContainer.equals("context")) {
+            ctx.setRealm(realm);
+        } else {
+            throw new IllegalArgumentException("realmContainer is invalid");
+        }
+
+        realm.addUser("testUser", ch.mutate("testPwd"));
+        realm.addUserRole("testUser", "testRole1");
+        realm.addUserRole("testUser", "very-complex-role-name");
+        realm.addUserRole("testUser", "another-very-complex-role-name");
+
+        tomcat.start();
+
+        Principal p = realm.authenticate("testUser", "testPwd");
+
+        Assert.assertNotNull(p);
+        Assert.assertEquals("testUser", p.getName());
+        // This one is mapped
+        Assert.assertTrue(realm.hasRole(wrapper, p, "testRole"));
+        Assert.assertTrue(realm.hasRole(wrapper, p, "testRole1"));
+        Assert.assertFalse(realm.hasRole(wrapper, p, "testRole2"));
+        Assert.assertTrue(realm.hasRole(wrapper, p, "very-complex-role-name"));
+        Assert.assertTrue(realm.hasRole(wrapper, p, "another-very-complex-role-name"));
+
+        // This now tests RealmBase#hasResourcePermission() because we need a wrapper
+        // to be passed from an authenticator
+        ByteChunk bc = new ByteChunk();
+        Map<String, List<String>> reqHeaders = new HashMap<>();
+        List<String> authHeaders = new ArrayList<>();
+        // testUser, testPwd
+        authHeaders.add("Basic dGVzdFVzZXI6dGVzdFB3ZA==");
+        reqHeaders.put("Authorization", authHeaders);
+
+        int rc = getUrl("http://localhost:" + getPort() + "/", bc, reqHeaders,
+                null);
+
+        Assert.assertEquals("OK", bc.toString());
+        Assert.assertEquals(200, rc);
     }
 
     private void doTestSecurityAnnotationsAddServlet(boolean useCreateServlet)
@@ -257,11 +339,11 @@ public class TestStandardWrapper extends TomcatBaseTest {
         rc = getUrl("http://localhost:" + getPort() + "/", bc, null, null);
 
         if (useCreateServlet) {
-            assertTrue(bc.getLength() > 0);
-            assertEquals(403, rc);
+            Assert.assertTrue(bc.getLength() > 0);
+            Assert.assertEquals(403, rc);
         } else {
-            assertEquals("OK", bc.toString());
-            assertEquals(200, rc);
+            Assert.assertEquals("OK", bc.toString());
+            Assert.assertEquals(200, rc);
         }
     }
 
@@ -279,7 +361,7 @@ public class TestStandardWrapper extends TomcatBaseTest {
 
         Wrapper wrapper = Tomcat.addServlet(ctx, "servlet", servletClassName);
         wrapper.setAsyncSupported(true);
-        ctx.addServletMapping("/", "servlet");
+        ctx.addServletMappingDecoded("/", "servlet");
 
         if (useRole) {
             TesterMapRealm realm = new TesterMapRealm();
@@ -313,11 +395,11 @@ public class TestStandardWrapper extends TomcatBaseTest {
         }
 
         if (expect200) {
-            assertEquals("OK", bc.toString());
-            assertEquals(200, rc);
+            Assert.assertEquals("OK", bc.toString());
+            Assert.assertEquals(200, rc);
         } else {
-            assertTrue(bc.getLength() > 0);
-            assertEquals(403, rc);
+            Assert.assertTrue(bc.getLength() > 0);
+            Assert.assertEquals(403, rc);
         }
     }
 
@@ -410,7 +492,7 @@ public class TestStandardWrapper extends TomcatBaseTest {
     public static final int BUG51445_THREAD_COUNT = 5;
 
     public static CountDownLatch latch = null;
-    public static AtomicInteger counter = new AtomicInteger(0);
+    public static final AtomicInteger counter = new AtomicInteger(0);
 
     public static void initLatch() {
         latch = new CountDownLatch(BUG51445_THREAD_COUNT);
@@ -427,7 +509,7 @@ public class TestStandardWrapper extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "Bug51445", new Bug51445Servlet());
-        ctx.addServletMapping("/", "Bug51445");
+        ctx.addServletMappingDecoded("/", "Bug51445");
 
         tomcat.start();
 
@@ -452,9 +534,9 @@ public class TestStandardWrapper extends TomcatBaseTest {
         // Check the result
         for (int i = 0; i < BUG51445_THREAD_COUNT; i ++) {
             String[] results = threads[i].getResult().split(",");
-            assertEquals(2, results.length);
-            assertEquals("10", results[0]);
-            assertFalse(servlets.contains(results[1]));
+            Assert.assertEquals(2, results.length);
+            Assert.assertEquals("10", results[0]);
+            Assert.assertFalse(servlets.contains(results[1]));
             servlets.add(results[1]);
         }
     }
@@ -473,7 +555,7 @@ public class TestStandardWrapper extends TomcatBaseTest {
         wrapper.setServletName("Bug51445");
         wrapper.setServletClass(Bug51445Servlet.class.getName());
         ctx.addChild(wrapper);
-        ctx.addServletMapping("/", "Bug51445");
+        ctx.addServletMappingDecoded("/", "Bug51445");
 
         tomcat.start();
 
@@ -497,9 +579,9 @@ public class TestStandardWrapper extends TomcatBaseTest {
         // Check the result
         for (int i = 0; i < BUG51445_THREAD_COUNT; i ++) {
             String[] results = threads[i].getResult().split(",");
-            assertEquals(2, results.length);
-            assertEquals("10", results[0]);
-            assertFalse(servlets.contains(results[1]));
+            Assert.assertEquals(2, results.length);
+            Assert.assertEquals("10", results[0]);
+            Assert.assertFalse(servlets.contains(results[1]));
             servlets.add(results[1]);
         }
     }

@@ -32,8 +32,6 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import org.apache.catalina.Globals;
 /**
  * Servlet to process SSI requests within a webpage. Mapped to a path from
  * within web.xml.
@@ -145,6 +143,7 @@ public class SSIServlet extends HttpServlet {
      *            a value of type 'HttpServletRequest'
      * @param res
      *            a value of type 'HttpServletResponse'
+     * @throws IOException an IO error occurred
      */
     protected void requestHandler(HttpServletRequest req,
             HttpServletResponse res) throws IOException {
@@ -159,13 +158,11 @@ public class SSIServlet extends HttpServlet {
         if (path == null || path.toUpperCase(Locale.ENGLISH).startsWith("/WEB-INF")
                 || path.toUpperCase(Locale.ENGLISH).startsWith("/META-INF")) {
             res.sendError(HttpServletResponse.SC_NOT_FOUND, path);
-            log("Can't serve file: " + path);
             return;
         }
         URL resource = servletContext.getResource(path);
         if (resource == null) {
             res.sendError(HttpServletResponse.SC_NOT_FOUND, path);
-            log("Can't find file: " + path);
             return;
         }
         String resourceMimeType = servletContext.getMimeType(path);
@@ -177,7 +174,6 @@ public class SSIServlet extends HttpServlet {
             res.setDateHeader("Expires", (new java.util.Date()).getTime()
                     + expires.longValue() * 1000);
         }
-        req.setAttribute(Globals.SSI_FLAG_ATTR, "true");
         processSSI(req, res, resource);
     }
 

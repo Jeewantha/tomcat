@@ -37,6 +37,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * <br>
  * Not all of the methods of the {@link java.util.concurrent.BlockingQueue} are implemented.
  *
+ * @param <E> Type of element in the queue
  */
 
 public class FairBlockingQueue<E> implements BlockingQueue<E> {
@@ -95,7 +96,7 @@ public class FairBlockingQueue<E> implements BlockingQueue<E> {
         ExchangeCountDownLatch<E> c = null;
         try {
             //check to see if threads are waiting for an object
-            if (waiters.size() > 0) {
+            if (!waiters.isEmpty()) {
                 //if threads are waiting grab the latch for that thread
                 c = waiters.poll();
                 //give the object to the thread instead of adding it to the pool

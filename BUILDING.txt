@@ -20,8 +20,8 @@
             ====================================================
 
 This subproject contains the source code for Tomcat @VERSION_MAJOR_MINOR@, a container that
-implements the Servlet 4.0, JSP 2.4?, EL 3.1? and WebSocket 1.2? specifications
-from the Java Community Process <http://www.jcp.org/>.
+implements the Servlet 4.0, JSP 2.3, EL 3.0, WebSocket 1.1 and JASPIC 1.1
+specifications from the Java Community Process <https://www.jcp.org/>.
 
 Note: If you just need to run Apache Tomcat, it is not necessary to build
 it. You may simply download a binary distribution. It is cross-platform.
@@ -45,18 +45,18 @@ source distribution, do the following:
     Note regarding later versions of Java:
 
       As documented elsewhere, one of components in Apache Tomcat includes
-      a private copy of the Apache Commons DBCP library.
+      a private copy of the Apache Commons DBCP 2 library.
 
       The JDBC interfaces implemented by DBCP frequently change in non-backwards
       compatible ways between versions of the Java SE specification. Therefore,
-      it is likely that DBCP will only compile with the specific version of Java
+      it is likely that DBCP 2 will only compile with the specific version of Java
       listed above and that compilation will fail if a later version of Java is
       used.
 
-      See Apache Commons DBCP project web site for more details on
+      See Apache Commons DBCP 2 project web site for more details on
       available versions of the library and its requirements,
 
-        http://commons.apache.org/dbcp/
+        https://commons.apache.org/dbcp/
 
  3. Install the JDK according to the instructions included with the release.
 
@@ -64,14 +64,14 @@ source distribution, do the following:
     into which you installed the JDK release.
 
 
-(2) Install Apache Ant version 1.9.5 or later on your computer.
+(2) Install Apache Ant version 1.9.8 or later on your computer.
 
- 1. If Apache Ant version 1.9.5 or later is already installed on your
+ 1. If Apache Ant version 1.9.8 or later is already installed on your
     computer, skip to (3).
 
  2. Download a binary distribution of Ant from:
 
-        http://ant.apache.org/bindownload.cgi
+        https://ant.apache.org/bindownload.cgi
 
  3. Unpack the binary distribution into a convenient location so that the
     Ant release resides in its own directory (conventionally named
@@ -93,20 +93,32 @@ source distribution, do the following:
 
 (3.1) Checkout or obtain the source code for Tomcat @VERSION_MAJOR_MINOR@
 
-Checkout the source using SVN, selecting a tag for released version or
-trunk for the current development code, or download and unpack a source
+Clone the source using git, then checkout a specific major branch or
+master for the latest code development, or download and unpack a source
 package.
 
- *  Tomcat SVN repository URL:
+ *  Tomcat GitHub repository URL:
 
-        http://svn.apache.org/repos/asf/tomcat/tc@VERSION_MAJOR_MINOR@.x/trunk/
+        https://github.com/apache/tomcat
 
  *  Source packages can be downloaded from:
 
-        http://tomcat.apache.org/download-@VERSION_MAJOR@0.cgi
+        https://tomcat.apache.org/download-@VERSION_MAJOR@0.cgi
 
 The location where the source has been placed will be further referred as
 ${tomcat.source}.
+
+The Tomcat local build process does not modify line-endings. The svn repository
+is configured so that all files will be checked out with the line-ending
+appropriate for the current platform. When using a source package you should
+ensure that you use the source package that has the appropriate line-ending
+for your platform:
+
+  zip    -> CRLF
+  tar.gz -> LF
+
+Note that the release build process does modify line-endings to ensure that
+each release package has the appropriate line-endings.
 
 (3.2) Building
 
@@ -130,14 +142,9 @@ ${tomcat.source}.
     directory outside of the source tree, so that you do not waste your
     time re-downloading the libraries.
 
-* WARNING: The default value of base.path property makes the build script
-  to download libraries required to build Tomcat to the /usr/share/java
-  directory. On a typical Linux or MacOX system an ordinary user will not
-  have access to write to this directory. Even if you do have access to
-  that directory, it is likely not appropriate for you to write there.
-
-  On Windows this usually corresponds to the "C:\usr\share\java"
-  directory, unless Cygwin is used.
+* NOTE: The default value of the base.path property configures the build script
+  to download the libraries required to build Tomcat to the
+  ${user.home}/tomcat-build-libs directory.
 
 * NOTE: Users accessing the Internet through a proxy must use the properties
   file to indicate to Ant the proxy configuration.
@@ -177,7 +184,7 @@ ${tomcat.source}.
 (4) Updating sources and rebuilding
 
 It is recommended that you regularly update the downloaded Tomcat @VERSION_MAJOR_MINOR@
-sources using your SVN client.
+sources using your git client.
 
 For a quick rebuild of only modified code you can use:
 
@@ -274,7 +281,24 @@ You can build them by using the following commands:
     open the command prompt used for the build with the "Run as administrator"
     option.
 
- 3. Build the release:
+ 3. Configure the code signing service
+
+    ASF committers performing official releases will need to configure the code
+    signing service so that the Windows installer is signed during the build
+    process. The following properties need to be added to the build.properties
+    file:
+
+        # Location of GPG executable (used only for releases)
+        # Code signing of Windows installer
+        do.codesigning=true
+        codesigning.user=request-via-pmc
+        codesigning.pwd=request-via-pmc
+        codesigning.partnercode=request-via-pmc
+        codesigning.service=Microsoft Windows Signing
+
+    Release managers will be provided with the necessary credentials by the PMC.
+
+ 4. Build the release:
 
     cd ${tomcat.source}
     ant release
@@ -351,7 +375,30 @@ For example:
     test.entry.methods=testMultiply01,testMultiply02
 
 
-(7.3) Other configuration options
+(7.3) Running a set of tests
+
+It is possible to run a set of JUnit test classes by adding the "test.name"
+property to the build.properties file. The property specifies an Ant
+includes pattern for the fileset of test class files to run.
+
+The default value is "**/Test*.java", so all test classes are being
+executed (with few exceptions - see build.xml for several exclude patterns).
+
+You can include multiple patterns by concatenating them with a comma (",")
+as the separator.
+
+For example:
+
+    test.name=**/TestSsl.java,**/TestWebSocketFrameClientSSL.java
+
+You can exclude specific JUnit test classes by adding the "test.exclude"
+property to the build.properties file. The property specifies an Ant
+excludes pattern for the fileset of test class files to exclude form the run.
+The default value is empty, so no classes are excluded. The syntax is the same
+as for the property "test.name".
+
+
+(7.4) Other configuration options
 
  1. It is possible to configure the directory where JUnit reports are
  written to. It is configured by "test.reports" property. The default
@@ -387,40 +434,67 @@ For example:
 
         junit.formatter.usefile=false
 
- 5. Optional support is provided for the Cobertura code coverage tool. It
- can be enabled using the following property:
+ 5. It is possible to speed up testing by letting JUnit to run several
+ tests in parallel.
+
+ This is configured by setting "test.threads" property. The recommended
+ value is one thread per core.
+
+ 6. Optional support is provided for the Cobertura code coverage tool.
+
+NOTE: Cobertura is licensed under GPL v2 with parts of it being under
+      Apache License v1.1. See https://cobertura.github.io/cobertura/ for details.
+      Using it during Tomcat build is optional and is off by default.
+
+ Cobertura can be enabled using the following properties:
 
         test.cobertura=true
+        test.threads=1
+
+ Using Cobertura currently requires setting test.threads configuration
+ property to the value of 1. Setting that property to a different value
+ will disable code coverage.
 
  The report files by default are written to
 
         output/coverage
 
-* NOTE: Cobertura is licensed under GPL v2 with parts of it being under
-  Apache License v1.1. See http://cobertura.sf.net for details. Using it
-  during Tomcat build is optional and is off by default.
-
- 6. The performance tests are written to run reasonably powerful machines (such
+ 7. The performance tests are written to run reasonably powerful machines (such
     as a developer may use day to day) assuming no other resource hungry
-    processes are running. These assumptions are not always true (e.g. on CI
-    systems running in a virtual machine) so the performance tests may be
-    disabled by using the following property:
+    processes are running.
+
+    These assumptions are not always true (e.g. on CI systems running in a
+    virtual machine) so the performance tests may be disabled by using the
+    following property:
 
         test.excludePerformance=true
 
- 7. Some tests include checks that the access log valve entries are as expected.
+ 8. Some tests include checks that the access log valve entries are as expected.
     These checks include timings. On slower / loaded systems these checks will
     often fail. The checks may be relaxed by using the following property:
 
         test.relaxTiming=true
 
+ 9. It is known that some platforms (e.g. OSX El Capitan) require IPv4 to
+    be the default for the multicast tests to work. This is configured by
+    the following property:
+
+        java.net.preferIPv4Stack=true
+
+ 10. It is possible to control whether the output of the tests is displayed
+     on the console or not. By default it is displayed and can be disabled
+     by the following property:
+
+        test.verbose=true
 
 (8) Source code checks
 
 (8.1) Checkstyle
 
-* NOTE: Checkstyle is licensed under LGPL. Using Checkstyle during Tomcat
-  build is optional and is off by default.
+NOTE: Checkstyle is licensed under LGPL. Using Checkstyle during Tomcat
+      build is optional and is off by default.
+
+      See http://checkstyle.sourceforge.net/ for more information.
 
 Tomcat comes with a Checkstyle configuration that tests its source code
 for certain conventions, like presence of the license header.
@@ -437,27 +511,46 @@ is located in the following directory:
 
     output/res/checkstyle
 
-It is possible to run the check separately by invoking the "validate"
+It is possible to run the check separately by calling the "validate"
 target. The command is:
 
     cd ${tomcat.source}
     ant -Dexecute.validate=true validate
 
 
-(8.2) End-of-line conventions check
+(8.2) FindBugs
+
+NOTE: FindBugs is licensed under LGPL. Using Findbugs during Tomcat build is
+      optional and is off by default.
+
+      See https://spotbugs.github.io/ for more information.
+
+To enable FindBugs, add the following property to build.properties file:
+
+    execute.findbugs=true
+
+To compile Tomcat classes and generate a FindBugs report, call the
+"findbugs" target. For example:
+
+    cd ${tomcat.source}
+    ant -Dexecute.findbugs=true findbugs
+
+The report file by default is written to
+
+    output/findbugs
+
+
+(8.3) End-of-line conventions check
 
 You usually would not need to run this check. You can skip this section.
 
 Apache Tomcat project has convention that all of its textual source files,
-stored in Subversion repository, are marked with Subversion property
-"svn:eol-style" with value of "native". This convention makes the editing
-of source code on different platforms easier.
+stored in the Git repository, use Unix style LF line endings.
 
 This test is used by developers to check that the source code adheres to
 this convention. It verifies that the ends of lines in textual files are
-appropriate for the operating system where it is run. The idea is to run
-this check regularly on two different platforms and notify developers when
-an inconsistency is detected.
+appropriate. The idea is to run this check regularly and notify developers
+when an inconsistency is detected.
 
 The command to run this test is:
 

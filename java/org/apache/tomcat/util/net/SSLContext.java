@@ -19,6 +19,7 @@ package org.apache.tomcat.util.net;
 
 import java.security.KeyManagementException;
 import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLEngine;
@@ -37,6 +38,8 @@ public interface SSLContext {
     public void init(KeyManager[] kms, TrustManager[] tms,
             SecureRandom sr) throws KeyManagementException;
 
+    public void destroy();
+
     public SSLSessionContext getServerSessionContext();
 
     public SSLEngine createSSLEngine();
@@ -45,4 +48,7 @@ public interface SSLContext {
 
     public SSLParameters getSupportedSSLParameters();
 
+    public X509Certificate[] getCertificateChain(String alias);
+
+    public X509Certificate[] getAcceptedIssuers();
 }

@@ -16,10 +16,8 @@
  */
 package org.apache.catalina.tribes.group;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -60,9 +58,9 @@ public class TestGroupChannelOptionFlag {
         try {
             channel.start(Channel.DEFAULT);
         }catch ( ChannelException x ) {
-            if ( x.getMessage().indexOf("option flag conflict") >= 0 ) error = true;
+            if (x.getMessage().contains("option flag conflict")) error = true;
         }
-        assertTrue(error);
+        Assert.assertTrue(error);
     }
 
     @Test
@@ -81,9 +79,9 @@ public class TestGroupChannelOptionFlag {
         try {
             channel.start(Channel.DEFAULT);
         }catch ( ChannelException x ) {
-            if ( x.getMessage().indexOf("option flag conflict") >= 0 ) error = true;
+            if (x.getMessage().contains("option flag conflict")) error = true;
         }
-        assertFalse(error);
+        Assert.assertFalse(error);
     }
 
     public static class TestInterceptor extends ChannelInterceptorBase {

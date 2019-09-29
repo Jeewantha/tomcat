@@ -59,6 +59,7 @@ public class RxTaskPool {
 
     /**
      * Find an idle worker thread, if any.  Could return null.
+     * @return a worker
      */
     public AbstractRxTask getRxTask()
     {
@@ -85,7 +86,7 @@ public class RxTaskPool {
             }//while
             if ( worker != null ) used.add(worker);
         }
-        return (worker);
+        return worker;
     }
 
     public int available() {
@@ -95,6 +96,7 @@ public class RxTaskPool {
     /**
      * Called by the worker thread to return itself to the
      * idle pool.
+     * @param worker The worker
      */
     public void returnWorker (AbstractRxTask worker) {
         if ( running ) {
@@ -103,14 +105,12 @@ public class RxTaskPool {
                 //if ( idle.size() < minThreads && !idle.contains(worker)) idle.add(worker);
                 if ( idle.size() < maxTasks && !idle.contains(worker)) idle.add(worker); //let max be the upper limit
                 else {
-                    worker.setDoRun(false);
-                    synchronized (worker){worker.notify();}
+                    worker.close();
                 }
-                mutex.notify();
+                mutex.notifyAll();
             }
-        }else {
-            worker.setDoRun(false);
-            synchronized (worker){worker.notify();}
+        } else {
+            worker.close();
         }
     }
 

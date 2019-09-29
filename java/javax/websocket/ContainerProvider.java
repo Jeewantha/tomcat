@@ -50,9 +50,9 @@ public abstract class ContainerProvider {
                 Class<WebSocketContainer> clazz =
                         (Class<WebSocketContainer>) Class.forName(
                                 DEFAULT_PROVIDER_CLASS_NAME);
-                result = clazz.newInstance();
-            } catch (ClassNotFoundException | InstantiationException |
-                    IllegalAccessException e) {
+                result = clazz.getConstructor().newInstance();
+            } catch (ReflectiveOperationException | IllegalArgumentException |
+                    SecurityException e) {
                 // No options left. Just return null.
             }
         }

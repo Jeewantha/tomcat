@@ -18,35 +18,70 @@ package org.apache.coyote;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.concurrent.Executor;
-
-import javax.servlet.http.HttpUpgradeHandler;
 
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SSLSupport;
-import org.apache.tomcat.util.net.SocketStatus;
+import org.apache.tomcat.util.net.SocketEvent;
 import org.apache.tomcat.util.net.SocketWrapperBase;
-
 
 /**
  * Common interface for processors of all protocols.
  */
 public interface Processor {
-    Executor getExecutor();
 
-    SocketState process(SocketWrapperBase<?> socketWrapper) throws IOException;
+    /**
+     * Process a connection. This is called whenever an event occurs (e.g. more
+     * data arrives) that allows processing to continue for a connection that is
+     * not currently being processed.
+     *
+     * @param socketWrapper The connection to process
+     * @param status The status of the connection that triggered this additional
+     *               processing
+     *
+     * @return The state the caller should put the socket in when this method
+     *         returns
+     *
+     * @throws IOException If an I/O error occurs during the processing of the
+     *         request
+     */
+    SocketState process(SocketWrapperBase<?> socketWrapper, SocketEvent status) throws IOException;
 
-    SocketState dispatch(SocketStatus status);
+    /**
+     * Generate an upgrade token.
+     *
+     * @return An upgrade token encapsulating the information required to
+     *         process the upgrade request
+     *
+     * @throws IllegalStateException if this is called on a Processor that does
+     *         not support upgrading
+     */
+    UpgradeToken getUpgradeToken();
 
-    SocketState asyncPostProcess();
-
-    HttpUpgradeHandler getHttpUpgradeHandler();
-
-    void errorDispatch();
-
-    boolean isAsync();
+    /**
+     * @return {@code true} if the Processor is currently processing an upgrade
+     *         request, otherwise {@code false}
+     */
     boolean isUpgrade();
+    boolean isAsync();
 
+    /**
+     * Check this processor to see if the timeout has expired and process a
+     * timeout if that is that case.
+     * <p>
+     * Note: The name of this method originated with the Servlet 3.0
+     * asynchronous processing but evolved over time to represent a timeout that
+     * is triggered independently of the socket read/write timeouts.
+     *
+     * @param now The time (as returned by {@link System#currentTimeMillis()} to
+     *            use as the current time to determine whether the timeout has
+     *            expired. If negative, the timeout will always be treated as ifq
+     *            it has expired.
+     */
+    void timeoutAsync(long now);
+
+    /**
+     * @return The request associated with this processor.
+     */
     Request getRequest();
 
     /**
@@ -56,24 +91,19 @@ public interface Processor {
     void recycle();
 
     /**
-     * When client certificate information is presented in a form other than
-     * instances of {@link java.security.cert.X509Certificate} it needs to be
-     * converted before it can be used and this property controls which JSSE
-     * provider is used to perform the conversion. For example it is used with
-     * the AJP connectors, the HTTP APR connector and with the
-     * {@link org.apache.catalina.valves.SSLValve}. If not specified, the
-     * default provider will be used.
+     * Set the SSL information for this HTTP connection.
      *
-     * @return The name of the JSSE provider to use for certificate
-     *         transformation if required
+     * @param sslSupport The SSL support object to use for this connection
      */
-    String getClientCertProvider();
-
     void setSslSupport(SSLSupport sslSupport);
 
     /**
-     * Allows retrieving additional input during the upgrade process
+     * Allows retrieving additional input during the upgrade process.
+     *
      * @return leftover bytes
+     *
+     * @throws IllegalStateException if this is called on a Processor that does
+     *         not support upgrading
      */
     ByteBuffer getLeftoverInput();
 
@@ -84,4 +114,15 @@ public interface Processor {
      * an existing multiplexed connection.
      */
     void pause();
+
+    /**
+     * Check to see if the async generation (each cycle of async increments the
+     * generation of the AsyncStateMachine) is the same as the generation when
+     * the most recent async timeout was triggered. This is intended to be used
+     * to avoid unnecessary processing.
+     *
+     * @return {@code true} If the async generation has not changed since the
+     *         async timeout was triggered
+     */
+    boolean checkAsyncTimeoutGeneration();
 }

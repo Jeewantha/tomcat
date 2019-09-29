@@ -25,7 +25,7 @@
     <properties>
       <author email="craigmcc@apache.org">Craig R. McClanahan</author>
       <author email="yoavs@apache.org">Yoav Shapira</author>
-      <title>JNDI Resources HOW-TO</title>
+      <title>JNDI Resources How-To</title>
     </properties>
 
 <body>
@@ -290,7 +290,7 @@ public class MyBean {
     <p><strong>WARNING</strong> - Be sure you respect the element ordering
     that is required by the DTD for web application deployment descriptors!
     See the
-    <a href="http://wiki.apache.org/tomcat/Specifications">Servlet
+    <a href="https://wiki.apache.org/tomcat/Specifications">Servlet
     Specification</a> for details.</p>
 
   <h5>3.  Code Your Application's Use Of This Resource</h5>
@@ -433,7 +433,7 @@ public class MyBean2 {
     <h5>0.  Introduction</h5>
 
     <p>UserDatabase resources are typically configured as global resources for
-    use by a UserDatabase realm. Tomcat includes a UserDatabaseFactoory that
+    use by a UserDatabase realm. Tomcat includes a UserDatabaseFactory that
     creates UserDatabase resources backed by an XML file - usually
     <code>tomcat-users.xml</code></p>
 
@@ -448,7 +448,7 @@ public class MyBean2 {
     files are placed in <code>$CATALINA_BASE/conf</code>. A typical XML would
     look like:</p>
 
-<source><![CDATA[<?xml version='1.0' encoding='utf-8'?>
+<source><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 <tomcat-users>
   <role rolename="tomcat"/>
   <role rolename="role1"/>
@@ -471,8 +471,9 @@ public class MyBean2 {
           pathname="conf/tomcat-users.xml"
           readonly="false" />]]></source>
 
-    <p>The <code>pathname</code> attribute can be absolute or relative. If
-    relative, it is relative to <code>$CATALINA_BASE</code>.</p>
+    <p>The <code>pathname</code> attribute can be a URL, an absolute path or a
+    relative path. If relative, it is relative to <code>$CATALINA_BASE</code>.
+    </p>
 
     <p>The <code>readonly</code> attribute is optional and defaults to
     <code>true</code> if not supplied. If the XML is writeable then it will be
@@ -480,6 +481,12 @@ public class MyBean2 {
     written it will inherit the default file permissions for the user Tomcat
     is running as. Ensure that these are appropriate to maintain the security
     of your installation.</p>
+
+    <p>If referenced in a Realm, the UserDatabse will, by default, monitor
+    <code>pathname</code> for changes and reload the file if a change in the
+    last modified time is observed. This can be disabled by setting the
+    <code>watchSource</code> attribute to <code>false</code>.
+    </p>
 
     <h5>3.  Configure the Realm</h5>
 
@@ -539,7 +546,7 @@ public class MyBean2 {
     <p><strong>WARNING</strong> - Be sure you respect the element ordering
     that is required by the DTD for web application deployment descriptors!
     See the
-    <a href="http://wiki.apache.org/tomcat/Specifications">Servlet
+    <a href="https://wiki.apache.org/tomcat/Specifications">Servlet
     Specification</a> for details.</p>
 
     <h5>2.  Code Your Application's Use Of This Resource</h5>
@@ -662,8 +669,8 @@ Transport.send(message);]]></source>
     </ul>
 
     <p><strong>NOTE</strong> - The default data source support in Tomcat
-    is based on the <strong>DBCP</strong> connection pool from the
-    <a href="http://commons.apache.org/">Commons</a>
+    is based on the <strong>DBCP 2</strong> connection pool from the
+    <a href="https://commons.apache.org/">Commons</a>
     project.  However, it is possible to use any other connection pool
     that implements <code>javax.sql.DataSource</code>, by writing your
     own custom resource factory, as described
@@ -708,7 +715,7 @@ Transport.send(message);]]></source>
     <p><strong>WARNING</strong> - Be sure you respect the element ordering
     that is required by the DTD for web application deployment descriptors!
     See the
-    <a href="http://wiki.apache.org/tomcat/Specifications">Servlet
+    <a href="https://wiki.apache.org/tomcat/Specifications">Servlet
     Specification</a> for details.</p>
 
     <h5>3.  Code Your Application's Use Of This Resource</h5>
@@ -827,8 +834,12 @@ conn.close();]]></source>
     <p>The abandoning feature is disabled by default and can be configured
     using the following properties:</p>
     <ul>
-    <li><strong>removeAbandoned</strong> - true or false: whether to
-        remove abandoned connections from the pool. Default: false</li>
+    <li><strong>removeAbandonedOnBorrow</strong> - true or false: whether to
+        remove abandoned connections from the pool when a connection is
+        borrowed. Default: false</li>
+    <li><strong>removeAbandonedOnMaintenance</strong> - true or false: whether
+        to remove abandoned connections from the pool during pool maintenance.
+        Default: false</li>
     <li><strong>removeAbandonedTimeout</strong> - The number of
         seconds after which a borrowed connection is assumed to be abandoned.
         Default: 300</li>
@@ -867,7 +878,7 @@ conn.close();]]></source>
     <li><strong>accessToUnderlyingConnectionAllowed</strong> - true or false: whether
         accessing the underlying connections is allowed. Default: false</li>
     </ul>
-    <p>For more details, please refer to the commons-dbcp documentation.</p>
+    <p>For more details, please refer to the Commons DBCP 2 documentation.</p>
 
   </subsection>
 
@@ -930,7 +941,7 @@ import javax.naming.spi.ObjectFactory;
 public class MyBeanFactory implements ObjectFactory {
 
   public Object getObjectInstance(Object obj,
-      Name name, Context nameCtx, Hashtable environment)
+      Name name2, Context nameCtx, Hashtable environment)
       throws NamingException {
 
       // Acquire an instance of our specified bean class
@@ -999,12 +1010,12 @@ public class MyBeanFactory implements ObjectFactory {
   <resource-env-ref-type>
     com.mycompany.MyBean
   </resource-env-ref-type>
-<resource-env-ref>]]></source>
+</resource-env-ref>]]></source>
 
     <p><strong>WARNING</strong> - Be sure you respect the element ordering
     that is required by the DTD for web application deployment descriptors!
     See the
-    <a href="http://wiki.apache.org/tomcat/Specifications">Servlet
+    <a href="https://wiki.apache.org/tomcat/Specifications">Servlet
     Specification</a> for details.</p>
 
   <h4>3.  Code Your Application's Use Of This Resource</h4>

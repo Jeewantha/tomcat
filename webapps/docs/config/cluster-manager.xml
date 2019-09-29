@@ -77,26 +77,6 @@
         when session attributes are being replicated or removed across Tomcat
         nodes in the cluster.
       </attribute>
-      <attribute name="sessionAttributeFilter" required="false">
-        A regular expression used to filter, which session attributes will
-        be replicated. An attribute will only be replicated, if its name
-        matches this pattern. If the pattern is not set (default), all
-        attributes are eligible for replication. As an example, the value
-        <code>^(userName|sessionHistory)$</code> will only replicate the two
-        session attributes named <code>userName</code> and
-        <code>sessionHistory</code>.
-      </attribute>
-      <attribute name="maxInactiveInterval" required="false">
-        <p>The initial maximum time interval, in seconds,
-        between client requests before a session is invalidated. A negative value
-        will result in sessions never timing out. If the attribute is not provided,
-        a default of 1800 seconds (30 minutes) is used.</p>
-
-        <p>This attribute provides the initial value whenever a
-        new session is created, but the interval may be dynamically
-        varied by a servlet via the
-        <code>setMaxInactiveInterval</code> method of the <code>HttpSession</code> object.</p>
-      </attribute>
       <attribute name="processExpiresFrequency" required="false">
         <p>Frequency of the session expiration, and related manager operations.
         Manager operations will be done once for the specified amount of
@@ -182,6 +162,28 @@
         effective only when <code>sendAllSessions</code> is <code>false</code>.
         Default is <code>2000</code> milliseconds.
       </attribute>
+      <attribute name="sessionAttributeNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        replicated. An attribute will only be replicated if its name matches
+        this pattern. If the pattern is zero length or <code>null</code>, all
+        attributes are eligible for replication. The pattern is anchored so the
+        session attribute name must fully match the pattern. As an example, the
+        value <code>(userName|sessionHistory)</code> will only replicate the
+        two session attributes named <code>userName</code> and
+        <code>sessionHistory</code>. If not specified, the default value of
+        <code>null</code> will be used.</p>
+      </attribute>
+      <attribute name="sessionAttributeValueClassNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        replicated. An attribute will only be replicated if the implementation
+        class name of the value matches this pattern. If the pattern is zero
+        length or <code>null</code>, all attributes are eligible for
+        replication. The pattern is anchored so the fully qualified class name
+        must fully match the pattern. If not specified, the default value of
+        <code>null</code> will be used unless a <code>SecurityManager</code> is
+        enabled in which case the default will be
+        <code>java\\.lang\\.(?:Boolean|Integer|Long|Number|String)</code>.</p>
+      </attribute>
       <attribute name="stateTimestampDrop" required="false">
         When this node sends a <code>GET_ALL_SESSIONS</code> message to other
         node, all session messages that are received as a response are queued.
@@ -192,6 +194,15 @@
         the timestamp of our <code>GET_ALL_SESSIONS</code> message.
         If set to <code>false</code>, all queued session messages are handled.
         Default is <code>true</code>.
+      </attribute>
+      <attribute name="warnOnSessionAttributeFilterFailure" required="false">
+        <p>If <strong>sessionAttributeNameFilter</strong> or
+        <strong>sessionAttributeValueClassNameFilter</strong> blocks an
+        attribute, should this be logged at <code>WARN</code> level? If
+        <code>WARN</code> level logging is disabled then it will be logged at
+        <code>DEBUG</code>. The default value of this attribute is
+        <code>false</code> unless a <code>SecurityManager</code> is enabled in
+        which case the default will be <code>true</code>.</p>
       </attribute>
     </attributes>
   </subsection>
@@ -216,12 +227,48 @@
         another map.
         Default value is <code>15000</code> milliseconds.
       </attribute>
+      <attribute name="sessionAttributeNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        replicated. An attribute will only be replicated if its name matches
+        this pattern. If the pattern is zero length or <code>null</code>, all
+        attributes are eligible for replication. The pattern is anchored so the
+        session attribute name must fully match the pattern. As an example, the
+        value <code>(userName|sessionHistory)</code> will only replicate the
+        two session attributes named <code>userName</code> and
+        <code>sessionHistory</code>. If not specified, the default value of
+        <code>null</code> will be used.</p>
+      </attribute>
+      <attribute name="sessionAttributeValueClassNameFilter" required="false">
+        <p>A regular expression used to filter which session attributes will be
+        replicated. An attribute will only be replicated if the implementation
+        class name of the value matches this pattern. If the pattern is zero
+        length or <code>null</code>, all attributes are eligible for
+        replication. The pattern is anchored so the fully qualified class name
+        must fully match the pattern. If not specified, the default value of
+        <code>null</code> will be used unless a <code>SecurityManager</code> is
+        enabled in which case the default will be
+        <code>java\\.lang\\.(?:Boolean|Integer|Long|Number|String)</code>.</p>
+      </attribute>
       <attribute name="terminateOnStartFailure" required="false">
         Set to true if you wish to terminate replication map when replication
         map fails to start. If replication map is terminated, associated context
         will fail to start. If you set this attribute to false, replication map
         does not end. It will try to join the map membership in the heartbeat.
         Default value is <code>false</code> .
+      </attribute>
+      <attribute name="warnOnSessionAttributeFilterFailure" required="false">
+        <p>If <strong>sessionAttributeNameFilter</strong> or
+        <strong>sessionAttributeValueClassNameFilter</strong> blocks an
+        attribute, should this be logged at <code>WARN</code> level? If
+        <code>WARN</code> level logging is disabled then it will be logged at
+        <code>DEBUG</code>. The default value of this attribute is
+        <code>false</code> unless a <code>SecurityManager</code> is enabled in
+        which case the default will be <code>true</code>.</p>
+      </attribute>
+      <attribute name="accessTimeout" required="false">
+        The timeout for a ping message. If a remote map does not respond within
+        this timeout period, its regarded as disappeared.
+        Default value is <code>5000</code> milliseconds.
       </attribute>
     </attributes>
   </subsection>

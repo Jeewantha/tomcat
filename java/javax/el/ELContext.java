@@ -23,6 +23,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 public abstract class ELContext {
 
@@ -47,7 +48,7 @@ public abstract class ELContext {
     }
 
     /**
-     * Mark the given property as resolved and notfy any interested listeners.
+     * Mark the given property as resolved and notify any interested listeners.
      *
      * @param base     The base object on which the property was found
      * @param property The property that was resolved
@@ -75,9 +76,8 @@ public abstract class ELContext {
      */
     public void putContext(@SuppressWarnings("rawtypes") Class key,
             Object contextObject) {
-        if (key == null || contextObject == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(key);
+        Objects.requireNonNull(contextObject);
 
         if (this.map == null) {
             this.map = new HashMap<>();
@@ -98,9 +98,7 @@ public abstract class ELContext {
      *              If the supplied key is <code>null</code>
      */
     public Object getContext(@SuppressWarnings("rawtypes") Class key) {
-        if (key == null) {
-            throw new NullPointerException();
-        }
+        Objects.requireNonNull(key);
         if (this.map == null) {
             return null;
         }

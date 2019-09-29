@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
 
 import org.apache.catalina.tribes.Member;
 
@@ -37,7 +36,8 @@ public class Membership implements Cloneable {
 
     protected static final Member[] EMPTY_MEMBERS = new Member[0];
 
-    private final Object membersLock = new Object();
+    // Non-final to support clone()
+    private Object membersLock = new Object();
 
     /**
      * The local member.
@@ -60,13 +60,29 @@ public class Membership implements Cloneable {
     protected final Comparator<Member> memberComparator;
 
     @Override
-    public Object clone() {
+    public Membership clone() {
         synchronized (membersLock) {
-            Membership clone = new Membership(local, memberComparator);
+            Membership clone;
+            try {
+                clone = (Membership) super.clone();
+            } catch (CloneNotSupportedException e) {
+                // Can't happen
+                throw new AssertionError();
+            }
+
+            // Standard clone() method will copy the map object. Replace that
+            // with a new map but with the same contents.
             @SuppressWarnings("unchecked")
             final HashMap<Member, MbrEntry> tmpclone = (HashMap<Member, MbrEntry>) map.clone();
             clone.map = tmpclone;
+
+            // Standard clone() method will copy the array object. Replace that
+            // with a new array but with the same contents.
             clone.members = members.clone();
+
+            // Standard clone() method will copy the lock object. Replace that
+            // with a new object.
+            clone.membersLock = new Object();
             return clone;
         }
     }
@@ -209,9 +225,7 @@ public class Membership implements Cloneable {
             }
 
             ArrayList<Member> list = null;
-            Iterator<MbrEntry> i = map.values().iterator();
-            while (i.hasNext()) {
-                MbrEntry entry = i.next();
+            for (MbrEntry entry : map.values()) {
                 if (entry.hasExpired(maxtime)) {
                     if (list == null) {
                         // Only need a list when members are expired (smaller gc)
@@ -326,11 +340,10 @@ public class Membership implements Cloneable {
          * @param maxtime The time threshold
          *
          * @return <code>true</code> if the member has expired, otherwise
-         *         <code>false</false>
+         *         <code>false</code>
          */
         public boolean hasExpired(long maxtime) {
-            long delta = System.currentTimeMillis() - lastHeardFrom;
-            return delta > maxtime;
+            return !mbr.isLocal() && (System.currentTimeMillis() - lastHeardFrom) > maxtime;
         }
     }
 }

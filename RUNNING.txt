@@ -43,7 +43,7 @@ Running With JRE 8 Or Later
 
 (2.1) Download a binary distribution of Tomcat from:
 
-      http://tomcat.apache.org/
+      https://tomcat.apache.org/
 
 (2.2) Unpack the binary distribution so that it resides in its own
       directory (conventionally named "apache-tomcat-[version]").
@@ -67,16 +67,14 @@ create your own from the Tomcat source code, as described in
 
 (3) Configure Environment Variables
 
-Tomcat is a Java application and does not use environment variables. The
-variables are used by the Tomcat startup scripts. The scripts use the variables
-to prepare the command that starts Tomcat.
+Tomcat is a Java application and does not use environment variables directly.
+Environment variables are used by the Tomcat startup scripts. The scripts use
+the environment variables to prepare the command that starts Tomcat.
 
 (3.1) Set CATALINA_HOME (required) and CATALINA_BASE (optional)
 
 The CATALINA_HOME environment variable should be set to the location of the
 root directory of the "binary" distribution of Tomcat.
-
-An example was given in (2.2) above.
 
 The Tomcat startup scripts have some logic to set this variable
 automatically if it is absent, based on the location of the startup script
@@ -159,7 +157,7 @@ create the following script file:
 
 On Windows, %CATALINA_BASE%\bin\setenv.bat:
 
-  set "JRE_HOME=%ProgramFiles%\Java\jre8"
+  set "JRE_HOME=%ProgramFiles%\Java\jre@MIN_JAVA_VERSION@"
   exit /b 0
 
 On *nix, $CATALINA_BASE/bin/setenv.sh:
@@ -205,7 +203,7 @@ launches Java directly and does not use the script files.
 (4.3) Further information about configuring and running Tomcat can be found in
       the documentation included here, as well as on the Tomcat web site:
 
-      http://tomcat.apache.org/
+      https://tomcat.apache.org/
 
 
 (5) Shut Down Tomcat
@@ -273,6 +271,12 @@ In CATALINA_HOME:
           setenv.sh (*nix), setenv.bat (Windows), tomcat-juli.jar
 
  * lib  - Libraries and classes, as explained below
+
+ * endorsed - Libraries that override standard "Endorsed Standards"
+              libraries provided by JRE. See Classloading documentation
+              in the User Guide for details.
+              This is only supported for Java <= 8.
+              By default this "endorsed" directory is absent.
 
 In the default configuration the JAR libraries and classes both in
 CATALINA_BASE/lib and in CATALINA_HOME/lib will be added to the common
@@ -389,32 +393,32 @@ For further reading:
 
     * Documentation for APR/Native library in the Tomcat User's Guide
 
-      http://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/apr.html
+      https://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/apr.html
 
     * Documentation for the HTTP and AJP protocol connectors in the Tomcat
       Configuration Reference
 
-      http://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/config/http.html
+      https://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/config/http.html
 
-      http://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/config/ajp.html
+      https://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/config/ajp.html
 
  - Apache Tomcat Native project home
 
-      http://tomcat.apache.org/native-doc/
+      https://tomcat.apache.org/native-doc/
 
  - Other projects
 
     * OpenSSL
 
-      http://openssl.org/
+      https://www.openssl.org/
 
     * Apache Portable Runtime
 
-      http://apr.apache.org/
+      https://apr.apache.org/
 
     * Apache HTTP Server
 
-      http://httpd.apache.org/
+      https://httpd.apache.org/
 
 To disable Apache Tomcat Native library:
 
@@ -445,17 +449,17 @@ For further reading:
 
  - Apache Commons Daemon project
 
-      http://commons.apache.org/daemon/
+      https://commons.apache.org/daemon/
 
  - Apache Tomcat documentation
 
     * Installing Apache Tomcat
 
-      http://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/setup.html
+      https://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/setup.html
 
-    * Windows service HOW-TO
+    * Windows Service How-To
 
-      http://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/windows-service-howto.html
+      https://tomcat.apache.org/tomcat-@VERSION_MAJOR_MINOR@-doc/windows-service-howto.html
 
 The binary files of Apache Commons Daemon in Apache Tomcat distributions
 for Windows are named:

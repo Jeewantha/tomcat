@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -39,6 +39,10 @@
     <attribute   name="address"
           description="The IP address on which to bind"
                  type="java.lang.String"/>
+
+    <attribute   name="ajpFlush"
+          description="Send AJP flush package for each explicit flush"
+                 type="boolean"/>
 
     <attribute   name="allowTrace"
           description="Allow disabling TRACE method"
@@ -84,7 +88,8 @@
 
     <attribute   name="localPort"
           description="The port number on which this connector is listening to requests. If the special value for port of zero is used then this method will report the actual port bound."
-                type="int"/>
+                 type="int"
+            writeable="false"/>
 
     <attribute   name="maxHeaderCount"
           description="The maximum number of headers that are allowed by the container. 100 by default. A value of less than 0 means no limit."
@@ -112,11 +117,11 @@
 
     <!-- Common -->
     <attribute   name="maxThreads"
-          description="The maximum number of request processing threads to be created"
+          description="The maximum number of request processing threads to be created for the internal Executor. -1 indicates an external Executor is being used."
                  type="int"/>
 
     <attribute   name="minSpareThreads"
-          description="The number of request processing threads that will be created"
+          description="The number of request processing threads that will be created for the internal Executor. -1 indicates an external Executor is being used."
                  type="int"/>
 
     <!-- Common -->
@@ -125,8 +130,18 @@
                  type="int"/>
 
     <attribute   name="port"
-          description="The port number on which this connector is configured to listen for requests. The special value of 0 means select a random free port when the socket is bound."
-                type="int"/>
+          description="The port number (excluding any offset) on which this connector is configured to listen for requests. The special value of 0 means select a random free port when the socket is bound."
+                 type="int"/>
+
+    <attribute   name="portOffset"
+          description="The offset that will be applied to port to determine the actual port number used."
+                 type="int"
+            writeable="false"/>
+
+    <attribute   name="portWithOffset"
+          description="The actual port number (including any offset) on which this connector is configured to listen for requests."
+                 type="int"
+            writeable="false"/>
 
     <!-- Common -->
     <attribute   name="processorCache"
@@ -135,7 +150,8 @@
 
     <attribute   name="protocol"
           description="Coyote protocol handler in use"
-                 type="java.lang.String"/>
+                 type="java.lang.String"
+            writeable="false"/>
 
     <attribute   name="protocolHandlerClassName"
           description="Coyote Protocol handler class name"
@@ -143,16 +159,21 @@
             writeable="false"/>
 
     <attribute   name="proxyName"
-          description="Ther Server name to which we should pretend requests to this Connector"
+          description="The Server name to which we should pretend requests to this Connector"
                  type="java.lang.String"/>
 
     <attribute   name="proxyPort"
-          description="Ther Server port to which we should pretend requests to this Connector"
+          description="The Server port to which we should pretend requests to this Connector"
                  type="int"/>
 
     <attribute   name="redirectPort"
-          description="The redirect port for non-SSL to SSL redirects"
+          description="The redirect port (excluding any offset) for non-SSL to SSL redirects"
                  type="int"/>
+
+    <attribute   name="redirectPortWithOffset"
+          description="The actual redirect port (including any offset) for non-SSL to SSL redirects."
+                 type="int"
+            writeable="false"/>
 
     <attribute   name="scheme"
           description="Protocol name for this Connector (http, https)"
@@ -183,7 +204,7 @@
 
     <!-- Common -->
     <attribute    name="threadPriority"
-           description="The thread priority for processors"
+           description="The thread priority for processors using the internal Executor. -1 indicates an external Executor is being used."
                   type="int"/>
 
     <attribute   name="URIEncoding"

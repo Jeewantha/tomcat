@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.locks.ReentrantLock;
@@ -51,13 +52,13 @@ public final class Room {
      * The number (single char) will be prefixed to the string when sending
      * the message.
      */
-    public static enum MessageType {
+    public enum MessageType {
         /**
          * '0': Error: contains error message.
          */
         ERROR('0'),
         /**
-         * '1': DrawMesssage: contains serialized DrawMessage(s) prefixed
+         * '1': DrawMessage: contains serialized DrawMessage(s) prefixed
          *      with the current Player's {@link Player#lastReceivedMessageId}
          *      and ",".<br>
          *      Multiple draw messages are concatenated with "|" as separator.
@@ -185,7 +186,7 @@ public final class Room {
         // Add the new player to the list.
         players.add(p);
 
-        // If currently no Broacast Timer Task is scheduled, then we need to create one.
+        // If currently no Broadcast Timer Task is scheduled, then we need to create one.
         if (activeBroadcastTimerTask == null) {
             activeBroadcastTimerTask = createBroadcastTimerTask();
             drawmessageBroadcastTimer.schedule(activeBroadcastTimerTask,
@@ -226,7 +227,7 @@ public final class Room {
             // Note that it can happen that the TimerTask is just about to execute (from
             // the Timer thread) but waits until all players are gone (or even until a new
             // player is added to the list), and then executes. This is OK. To prevent it,
-            // a TimerTask subclass would need to have some boolan "cancel" instance variable and
+            // a TimerTask subclass would need to have some boolean "cancel" instance variable and
             // query it in the invocation of Room#invokeAndWait.
             activeBroadcastTimerTask.cancel();
             activeBroadcastTimerTask = null;
@@ -360,7 +361,7 @@ public final class Room {
 
             roomLock.lock();
             try {
-                // Explicitely overwrite value to ensure data consistency in
+                // Explicitly overwrite value to ensure data consistency in
                 // current thread
                 cachedRunnables = null;
 
@@ -408,7 +409,7 @@ public final class Room {
      * Note: This means a player object is actually a join between Room and
      * Client.
      */
-    public final class Player {
+    public static final class Player {
 
         /**
          * The room to which this player belongs.
@@ -471,7 +472,7 @@ public final class Room {
          * image and by broadcasting it to the connected players.
          *
          * @param msg   The draw message received
-         * @param msgId The ID for the draw message recieved
+         * @param msgId The ID for the draw message received
          */
         public void handleDrawMessage(DrawMessage msg, long msgId) {
             room.internalHandleDrawMessage(this, msg, msgId);
@@ -484,8 +485,8 @@ public final class Room {
          * @param content
          */
         private void sendRoomMessage(MessageType type, String content) {
-            if (content == null || type == null)
-                throw new NullPointerException();
+            Objects.requireNonNull(content);
+            Objects.requireNonNull(type);
 
             String completeMsg = String.valueOf(type.flag) + content;
 

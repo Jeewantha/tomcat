@@ -16,12 +16,10 @@
  */
 package org.apache.coyote.ajp;
 
-import java.nio.ByteBuffer;
-
-import javax.servlet.http.HttpUpgradeHandler;
-
 import org.apache.coyote.AbstractProtocol;
+import org.apache.coyote.Processor;
 import org.apache.coyote.UpgradeProtocol;
+import org.apache.coyote.UpgradeToken;
 import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.SocketWrapperBase;
@@ -43,11 +41,14 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     protected static final StringManager sm = StringManager.getManager(AbstractAjpProtocol.class);
 
 
-    public AbstractAjpProtocol(AbstractEndpoint<S> endpoint) {
+    public AbstractAjpProtocol(AbstractEndpoint<S,?> endpoint) {
         super(endpoint);
-        setSoTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
+        setConnectionTimeout(Constants.DEFAULT_CONNECTION_TIMEOUT);
         // AJP does not use Send File
         getEndpoint().setUseSendfile(false);
+        ConnectionHandler<S> cHandler = new ConnectionHandler<>(this);
+        setHandler(cHandler);
+        getEndpoint().setHandler(cHandler);
     }
 
 
@@ -63,7 +64,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
      * Overridden to make getter accessible to other classes in this package.
      */
     @Override
-    protected AbstractEndpoint<S> getEndpoint() {
+    protected AbstractEndpoint<S,?> getEndpoint() {
         return super.getEndpoint();
     }
 
@@ -79,37 +80,76 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     }
 
 
+    /**
+     * {@inheritDoc}
+     *
+     * AJP does not support protocol upgrade so this always returns null.
+     */
+    @Override
+    protected UpgradeProtocol getUpgradeProtocol(String name) {
+        return null;
+    }
+
     // ------------------------------------------------- AJP specific properties
     // ------------------------------------------ managed in the ProtocolHandler
 
+    private boolean ajpFlush = true;
+    public boolean getAjpFlush() { return ajpFlush; }
+    /**
+     * Configure whether to aend an AJP flush packet when flushing. A flush
+     * packet is a zero byte AJP13 SEND_BODY_CHUNK packet. mod_jk and
+     * mod_proxy_ajp interpret this as a request to flush data to the client.
+     * AJP always does flush at the and of the response, so if it is not
+     * important, that the packets get streamed up to the client, do not use
+     * extra flush packets. For compatibility and to stay on the safe side,
+     * flush packets are enabled by default.
+     *
+     * @param ajpFlush  The new flush setting
+     */
+    public void setAjpFlush(boolean ajpFlush) {
+        this.ajpFlush = ajpFlush;
+    }
+
+
+    private boolean tomcatAuthentication = true;
     /**
      * Should authentication be done in the native web server layer,
      * or in the Servlet container ?
+     *
+     * @return {@code true} if authentication should be performed by Tomcat,
+     *         otherwise {@code false}
      */
-    private boolean tomcatAuthentication = true;
     public boolean getTomcatAuthentication() { return tomcatAuthentication; }
     public void setTomcatAuthentication(boolean tomcatAuthentication) {
         this.tomcatAuthentication = tomcatAuthentication;
     }
 
 
+    private boolean tomcatAuthorization = false;
     /**
      * Should authentication be done in the native web server layer and
      * authorization in the Servlet container?
+     *
+     * @return {@code true} if authorization should be performed by Tomcat,
+     *         otherwise {@code false}
      */
-    private boolean tomcatAuthorization = false;
     public boolean getTomcatAuthorization() { return tomcatAuthorization; }
     public void setTomcatAuthorization(boolean tomcatAuthorization) {
         this.tomcatAuthorization = tomcatAuthorization;
     }
 
 
-    /**
-     * Required secret.
-     */
     private String requiredSecret = null;
+    /**
+     * Set the required secret that must be included with every request.
+     *
+     * @param requiredSecret The required secret
+     */
     public void setRequiredSecret(String requiredSecret) {
         this.requiredSecret = requiredSecret;
+    }
+    protected String getRequiredSecret() {
+        return requiredSecret;
     }
 
 
@@ -153,44 +193,17 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     }
 
 
-    protected void configureProcessor(AjpProcessor processor) {
-        processor.setAdapter(getAdapter());
-        processor.setTomcatAuthentication(getTomcatAuthentication());
-        processor.setTomcatAuthorization(getTomcatAuthorization());
-        processor.setRequiredSecret(requiredSecret);
-        processor.setKeepAliveTimeout(getKeepAliveTimeout());
-        processor.setClientCertProvider(getClientCertProvider());
+    @Override
+    protected Processor createProcessor() {
+        AjpProcessor processor = new AjpProcessor(this, getAdapter());
+        return processor;
     }
 
-    protected abstract static class AbstractAjpConnectionHandler<S>
-            extends AbstractConnectionHandler<S,AjpProcessor> {
 
-        private final AbstractAjpProtocol<S> proto;
-
-        public AbstractAjpConnectionHandler(AbstractAjpProtocol<S> proto) {
-            this.proto = proto;
-        }
-
-        @Override
-        protected AbstractAjpProtocol<S> getProtocol() {
-            return proto;
-        }
-
-
-        @Override
-        protected AjpProcessor createProcessor() {
-            AjpProcessor processor = new AjpProcessor(proto.getPacketSize(), proto.getEndpoint());
-            proto.configureProcessor(processor);
-            register(processor);
-            return processor;
-        }
-
-
-        @Override
-        protected AjpProcessor createUpgradeProcessor(SocketWrapperBase<?> socket,
-                ByteBuffer leftoverInput, HttpUpgradeHandler httpUpgradeHandler) {
-            // TODO should fail - throw IOE
-            return null;
-        }
+    @Override
+    protected Processor createUpgradeProcessor(SocketWrapperBase<?> socket,
+            UpgradeToken upgradeToken) {
+        throw new IllegalStateException(sm.getString("ajpprotocol.noUpgradeHandler",
+                upgradeToken.getHttpUpgradeHandler().getClass().getName()));
     }
 }

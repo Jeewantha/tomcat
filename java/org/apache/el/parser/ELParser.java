@@ -7,7 +7,7 @@ public class ELParser/*@bgen(jjtree)*/implements ELParserTreeConstants, ELParser
   protected JJTELParserState jjtree = new JJTELParserState();
     public static Node parse(String ref) throws ELException {
         try {
-            return (new ELParser(new StringReader(ref))).CompositeExpression();
+            return new ELParser(new StringReader(ref)).CompositeExpression();
         } catch (ParseException pe) {
             throw new ELException(pe.getMessage());
         }
@@ -2963,7 +2963,16 @@ public class ELParser/*@bgen(jjtree)*/implements ELParserTreeConstants, ELParser
     throw generateParseException();
   }
 
-  static private final class LookaheadSuccess extends java.lang.Error { }
+  static private final class LookaheadSuccess extends java.lang.Error {
+      /*
+       * Over-ridden to avoid memory leak via Throwable.backtrace
+       * https://java.net/jira/browse/JAVACC-293
+       */
+    @Override
+    public synchronized Throwable fillInStackTrace() {
+        return this;
+    }
+  }
   final private LookaheadSuccess jj_ls = new LookaheadSuccess();
   private boolean jj_scan_token(int kind) {
     if (jj_scanpos == jj_lastpos) {

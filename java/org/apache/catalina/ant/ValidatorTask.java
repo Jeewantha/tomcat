@@ -25,7 +25,6 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 
 import org.apache.catalina.Globals;
-import org.apache.catalina.startup.Constants;
 import org.apache.tomcat.util.descriptor.DigesterFactory;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tools.ant.BuildException;
@@ -54,7 +53,7 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
     protected String path = null;
 
     public String getPath() {
-        return (this.path);
+        return this.path;
     }
 
     public void setPath(String path) {
@@ -63,7 +62,6 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
 
 
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * Execute the specified command.  This logic only performs the common
@@ -79,8 +77,8 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
             throw new BuildException("Must specify 'path'");
         }
 
-        File file = new File(path, Constants.ApplicationWebXml);
-        if ((!file.exists()) || (!file.canRead())) {
+        File file = new File(path, "WEB-INF/web.xml");
+        if (!file.canRead()) {
             throw new BuildException("Cannot find web.xml");
         }
 
@@ -93,7 +91,7 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
         // SecurityManager assume that untrusted applications may be deployed.
         Digester digester = DigesterFactory.newDigester(
                 true, true, null, Globals.IS_SECURITY_ENABLED);
-        try (InputStream stream = new BufferedInputStream(new FileInputStream(file.getCanonicalFile()));) {
+        try (InputStream stream = new BufferedInputStream(new FileInputStream(file.getCanonicalFile()))) {
             InputSource is = new InputSource(file.toURI().toURL().toExternalForm());
             is.setByteStream(stream);
             digester.parse(is);

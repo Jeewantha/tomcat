@@ -23,10 +23,12 @@ package org.apache.tomcat.dbcp.pool2.impl;
  * <p>
  * This class is not thread-safe; it is only intended to be used to provide
  * attributes used when creating a pool.
+ * </p>
  *
+ * @param <T> Type of element pooled.
  * @since 2.0
  */
-public class GenericObjectPoolConfig extends BaseObjectPoolConfig {
+public class GenericObjectPoolConfig<T> extends BaseObjectPoolConfig<T> {
 
     /**
      * The default value for the {@code maxTotal} configuration attribute.
@@ -75,7 +77,7 @@ public class GenericObjectPoolConfig extends BaseObjectPoolConfig {
      *
      * @see GenericObjectPool#setMaxTotal(int)
      */
-    public void setMaxTotal(int maxTotal) {
+    public void setMaxTotal(final int maxTotal) {
         this.maxTotal = maxTotal;
     }
 
@@ -102,7 +104,7 @@ public class GenericObjectPoolConfig extends BaseObjectPoolConfig {
      *
      * @see GenericObjectPool#setMaxIdle(int)
      */
-    public void setMaxIdle(int maxIdle) {
+    public void setMaxIdle(final int maxIdle) {
         this.maxIdle = maxIdle;
     }
 
@@ -129,16 +131,28 @@ public class GenericObjectPoolConfig extends BaseObjectPoolConfig {
      *
      * @see GenericObjectPool#setMinIdle(int)
      */
-    public void setMinIdle(int minIdle) {
+    public void setMinIdle(final int minIdle) {
         this.minIdle = minIdle;
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public GenericObjectPoolConfig clone() {
+    public GenericObjectPoolConfig<T> clone() {
         try {
-            return (GenericObjectPoolConfig) super.clone();
-        } catch (CloneNotSupportedException e) {
+            return (GenericObjectPoolConfig<T>) super.clone();
+        } catch (final CloneNotSupportedException e) {
             throw new AssertionError(); // Can't happen
         }
+    }
+
+    @Override
+    protected void toStringAppendFields(final StringBuilder builder) {
+        super.toStringAppendFields(builder);
+        builder.append(", maxTotal=");
+        builder.append(maxTotal);
+        builder.append(", maxIdle=");
+        builder.append(maxIdle);
+        builder.append(", minIdle=");
+        builder.append(minIdle);
     }
 }

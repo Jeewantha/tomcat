@@ -99,7 +99,7 @@ public class DiskFileItem
     private boolean isFormField;
 
     /**
-     * The original filename in the user's filesystem.
+     * The original file name in the user's file system.
      */
     private final String fileName;
 
@@ -140,6 +140,12 @@ public class DiskFileItem
      */
     private FileItemHeaders headers;
 
+    /**
+     * Default content charset to be used when no explicit charset
+     * parameter is provided by the sender.
+     */
+    private String defaultCharset = DEFAULT_CHARSET;
+
     // ----------------------------------------------------------- Constructors
 
     /**
@@ -150,7 +156,7 @@ public class DiskFileItem
      *                      <code>null</code> if not specified.
      * @param isFormField   Whether or not this item is a plain form field, as
      *                      opposed to a file upload.
-     * @param fileName      The original filename in the user's filesystem, or
+     * @param fileName      The original file name in the user's file system, or
      *                      <code>null</code> if not specified.
      * @param sizeThreshold The threshold, in bytes, below which items will be
      *                      retained in memory and above which they will be
@@ -217,14 +223,14 @@ public class DiskFileItem
         ParameterParser parser = new ParameterParser();
         parser.setLowerCaseNames(true);
         // Parameter parser can handle null input
-        Map<String,String> params = parser.parse(getContentType(), ';');
+        Map<String, String> params = parser.parse(getContentType(), ';');
         return params.get("charset");
     }
 
     /**
-     * Returns the original filename in the client's filesystem.
+     * Returns the original file name in the client's file system.
      *
-     * @return The original filename in the client's filesystem.
+     * @return The original file name in the client's file system.
      * @throws org.apache.tomcat.util.http.fileupload.InvalidFileNameException
      *   The file name contains a NUL character, which might be an indicator of
      *   a security attack. If you intend to use the file name anyways, catch
@@ -335,7 +341,7 @@ public class DiskFileItem
         byte[] rawdata = get();
         String charset = getCharSet();
         if (charset == null) {
-            charset = DEFAULT_CHARSET;
+            charset = defaultCharset;
         }
         try {
             return new String(rawdata, charset);
@@ -385,6 +391,12 @@ public class DiskFileItem
                  * in a temporary location so move it to the
                  * desired file.
                  */
+                if (file.exists()) {
+                    if (!file.delete()) {
+                        throw new FileUploadException(
+                                "Cannot write uploaded file to disk!");
+                    }
+                }
                 if (!outputFile.renameTo(file)) {
                     BufferedInputStream in = null;
                     BufferedOutputStream out = null;
@@ -422,7 +434,7 @@ public class DiskFileItem
     public void delete() {
         cachedContent = null;
         File outputFile = getStoreLocation();
-        if (outputFile != null && outputFile.exists()) {
+        if (outputFile != null && !isInMemory() && outputFile.exists()) {
             outputFile.delete();
         }
     }
@@ -535,7 +547,7 @@ public class DiskFileItem
      */
     @Override
     protected void finalize() {
-        if (dfos == null) {
+        if (dfos == null || dfos.isInMemory()) {
             return;
         }
         File outputFile = dfos.getFile();
@@ -563,8 +575,7 @@ public class DiskFileItem
                 tempDir = new File(System.getProperty("java.io.tmpdir"));
             }
 
-            String tempFileName =
-                    String.format("upload_%s_%s.tmp", UID, getUniqueId());
+            String tempFileName = String.format("upload_%s_%s.tmp", UID, getUniqueId());
 
             tempFile = new File(tempDir, tempFileName);
         }
@@ -622,4 +633,21 @@ public class DiskFileItem
         headers = pHeaders;
     }
 
+    /**
+     * Returns the default charset for use when no explicit charset
+     * parameter is provided by the sender.
+     * @return the default charset
+     */
+    public String getDefaultCharset() {
+        return defaultCharset;
+    }
+
+    /**
+     * Sets the default charset for use when no explicit charset
+     * parameter is provided by the sender.
+     * @param charset the default charset
+     */
+    public void setDefaultCharset(String charset) {
+        defaultCharset = charset;
+    }
 }

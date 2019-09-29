@@ -126,6 +126,17 @@ public class TestAuthorizationDigest {
     }
 
     @Test
+    public void testEndWithLhexReverse() throws Exception {
+        String header = "Digest nc=10000000";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("10000000", result.get("nc"));
+    }
+
+    @Test
     public void testQuotedLhex() throws Exception {
         String header = "Digest nc=\"09abcdef\"";
 
@@ -134,6 +145,39 @@ public class TestAuthorizationDigest {
         Map<String,String> result = Authorization.parseAuthorizationDigest(input);
 
         Assert.assertEquals("09abcdef", result.get("nc"));
+    }
+
+    @Test
+    public void testQuotedLhexReverse() throws Exception {
+        String header = "Digest nc=\"fedcba90\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("fedcba90", result.get("nc"));
+    }
+
+    @Test
+    public void testLhex() throws Exception {
+        String header = "Digest nc=09abcdef";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("09abcdef", result.get("nc"));
+    }
+
+    @Test
+    public void testLhexReverse() throws Exception {
+        String header = "Digest nc=fedcba90";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("fedcba90", result.get("nc"));
     }
 
     @Test
@@ -148,8 +192,63 @@ public class TestAuthorizationDigest {
     }
 
     @Test
+    public void testQuotedLhexUppercaseReverse() throws Exception {
+        String header = "Digest nc=\"FEDCBA00\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("fedcba00", result.get("nc"));
+    }
+
+    @Test
+    public void testLhexUppercase() throws Exception {
+        String header = "Digest nc=00ABCDEF";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("00abcdef", result.get("nc"));
+    }
+
+    @Test
+    public void testLhexUppercaseReverse() throws Exception {
+        String header = "Digest nc=FEDCBA00";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertEquals("fedcba00", result.get("nc"));
+    }
+
+    @Test
     public void testUnclosedQuotedLhex() throws Exception {
         String header = "Digest nc=\"00000001";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testEmptyLhex() throws Exception {
+        String header = "Digest nc=";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testQuotedEmptyLhex() throws Exception {
+        String header = "Digest nc=\"\"";
 
         StringReader input = new StringReader(header);
 
@@ -179,8 +278,18 @@ public class TestAuthorizationDigest {
     }
 
     @Test
-    public void testNonTokenDirective() throws Exception {
+    public void testNonTokenDirective1() throws Exception {
         String header = "Digest user{name=\"test\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testNonTokenDirective2() throws Exception {
+        String header = "Digest a=b,{name=test";
 
         StringReader input = new StringReader(header);
 
@@ -209,8 +318,38 @@ public class TestAuthorizationDigest {
     }
 
     @Test
-    public void testNonTokenQop() throws Exception {
+    public void testEmptyQop() throws Exception {
+        String header = "Digest qop=";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testEmptyQuotedTokenQop() throws Exception {
+        String header = "Digest qop=\"\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testNonTokenQop01() throws Exception {
         String header = "Digest qop=au{th";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testNonTokenQop02() throws Exception {
+        String header = "Digest qop=auth{";
 
         StringReader input = new StringReader(header);
 
@@ -279,8 +418,28 @@ public class TestAuthorizationDigest {
     }
 
     @Test
-    public void testWrongCharacterInHex() throws Exception {
+    public void testWrongCharacterInHex01() throws Exception {
         String header = "Digest nc=\u044f";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testWrongCharacterInHex02() throws Exception {
+        String header = "Digest nc=aaa\u044f";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testWrongCharacterInHex03() throws Exception {
+        String header = "Digest nc=\u044faaa";
 
         StringReader input = new StringReader(header);
 
@@ -321,4 +480,38 @@ public class TestAuthorizationDigest {
         Map<String,String> result = Authorization.parseAuthorizationDigest(input);
         Assert.assertEquals("b", result.get("a"));
     }
+
+    @Test
+    public void testParseAuthParamBEscaped() throws Exception {
+        // Test for HttpParser.readTokenOrQuotedString()
+        // auth-param = token "=" ( token | quoted-string )
+        String header = "Digest a=\"b\\\"b\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertEquals("b\"b", result.get("a"));
+    }
+
+    @Test
+    public void testQuotedStringNoQuotes() throws Exception {
+        String header = "Digest username=a";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testNotDigest() throws Exception {
+        String header = "SomethingElse a=b";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+
 }

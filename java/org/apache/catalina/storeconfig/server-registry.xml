@@ -102,6 +102,49 @@
         <TransientAttribute>URIEncoding</TransientAttribute>
         <TransientAttribute>maxProcessor</TransientAttribute>
         <TransientAttribute>minProcessor</TransientAttribute>
+        <!-- All attribute duplicated from the SSLHostConfig, removed in Tomcat 10 -->
+        <TransientAttribute>SSLProtocol</TransientAttribute>
+        <TransientAttribute>sslEnabledProtocols</TransientAttribute>
+        <TransientAttribute>SSLCipherSuite</TransientAttribute>
+        <TransientAttribute>ciphers</TransientAttribute>
+        <TransientAttribute>SSLCertificateChainFile</TransientAttribute>
+        <TransientAttribute>SSLCertificateFile</TransientAttribute>
+        <TransientAttribute>keyAlias</TransientAttribute>
+        <TransientAttribute>SSLCertificateKeyFile</TransientAttribute>
+        <TransientAttribute>keyPass</TransientAttribute>
+        <TransientAttribute>SSLPassword</TransientAttribute>
+        <TransientAttribute>keystoreFile</TransientAttribute>
+        <TransientAttribute>keystorePass</TransientAttribute>
+        <TransientAttribute>keystoreProvider</TransientAttribute>
+        <TransientAttribute>keystoreType</TransientAttribute>
+        <TransientAttribute>SSLCACertificateFile</TransientAttribute>
+        <TransientAttribute>SSLCACertificatePath</TransientAttribute>
+        <TransientAttribute>crlFile</TransientAttribute>
+        <TransientAttribute>SSLCARevocationFile</TransientAttribute>
+        <TransientAttribute>SSLCARevocationPath</TransientAttribute>
+        <TransientAttribute>SSLDisableCompression</TransientAttribute>
+        <TransientAttribute>SSLDisableSessionTickets</TransientAttribute>
+        <TransientAttribute>SSLDisableCompression</TransientAttribute>
+        <TransientAttribute>SSLHonorCipherOrder</TransientAttribute>
+        <TransientAttribute>useServerCipherSuitesOrder</TransientAttribute>
+        <TransientAttribute>algorithm</TransientAttribute>
+        <TransientAttribute>sslContext</TransientAttribute>
+        <TransientAttribute>sessionCacheSize</TransientAttribute>
+        <TransientAttribute>sessionTimeout</TransientAttribute>
+        <TransientAttribute>sslProtocol</TransientAttribute>
+        <TransientAttribute>trustManagerClassName</TransientAttribute>
+        <TransientAttribute>truststoreAlgorithm</TransientAttribute>
+        <TransientAttribute>truststoreFile</TransientAttribute>
+        <TransientAttribute>truststorePass</TransientAttribute>
+        <TransientAttribute>truststoreProvider</TransientAttribute>
+        <TransientAttribute>truststoreType</TransientAttribute>
+        <!-- All attribute duplicated from the AbstractHttp11Protocol, removed in Tomcat 10 -->
+        <TransientAttribute>clientAuth</TransientAttribute>
+        <TransientAttribute>SSLVerifyClient</TransientAttribute>
+        <TransientAttribute>trustMaxCertLength</TransientAttribute>
+        <TransientAttribute>SSLVerifyDepth</TransientAttribute>
+        <TransientAttribute>useServerCipherSuitesOrder</TransientAttribute>
+        <TransientAttribute>SSLHonorCipherOrder</TransientAttribute>
      </Description>
      <Description
         tag="UpgradeProtocol"
@@ -119,12 +162,40 @@
         children="true"
         storeFactoryClass="org.apache.catalina.storeconfig.SSLHostConfigSF">
         <TransientAttribute>openSslContext</TransientAttribute>
+        <TransientAttribute>openSslConfContext</TransientAttribute>
+        <!-- All attribute duplicated from the Certificate, may be removed in Tomcat 10 -->
+        <TransientAttribute>certificateChainFile</TransientAttribute>
+        <TransientAttribute>certificateFile</TransientAttribute>
+        <TransientAttribute>certificateKeyAlias</TransientAttribute>
+        <TransientAttribute>certificateKeyFile</TransientAttribute>
+        <TransientAttribute>certificateKeyPassword</TransientAttribute>
+        <TransientAttribute>certificateKeystoreFile</TransientAttribute>
+        <TransientAttribute>certificateKeystorePassword</TransientAttribute>
+        <TransientAttribute>certificateKeystoreProvider</TransientAttribute>
+        <TransientAttribute>certificateKeystoreType</TransientAttribute>
      </Description>
      <Description
         tag="Certificate"
         standard="true"
         default="true"
         tagClass="org.apache.tomcat.util.net.SSLHostConfigCertificate"
+        children="false"
+        storeFactoryClass="org.apache.catalina.storeconfig.StoreFactoryBase"
+        storeAppenderClass="org.apache.catalina.storeconfig.CertificateStoreAppender">
+     </Description>
+     <Description
+        tag="OpenSSLConf"
+        standard="true"
+        default="true"
+        tagClass="org.apache.tomcat.util.net.openssl.OpenSSLConf"
+        children="true"
+        storeFactoryClass="org.apache.catalina.storeconfig.OpenSSLConfSF">
+     </Description>
+     <Description
+        tag="OpenSSLConfCmd"
+        standard="true"
+        default="true"
+        tagClass="org.apache.tomcat.util.net.openssl.OpenSSLConfCmd"
         children="false"
         storeFactoryClass="org.apache.catalina.storeconfig.StoreFactoryBase">
      </Description>
@@ -144,7 +215,6 @@
         children="true"
         tagClass="org.apache.catalina.Manager"
         storeFactoryClass="org.apache.catalina.storeconfig.ManagerSF">
-        <TransientAttribute>distributable</TransientAttribute>
         <TransientAttribute>domain</TransientAttribute>
     </Description>
     <Description
@@ -154,7 +224,6 @@
         children="true"
         tagClass="org.apache.catalina.session.PersistentManager"
         storeFactoryClass="org.apache.catalina.storeconfig.PersistentManagerSF">
-        <TransientAttribute>distributable</TransientAttribute>
      </Description>
      <Description
         tag="Store"
@@ -210,6 +279,7 @@
         default="false"
         tagClass="org.apache.catalina.loader.WebappLoader"
         storeFactoryClass="org.apache.catalina.storeconfig.LoaderSF">
+        <TransientAttribute>domain</TransientAttribute>
      </Description>
      <Description
         tag="Listener"
@@ -222,6 +292,7 @@
        <TransientChild>org.apache.catalina.startup.ContextConfig</TransientChild>
        <TransientChild>org.apache.catalina.startup.EngineConfig</TransientChild>
        <TransientChild>org.apache.catalina.startup.HostConfig</TransientChild>
+       <TransientChild>org.apache.catalina.startup.ListenerCreateRule$OptionalListener</TransientChild>
        <TransientChild>org.apache.catalina.core.StandardHost$MemoryLeakTrackingListener</TransientChild>
        <TransientChild>org.apache.catalina.mapper.MapperListener</TransientChild>
        <TransientChild>org.apache.catalina.core.StandardEngine$AccessLogListener</TransientChild>
@@ -342,14 +413,6 @@
         storeFactoryClass="org.apache.catalina.storeconfig.StoreFactoryBase">
      </Description>
      <Description
-        id="org.apache.catalina.core.StandardContext.[InstanceListener]"
-        tag="InstanceListener"
-        standard="true"
-        default="false"
-        attributes="false"
-        storeFactoryClass="org.apache.catalina.storeconfig.InstanceListenerSF">
-     </Description>
-     <Description
         id="org.apache.catalina.core.StandardContext.[WrapperLifecycle]"
         tag="WrapperLifecycle"
         standard="true"
@@ -394,6 +457,8 @@
         default="false"
         tagClass="org.apache.catalina.tribes.ChannelReceiver"
         storeFactoryClass="org.apache.catalina.storeconfig.StoreFactoryBase">
+        <TransientAttribute>bind</TransientAttribute>
+        <TransientAttribute>host</TransientAttribute>
      </Description>
      <Description
         tag="Membership"
@@ -463,9 +528,9 @@
      </Description>
      <Description
         tag="CookieProcessor"
-        standard="true"
+        standard="false"
         default="false"
-        tagClass="org.apache.tomcat.util.http.LegacyCookieProcessor"
+        tagClass="org.apache.tomcat.util.http.CookieProcessor"
         storeFactoryClass="org.apache.catalina.storeconfig.StoreFactoryBase">
      </Description>
      <Description

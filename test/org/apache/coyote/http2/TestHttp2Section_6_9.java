@@ -36,10 +36,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
 
         sendWindowUpdate(0, 0);
 
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1);
     }
 
 
@@ -52,7 +49,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
 
         parser.readFrame(true);
 
-        Assert.assertEquals("3-RST-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]",
+        Assert.assertEquals("3-RST-[" + Http2Error.PROTOCOL_ERROR.getCode() + "]\n",
                 output.getTrace());
     }
 
@@ -81,7 +78,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
 
         byte[] zeroLengthWindowFrame = new byte[9];
         // Length zero
-        ByteUtil.setOneBytes(zeroLengthWindowFrame, 3, FrameType.WINDOW_UPDATE.getIdByte());
+        setOneBytes(zeroLengthWindowFrame, 3, FrameType.WINDOW_UPDATE.getIdByte());
         // No flags
         // Stream 1
         ByteUtil.set31Bits(zeroLengthWindowFrame, 5, 1);
@@ -89,10 +86,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
         os.write(zeroLengthWindowFrame);
         os.flush();
 
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.FRAME_SIZE_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1, Http2Error.FRAME_SIZE_ERROR);
     }
 
 
@@ -138,7 +132,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
 
         parser.readFrame(true);
 
-        Assert.assertEquals("3-RST-[" + Http2Error.FLOW_CONTROL_ERROR.getCode() + "]",
+        Assert.assertEquals("3-RST-[" + Http2Error.FLOW_CONTROL_ERROR.getCode() + "]\n",
                 output.getTrace());
     }
 
@@ -150,10 +144,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
         // Super size the flow control window.
         sendWindowUpdate(0, (1 << 31) - 1);
 
-        parser.readFrame(true);
-
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Goaway-[1]-[" + Http2Error.FLOW_CONTROL_ERROR.getCode() + "]-["));
+        handleGoAwayResponse(1, Http2Error.FLOW_CONTROL_ERROR);
     }
 
 
@@ -167,7 +158,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
         byte[] dataFrameHeader = new byte[9];
         ByteBuffer dataPayload = ByteBuffer.allocate(8 * 1024);
 
-        buildPostRequest(headersFrameHeader, headersPayload,
+        buildPostRequest(headersFrameHeader, headersPayload, false,
                 dataFrameHeader, dataPayload, null, 3);
 
         // Write the headers
@@ -199,6 +190,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
         Assert.assertEquals(
                 "3-HeadersStart\n" +
                 "3-Header-[:status]-[200]\n" +
+                "3-Header-[date]-["+ DEFAULT_DATE + "]\n" +
                 "3-HeadersEnd\n" +
                 "3-Body-4096\n", output.getTrace());
                 output.clearTrace();
@@ -235,6 +227,8 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
         Assert.assertEquals(
                 "5-HeadersStart\n" +
                 "5-Header-[:status]-[200]\n" +
+                "5-Header-[content-length]-[128]\n" +
+                "5-Header-[date]-[Wed, 11 Nov 2015 19:18:42 GMT]\n" +
                 "5-HeadersEnd\n" +
                 "5-Body-128\n" +
                 "5-EndOfStream\n", output.getTrace());
@@ -281,7 +275,7 @@ public class TestHttp2Section_6_9 extends Http2TestBase {
         sendSettings(0, false, new SettingValue(4,  1 << 30));
         // Ack
         parser.readFrame(true);
-        Assert.assertEquals("3-RST-[" + Http2Error.FLOW_CONTROL_ERROR.getCode() + "]",
+        Assert.assertEquals("3-RST-[" + Http2Error.FLOW_CONTROL_ERROR.getCode() + "]\n",
                 output.getTrace());
 
     }

@@ -93,13 +93,21 @@ public class ReplicationValve
      */
     protected boolean doProcessingStats = false;
 
-    protected long totalRequestTime = 0;
-    protected long totalSendTime = 0;
-    protected long nrOfRequests = 0;
-    protected long lastSendTime = 0;
-    protected long nrOfFilterRequests = 0;
-    protected long nrOfSendRequests = 0;
-    protected long nrOfCrossContextSendRequests = 0;
+    /*
+     * Note: The statistics are volatile to ensure the concurrent updates do not
+     *       corrupt them but it is still possible that:
+     *       - some updates may be lost;
+     *       - the individual statistics may not be consistent which each other.
+     *       This is a deliberate design choice to reduce the requirement for
+     *       synchronization.
+     */
+    protected volatile long totalRequestTime = 0;
+    protected volatile long totalSendTime = 0;
+    protected volatile long nrOfRequests = 0;
+    protected volatile long lastSendTime = 0;
+    protected volatile long nrOfFilterRequests = 0;
+    protected volatile long nrOfSendRequests = 0;
+    protected volatile long nrOfCrossContextSendRequests = 0;
 
     /**
      * must primary change indicator set
@@ -118,7 +126,7 @@ public class ReplicationValve
     }
 
     /**
-     * @return Returns the cluster.
+     * @return the cluster.
      */
     @Override
     public CatalinaCluster getCluster() {
@@ -134,7 +142,7 @@ public class ReplicationValve
     }
 
     /**
-     * @return Returns the filter
+     * @return the filter
      */
     public String getFilter() {
        if (filter == null) {
@@ -167,7 +175,7 @@ public class ReplicationValve
     }
 
     /**
-     * @return Returns the primaryIndicator.
+     * @return the primaryIndicator.
      */
     public boolean isPrimaryIndicator() {
         return primaryIndicator;
@@ -181,7 +189,7 @@ public class ReplicationValve
     }
 
     /**
-     * @return Returns the primaryIndicatorName.
+     * @return the primaryIndicatorName.
      */
     public String getPrimaryIndicatorName() {
         return primaryIndicatorName;
@@ -196,6 +204,7 @@ public class ReplicationValve
 
     /**
      * Calc processing stats
+     * @return <code>true</code> if statistics are enabled
      */
     public boolean doStatistics() {
         return doProcessingStats;
@@ -203,6 +212,8 @@ public class ReplicationValve
 
     /**
      * Set Calc processing stats
+     *
+     * @param doProcessingStats New flag value
      * @see #resetStatistics()
      */
     public void setStatistics(boolean doProcessingStats) {
@@ -210,49 +221,49 @@ public class ReplicationValve
     }
 
     /**
-     * @return Returns the lastSendTime.
+     * @return the lastSendTime.
      */
     public long getLastSendTime() {
         return lastSendTime;
     }
 
     /**
-     * @return Returns the nrOfRequests.
+     * @return the nrOfRequests.
      */
     public long getNrOfRequests() {
         return nrOfRequests;
     }
 
     /**
-     * @return Returns the nrOfFilterRequests.
+     * @return the nrOfFilterRequests.
      */
     public long getNrOfFilterRequests() {
         return nrOfFilterRequests;
     }
 
     /**
-     * @return Returns the nrOfCrossContextSendRequests.
+     * @return the nrOfCrossContextSendRequests.
      */
     public long getNrOfCrossContextSendRequests() {
         return nrOfCrossContextSendRequests;
     }
 
     /**
-     * @return Returns the nrOfSendRequests.
+     * @return the nrOfSendRequests.
      */
     public long getNrOfSendRequests() {
         return nrOfSendRequests;
     }
 
     /**
-     * @return Returns the totalRequestTime.
+     * @return the totalRequestTime.
      */
     public long getTotalRequestTime() {
         return totalRequestTime;
     }
 
     /**
-     * @return Returns the totalSendTime.
+     * @return the totalSendTime.
      */
     public long getTotalSendTime() {
         return totalSendTime;
@@ -307,7 +318,7 @@ public class ReplicationValve
         Context context = request.getContext();
         boolean isCrossContext = context != null
                 && context instanceof StandardContext
-                && ((StandardContext) context).getCrossContext();
+                && context.getCrossContext();
         try {
             if(isCrossContext) {
                 if(log.isDebugEnabled()) {
@@ -351,11 +362,11 @@ public class ReplicationValve
      * reset the active statistics
      */
     public void resetStatistics() {
-        totalRequestTime = 0 ;
-        totalSendTime = 0 ;
-        lastSendTime = 0 ;
-        nrOfFilterRequests = 0 ;
-        nrOfRequests = 0 ;
+        totalRequestTime = 0;
+        totalSendTime = 0;
+        lastSendTime = 0;
+        nrOfFilterRequests = 0;
+        nrOfRequests = 0;
         nrOfSendRequests = 0;
         nrOfCrossContextSendRequests = 0;
     }
@@ -385,12 +396,6 @@ public class ReplicationValve
 
     // --------------------------------------------------------- Protected Methods
 
-    /**
-     * @param request
-     * @param totalstart
-     * @param isCrossContext
-     * @param clusterManager
-     */
     protected void sendReplicationMessage(Request request, long totalstart, boolean isCrossContext, ClusterManager clusterManager) {
         //this happens after the request
         long start = 0;
@@ -425,8 +430,7 @@ public class ReplicationValve
     protected void sendCrossContextSession() {
         List<DeltaSession> sessions = crossContextSessions.get();
         if(sessions != null && sessions.size() >0) {
-            for(Iterator<DeltaSession> iter = sessions.iterator(); iter.hasNext() ;) {
-                Session session = iter.next();
+            for (DeltaSession session : sessions) {
                 if(log.isDebugEnabled()) {
                     log.debug(sm.getString("ReplicationValve.crossContext.sendDelta",
                             session.getManager().getContext().getName() ));
@@ -534,7 +538,7 @@ public class ReplicationValve
 
     /**
      * check for session invalidations
-     * @param manager
+     * @param manager Associated manager
      */
     protected void sendInvalidSessions(ClusterManager manager) {
         String[] invalidIds=manager.getInvalidatedSessions();
@@ -561,18 +565,17 @@ public class ReplicationValve
 
     /**
      * Protocol cluster replications stats
-     * @param requestTime
-     * @param clusterTime
+     * @param requestTime Request time
+     * @param clusterTime Cluster time
      */
     protected  void updateStats(long requestTime, long clusterTime) {
         // TODO: Async requests may trigger multiple replication requests. How,
         //       if at all, should the stats handle this?
-        synchronized(this) {
-            lastSendTime=System.currentTimeMillis();
-            totalSendTime+=lastSendTime - clusterTime;
-            totalRequestTime+=lastSendTime - requestTime;
-            nrOfRequests++;
-        }
+        long currentTime = System.currentTimeMillis();
+        lastSendTime = currentTime;
+        totalSendTime += currentTime - clusterTime;
+        totalRequestTime += currentTime - requestTime;
+        nrOfRequests++;
         if(log.isInfoEnabled()) {
             if ( (nrOfRequests % 100) == 0 ) {
                  log.info(sm.getString("ReplicationValve.stats",
@@ -594,8 +597,8 @@ public class ReplicationValve
      * Mark Request that processed at primary node with attribute
      * primaryIndicatorName
      *
-     * @param request
-     * @throws IOException
+     * @param request The Servlet request
+     * @throws IOException IO error finding session
      */
     protected void createPrimaryIndicator(Request request) throws IOException {
         String id = request.getRequestedSessionId();

@@ -25,11 +25,15 @@ import javax.naming.RefAddr;
 import javax.naming.Reference;
 import javax.naming.spi.ObjectFactory;
 
+import org.apache.naming.StringManager;
+
 /**
  * Abstract base class that provides common functionality required by
  * sub-classes. This class exists primarily to reduce code duplication.
  */
 public abstract class FactoryBase implements ObjectFactory {
+
+    private static final StringManager sm = StringManager.getManager(FactoryBase.class);
 
     /**
      * Creates a new object instance.
@@ -63,13 +67,12 @@ public abstract class FactoryBase implements ObjectFactory {
                         factoryClass = Class.forName(factoryClassName);
                     }
                 } catch(ClassNotFoundException e) {
-                    NamingException ex = new NamingException(
-                            "Could not load resource factory class");
+                    NamingException ex = new NamingException(sm.getString("factoryBase.factoryClassError"));
                     ex.initCause(e);
                     throw ex;
                 }
                 try {
-                    factory = (ObjectFactory) factoryClass.newInstance();
+                    factory = (ObjectFactory) factoryClass.getConstructor().newInstance();
                 } catch(Throwable t) {
                     if (t instanceof NamingException) {
                         throw (NamingException) t;
@@ -80,8 +83,7 @@ public abstract class FactoryBase implements ObjectFactory {
                     if (t instanceof VirtualMachineError) {
                         throw (VirtualMachineError) t;
                     }
-                    NamingException ex = new NamingException(
-                            "Could not create resource factory instance");
+                    NamingException ex = new NamingException(sm.getString("factoryBase.factoryCreationError"));
                     ex.initCause(t);
                     throw ex;
                 }
@@ -93,7 +95,7 @@ public abstract class FactoryBase implements ObjectFactory {
             if (factory != null) {
                 return factory.getObjectInstance(obj, name, nameCtx, environment);
             } else {
-                throw new NamingException("Cannot create resource instance");
+                throw new NamingException(sm.getString("factoryBase.instanceCreationError"));
             }
         }
 
@@ -121,7 +123,7 @@ public abstract class FactoryBase implements ObjectFactory {
      * @return  The default factory for the given reference object or
      *          <code>null</code> if no default factory exists.
      *
-     * @throws NamingException  If the default factory cannot be craeted
+     * @throws NamingException  If the default factory cannot be created
      */
     protected abstract ObjectFactory getDefaultFactory(Reference ref)
             throws NamingException;
@@ -133,6 +135,7 @@ public abstract class FactoryBase implements ObjectFactory {
      *
      * @return  The linked object or <code>null</code> if linked objects are
      *          not supported by or not configured for this reference object
+     * @throws NamingException Error accessing linked object
      */
     protected abstract Object getLinked(Reference ref) throws NamingException;
 }

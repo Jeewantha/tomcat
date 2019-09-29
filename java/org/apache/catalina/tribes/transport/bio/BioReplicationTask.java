@@ -44,7 +44,7 @@ import org.apache.juli.logging.LogFactory;
  */
 public class BioReplicationTask extends AbstractRxTask {
 
-    private static final Log log = LogFactory.getLog( BioReplicationTask.class );
+    private static final Log log = LogFactory.getLog(BioReplicationTask.class);
 
     protected static final StringManager sm = StringManager.getManager(BioReplicationTask.class);
 
@@ -101,7 +101,7 @@ public class BioReplicationTask extends AbstractRxTask {
                 /**
                  * Use send ack here if you want to ack the request to the remote
                  * server before completing the request
-                 * This is considered an asynchronized request
+                 * This is considered an asynchronous request
                  */
                 if (ChannelData.sendAckAsync(msgs[i].getOptions())) sendAck(Constants.ACK_COMMAND);
                 try {
@@ -134,8 +134,9 @@ public class BioReplicationTask extends AbstractRxTask {
      * interest in OP_READ.  When this method completes it
      * re-enables OP_READ and calls wakeup() on the selector
      * so the selector will resume watching this channel.
+     * @throws Exception IO exception or execute exception
      */
-    protected void drainSocket () throws Exception {
+    protected void drainSocket() throws Exception {
         InputStream in = socket.getInputStream();
         // loop while data available, channel is non-blocking
         byte[] buf = new byte[1024];
@@ -149,8 +150,8 @@ public class BioReplicationTask extends AbstractRxTask {
 
 
     /**
-     * send a reply-acknowledgment (6,2,3)
-     * @param command
+     * Send a reply-acknowledgment (6,2,3)
+     * @param command The command to write
      */
     protected void sendAck(byte[] command) {
         try {
@@ -167,7 +168,6 @@ public class BioReplicationTask extends AbstractRxTask {
 
     @Override
     public void close() {
-        setDoRun(false);
         try {
             socket.close();
         }catch (Exception e) {

@@ -23,6 +23,7 @@ import org.apache.coyote.InputBuffer;
 import org.apache.coyote.Request;
 import org.apache.coyote.http11.InputFilter;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.net.ApplicationBufferHandler;
 
 /**
  * Void input filter, which returns -1 when attempting a read. Used with a GET,
@@ -50,7 +51,7 @@ public class VoidInputFilter implements InputFilter {
     // ---------------------------------------------------- InputBuffer Methods
 
     @Override
-    public int doRead(ByteChunk chunk) throws IOException {
+    public int doRead(ApplicationBufferHandler handler) throws IOException {
         return -1;
     }
 

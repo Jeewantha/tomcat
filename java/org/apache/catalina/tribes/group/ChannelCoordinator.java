@@ -26,13 +26,13 @@ import org.apache.catalina.tribes.MembershipService;
 import org.apache.catalina.tribes.MessageListener;
 import org.apache.catalina.tribes.UniqueId;
 import org.apache.catalina.tribes.membership.McastService;
+import org.apache.catalina.tribes.membership.StaticMember;
 import org.apache.catalina.tribes.transport.ReplicationTransmitter;
 import org.apache.catalina.tribes.transport.SenderState;
 import org.apache.catalina.tribes.transport.nio.NioReceiver;
 import org.apache.catalina.tribes.util.Arrays;
 import org.apache.catalina.tribes.util.Logs;
 import org.apache.catalina.tribes.util.StringManager;
-
 
 /**
  * The channel coordinator object coordinates the membership service,
@@ -150,21 +150,34 @@ public class ChannelCoordinator extends ChannelInterceptorBase implements Messag
             //listens to with the local membership settings
             if ( Channel.SND_RX_SEQ==(svc & Channel.SND_RX_SEQ) ) {
                 clusterReceiver.setMessageListener(this);
+                clusterReceiver.setChannel(getChannel());
                 clusterReceiver.start();
                 //synchronize, big time FIXME
-                membershipService.setLocalMemberProperties(getClusterReceiver().getHost(),
-                                                           getClusterReceiver().getPort(),
-                                                           getClusterReceiver().getSecurePort(),
-                                                           getClusterReceiver().getUdpPort());
+                Member localMember = getChannel().getLocalMember(false);
+                if (localMember instanceof StaticMember) {
+                    // static member
+                    StaticMember staticMember = (StaticMember)localMember;
+                    staticMember.setHost(getClusterReceiver().getHost());
+                    staticMember.setPort(getClusterReceiver().getPort());
+                    staticMember.setSecurePort(getClusterReceiver().getSecurePort());
+                } else {
+                    // multicast member
+                    membershipService.setLocalMemberProperties(getClusterReceiver().getHost(),
+                            getClusterReceiver().getPort(),
+                            getClusterReceiver().getSecurePort(),
+                            getClusterReceiver().getUdpPort());
+                }
                 valid = true;
             }
             if ( Channel.SND_TX_SEQ==(svc & Channel.SND_TX_SEQ) ) {
+                clusterSender.setChannel(getChannel());
                 clusterSender.start();
                 valid = true;
             }
 
             if ( Channel.MBR_RX_SEQ==(svc & Channel.MBR_RX_SEQ) ) {
                 membershipService.setMembershipListener(this);
+                membershipService.setChannel(getChannel());
                 if (membershipService instanceof McastService) {
                     ((McastService)membershipService).setMessageListener(this);
                 }
@@ -172,6 +185,7 @@ public class ChannelCoordinator extends ChannelInterceptorBase implements Messag
                 valid = true;
             }
             if ( Channel.MBR_TX_SEQ==(svc & Channel.MBR_TX_SEQ) ) {
+                membershipService.setChannel(getChannel());
                 membershipService.start(MembershipService.MBR_TX);
                 valid = true;
             }
@@ -207,32 +221,31 @@ public class ChannelCoordinator extends ChannelInterceptorBase implements Messag
             if (svc == 0 ) return;//nothing to stop
 
             boolean valid = false;
-            if ( Channel.SND_RX_SEQ==(svc & Channel.SND_RX_SEQ) ) {
-                clusterReceiver.stop();
-                clusterReceiver.setMessageListener(null);
+            if ( Channel.MBR_TX_SEQ==(svc & Channel.MBR_TX_SEQ) ) {
+                membershipService.stop(MembershipService.MBR_TX);
                 valid = true;
             }
-            if ( Channel.SND_TX_SEQ==(svc & Channel.SND_TX_SEQ) ) {
-                clusterSender.stop();
-                valid = true;
-            }
-
             if ( Channel.MBR_RX_SEQ==(svc & Channel.MBR_RX_SEQ) ) {
                 membershipService.stop(MembershipService.MBR_RX);
                 membershipService.setMembershipListener(null);
                 valid = true;
 
             }
-            if ( Channel.MBR_TX_SEQ==(svc & Channel.MBR_TX_SEQ) ) {
+            if ( Channel.SND_TX_SEQ==(svc & Channel.SND_TX_SEQ) ) {
+                clusterSender.stop();
                 valid = true;
-                membershipService.stop(MembershipService.MBR_TX);
+            }
+            if ( Channel.SND_RX_SEQ==(svc & Channel.SND_RX_SEQ) ) {
+                clusterReceiver.stop();
+                clusterReceiver.setMessageListener(null);
+                valid = true;
             }
             if ( !valid) {
                 throw new IllegalArgumentException(sm.getString("channelCoordinator.invalid.startLevel"));
             }
 
             startLevel = (startLevel & (~svc));
-
+            setChannel(null);
         } catch (Exception x) {
             throw new ChannelException(x);
         }

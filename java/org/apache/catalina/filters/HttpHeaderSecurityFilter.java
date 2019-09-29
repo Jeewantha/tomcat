@@ -36,13 +36,16 @@ import org.apache.juli.logging.LogFactory;
  */
 public class HttpHeaderSecurityFilter extends FilterBase {
 
-    private static final Log log = LogFactory.getLog(HttpHeaderSecurityFilter.class);
+    // Log must be non-static as loggers are created per class-loader and this
+    // Filter may be used in multiple class loaders
+    private final Log log = LogFactory.getLog(HttpHeaderSecurityFilter.class); // must not be static
 
     // HSTS
     private static final String HSTS_HEADER_NAME = "Strict-Transport-Security";
     private boolean hstsEnabled = true;
     private int hstsMaxAgeSeconds = 0;
     private boolean hstsIncludeSubDomains = false;
+    private boolean hstsPreload = false;
     private String hstsHeaderValue;
 
     // Click-jacking protection
@@ -57,6 +60,11 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     private static final String BLOCK_CONTENT_TYPE_SNIFFING_HEADER_VALUE = "nosniff";
     private boolean blockContentTypeSniffingEnabled = true;
 
+    // Cross-site scripting filter protection
+    private static final String XSS_PROTECTION_HEADER_NAME = "X-XSS-Protection";
+    private static final String XSS_PROTECTION_HEADER_VALUE = "1; mode=block";
+    private boolean xssProtectionEnabled = true;
+
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
         super.init(filterConfig);
@@ -67,12 +75,15 @@ public class HttpHeaderSecurityFilter extends FilterBase {
         if (hstsIncludeSubDomains) {
             hstsValue.append(";includeSubDomains");
         }
+        if (hstsPreload) {
+            hstsValue.append(";preload");
+        }
         hstsHeaderValue = hstsValue.toString();
 
         // Anti click-jacking
         StringBuilder cjValue = new StringBuilder(antiClickJackingOption.headerValue);
         if (antiClickJackingOption == XFrameOption.ALLOW_FROM) {
-            cjValue.append(':');
+            cjValue.append(' ');
             cjValue.append(antiClickJackingUri);
         }
         antiClickJackingHeaderValue = cjValue.toString();
@@ -83,26 +94,35 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     public void doFilter(ServletRequest request, ServletResponse response,
             FilterChain chain) throws IOException, ServletException {
 
-        if (response.isCommitted()) {
-            throw new ServletException(sm.getString("httpHeaderSecurityFilter.committed"));
+        if (response instanceof HttpServletResponse) {
+            HttpServletResponse httpResponse = (HttpServletResponse) response;
+
+            if (response.isCommitted()) {
+                throw new ServletException(sm.getString("httpHeaderSecurityFilter.committed"));
+            }
+
+            // HSTS
+            if (hstsEnabled && request.isSecure()) {
+                httpResponse.setHeader(HSTS_HEADER_NAME, hstsHeaderValue);
+            }
+
+            // anti click-jacking
+            if (antiClickJackingEnabled) {
+                httpResponse.setHeader(ANTI_CLICK_JACKING_HEADER_NAME, antiClickJackingHeaderValue);
+            }
+
+            // Block content type sniffing
+            if (blockContentTypeSniffingEnabled) {
+                httpResponse.setHeader(BLOCK_CONTENT_TYPE_SNIFFING_HEADER_NAME,
+                        BLOCK_CONTENT_TYPE_SNIFFING_HEADER_VALUE);
+            }
+
+            // cross-site scripting filter protection
+            if (xssProtectionEnabled) {
+                httpResponse.setHeader(XSS_PROTECTION_HEADER_NAME, XSS_PROTECTION_HEADER_VALUE);
+            }
         }
 
-        // HSTS
-        if (hstsEnabled && request.isSecure() && response instanceof HttpServletResponse) {
-            ((HttpServletResponse) response).setHeader(HSTS_HEADER_NAME, hstsHeaderValue);
-        }
-
-        // anti click-jacking
-        if (antiClickJackingEnabled && response instanceof HttpServletResponse) {
-            ((HttpServletResponse) response).setHeader(
-                    ANTI_CLICK_JACKING_HEADER_NAME, antiClickJackingHeaderValue);
-        }
-
-        // Block content type sniffing
-        if (blockContentTypeSniffingEnabled && response instanceof HttpServletResponse) {
-            ((HttpServletResponse) response).setHeader(BLOCK_CONTENT_TYPE_SNIFFING_HEADER_NAME,
-                    BLOCK_CONTENT_TYPE_SNIFFING_HEADER_VALUE);
-        }
         chain.doFilter(request, response);
     }
 
@@ -155,17 +175,24 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
+    public boolean isHstsPreload() {
+        return hstsPreload;
+    }
+
+
+    public void setHstsPreload(boolean hstsPreload) {
+        this.hstsPreload = hstsPreload;
+    }
+
 
     public boolean isAntiClickJackingEnabled() {
         return antiClickJackingEnabled;
     }
 
 
-
     public void setAntiClickJackingEnabled(boolean antiClickJackingEnabled) {
         this.antiClickJackingEnabled = antiClickJackingEnabled;
     }
-
 
 
     public String getAntiClickJackingOption() {
@@ -183,7 +210,6 @@ public class HttpHeaderSecurityFilter extends FilterBase {
         throw new IllegalArgumentException(
                 sm.getString("httpHeaderSecurityFilter.clickjack.invalid", antiClickJackingOption));
     }
-
 
 
     public String getAntiClickJackingUri() {
@@ -213,7 +239,17 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
-    private static enum XFrameOption {
+    public boolean isXssProtectionEnabled() {
+        return xssProtectionEnabled;
+    }
+
+
+    public void setXssProtectionEnabled(boolean xssProtectionEnabled) {
+        this.xssProtectionEnabled = xssProtectionEnabled;
+    }
+
+
+    private enum XFrameOption {
         DENY("DENY"),
         SAME_ORIGIN("SAMEORIGIN"),
         ALLOW_FROM("ALLOW-FROM");

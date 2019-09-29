@@ -16,8 +16,9 @@
  */
 package org.apache.coyote.http2;
 
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -34,20 +35,26 @@ abstract class AbstractStream {
     private final Integer identifier;
 
     private volatile AbstractStream parentStream = null;
-    private final Set<AbstractStream> childStreams = new HashSet<>();
+    private final Set<Stream> childStreams = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private long windowSize = ConnectionSettingsBase.DEFAULT_INITIAL_WINDOW_SIZE;
 
-    public Integer getIdentifier() {
-        return identifier;
-    }
 
-
-    public AbstractStream(Integer identifier) {
+    AbstractStream(Integer identifier) {
         this.identifier = identifier;
     }
 
 
-    void detachFromParent() {
+    final Integer getIdentifier() {
+        return identifier;
+    }
+
+
+    final int getIdAsInt() {
+        return identifier.intValue();
+    }
+
+
+    final void detachFromParent() {
         if (parentStream != null) {
             parentStream.getChildStreams().remove(this);
             parentStream = null;
@@ -55,60 +62,55 @@ abstract class AbstractStream {
     }
 
 
-    void addChild(AbstractStream child) {
-        child.setParent(this);
+    final void addChild(Stream child) {
+        child.setParentStream(this);
         childStreams.add(child);
     }
 
 
-    private void setParent(AbstractStream parent) {
-        this.parentStream = parent;
+    final boolean isDescendant(AbstractStream stream) {
+        // Is the passed in Stream a descendant of this Stream?
+        // Start at the passed in Stream and work up
+        AbstractStream parent = stream.getParentStream();
+        while (parent != null && parent != this) {
+            parent = parent.getParentStream();
+        }
+        return parent != null;
     }
 
 
-    boolean isDescendant(AbstractStream stream) {
-        if (childStreams.contains(stream)) {
-            return true;
-        }
-        for (AbstractStream child : childStreams) {
-            if (child.isDescendant(stream)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    AbstractStream getParentStream() {
+    final AbstractStream getParentStream() {
         return parentStream;
     }
 
 
-    void setParentStream(AbstractStream parentStream) {
+    final void setParentStream(AbstractStream parentStream) {
         this.parentStream = parentStream;
     }
 
 
-    Set<AbstractStream> getChildStreams() {
+    final Set<Stream> getChildStreams() {
         return childStreams;
     }
 
 
-    protected synchronized void setWindowSize(long windowSize) {
+    final synchronized void setWindowSize(long windowSize) {
         this.windowSize = windowSize;
     }
 
 
-    protected synchronized long getWindowSize() {
+    final synchronized long getWindowSize() {
         return windowSize;
     }
 
 
     /**
-     * @param increment
-     * @throws Http2Exception
+     * Increment window size.
+     * @param increment The amount by which the window size should be increased
+     * @throws Http2Exception If the window size is now higher than
+     *  the maximum allowed
      */
-    protected synchronized void incrementWindowSize(int increment) throws Http2Exception {
+    synchronized void incrementWindowSize(int increment) throws Http2Exception {
         // No need for overflow protection here.
         // Increment can't be more than Integer.MAX_VALUE and once windowSize
         // goes beyond 2^31-1 an error is triggered.
@@ -132,7 +134,7 @@ abstract class AbstractStream {
     }
 
 
-    protected synchronized void decrementWindowSize(int decrement) {
+    final synchronized void decrementWindowSize(int decrement) {
         // No need for overflow protection here. Decrement can never be larger
         // the Integer.MAX_VALUE and once windowSize goes negative no further
         // decrements are permitted
@@ -144,7 +146,7 @@ abstract class AbstractStream {
     }
 
 
-    protected abstract String getConnectionId();
+    abstract String getConnectionId();
 
-    protected abstract int getWeight();
+    abstract int getWeight();
 }

@@ -42,7 +42,7 @@ import org.apache.juli.logging.LogFactory;
  * <code>BasicDataSource</code> bean properties.</p>
  * <br>
  * Properties available for configuration:<br>
- * <a href="http://commons.apache.org/dbcp/configuration.html">Commons DBCP properties</a><br>
+ * <a href="https://commons.apache.org/dbcp/configuration.html">Commons DBCP properties</a><br>
  *<ol>
  *  <li>initSQL - A query that gets executed once, right after the connection is established.</li>
  *  <li>testOnConnect - run validationQuery after connection has been established.</li>
@@ -124,6 +124,8 @@ public class DataSourceFactory implements ObjectFactory {
 
     protected static final String PROP_IGNOREEXCEPTIONONPRELOAD = "ignoreExceptionOnPreLoad";
 
+    protected static final String PROP_USESTATEMENTFACADE = "useStatementFacade";
+
     public static final int UNKNOWN_TRANSACTIONISOLATION = -1;
 
     public static final String OBJECT_NAME = "object_name";
@@ -179,7 +181,8 @@ public class DataSourceFactory implements ObjectFactory {
         PROP_USEDISPOSABLECONNECTIONFACADE,
         PROP_LOGVALIDATIONERRORS,
         PROP_PROPAGATEINTERRUPTSTATE,
-        PROP_IGNOREEXCEPTIONONPRELOAD
+        PROP_IGNOREEXCEPTIONONPRELOAD,
+        PROP_USESTATEMENTFACADE
     };
 
     // -------------------------------------------------- ObjectFactory Methods
@@ -318,17 +321,17 @@ public class DataSourceFactory implements ObjectFactory {
 
         value = properties.getProperty(PROP_TESTONBORROW);
         if (value != null) {
-            poolProperties.setTestOnBorrow(Boolean.valueOf(value).booleanValue());
+            poolProperties.setTestOnBorrow(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_TESTONRETURN);
         if (value != null) {
-            poolProperties.setTestOnReturn(Boolean.valueOf(value).booleanValue());
+            poolProperties.setTestOnReturn(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_TESTONCONNECT);
         if (value != null) {
-            poolProperties.setTestOnConnect(Boolean.valueOf(value).booleanValue());
+            poolProperties.setTestOnConnect(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_TIMEBETWEENEVICTIONRUNSMILLIS);
@@ -348,7 +351,7 @@ public class DataSourceFactory implements ObjectFactory {
 
         value = properties.getProperty(PROP_TESTWHILEIDLE);
         if (value != null) {
-            poolProperties.setTestWhileIdle(Boolean.valueOf(value).booleanValue());
+            poolProperties.setTestWhileIdle(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_PASSWORD);
@@ -388,12 +391,12 @@ public class DataSourceFactory implements ObjectFactory {
 
         value = properties.getProperty(PROP_ACCESSTOUNDERLYINGCONNECTIONALLOWED);
         if (value != null) {
-            poolProperties.setAccessToUnderlyingConnectionAllowed(Boolean.valueOf(value).booleanValue());
+            poolProperties.setAccessToUnderlyingConnectionAllowed(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_REMOVEABANDONED);
         if (value != null) {
-            poolProperties.setRemoveAbandoned(Boolean.valueOf(value).booleanValue());
+            poolProperties.setRemoveAbandoned(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_REMOVEABANDONEDTIMEOUT);
@@ -403,7 +406,7 @@ public class DataSourceFactory implements ObjectFactory {
 
         value = properties.getProperty(PROP_LOGABANDONED);
         if (value != null) {
-            poolProperties.setLogAbandoned(Boolean.valueOf(value).booleanValue());
+            poolProperties.setLogAbandoned(Boolean.parseBoolean(value));
         }
 
         value = properties.getProperty(PROP_POOLPREPAREDSTATEMENTS);
@@ -527,7 +530,10 @@ public class DataSourceFactory implements ObjectFactory {
         if (value != null) {
             poolProperties.setIgnoreExceptionOnPreLoad(Boolean.parseBoolean(value));
         }
-
+        value = properties.getProperty(PROP_USESTATEMENTFACADE);
+        if (value != null) {
+            poolProperties.setUseStatementFacade(Boolean.parseBoolean(value));
+        }
         return poolProperties;
     }
 
@@ -536,6 +542,7 @@ public class DataSourceFactory implements ObjectFactory {
      * given properties.
      *
      * @param properties the datasource configuration properties
+     * @return the datasource
      * @throws Exception if an error occurs creating the data source
      */
     public DataSource createDataSource(Properties properties) throws Exception {
@@ -561,7 +568,7 @@ public class DataSourceFactory implements ObjectFactory {
             if (context!=null) {
                 jndiDS = context.lookup(poolProperties.getDataSourceJNDI());
             } else {
-                log.warn("dataSourceJNDI property is configued, but local JNDI context is null.");
+                log.warn("dataSourceJNDI property is configured, but local JNDI context is null.");
             }
         } catch (NamingException e) {
             log.debug("The name \""+poolProperties.getDataSourceJNDI()+"\" cannot be found in the local context.");
@@ -580,9 +587,9 @@ public class DataSourceFactory implements ObjectFactory {
     }
 
     /**
-     * <p>Parse properties from the string. Format of the string must be [propertyName=property;]*<p>
-     * @param propText
-     * @return Properties
+     * Parse properties from the string. Format of the string must be [propertyName=property;]*.
+     * @param propText The properties string
+     * @return the properties
      */
     protected static Properties getProperties(String propText) {
         return PoolProperties.getProperties(propText,null);

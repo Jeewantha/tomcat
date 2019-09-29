@@ -18,13 +18,9 @@ package org.apache.tomcat.util.descriptor.web;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.InputStream;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.tomcat.util.digester.Digester;
@@ -49,7 +45,7 @@ public class TestWebRuleSet {
         WebXml webXml = new WebXml();
 
         parse(webXml, "web-fragment-1name.xml", true, true);
-        assertEquals("name1", webXml.getName());
+        Assert.assertEquals("name1", webXml.getName());
     }
 
 
@@ -65,8 +61,8 @@ public class TestWebRuleSet {
         WebXml webXml = new WebXml();
 
         parse(webXml, "web-fragment-1ordering.xml", true, true);
-        assertEquals(1, webXml.getBeforeOrdering().size());
-        assertTrue(webXml.getBeforeOrdering().contains("bar"));
+        Assert.assertEquals(1, webXml.getBeforeOrdering().size());
+        Assert.assertTrue(webXml.getBeforeOrdering().contains("bar"));
     }
 
 
@@ -82,8 +78,8 @@ public class TestWebRuleSet {
         WebXml webXml = new WebXml();
 
         parse(webXml, "web-1ordering.xml", false, true);
-        assertEquals(1, webXml.getAbsoluteOrdering().size());
-        assertTrue(webXml.getAbsoluteOrdering().contains("bar"));
+        Assert.assertEquals(1, webXml.getAbsoluteOrdering().size());
+        Assert.assertTrue(webXml.getAbsoluteOrdering().contains("bar"));
     }
 
 
@@ -123,7 +119,7 @@ public class TestWebRuleSet {
     }
 
     private synchronized void parse(WebXml webXml, String target,
-            boolean fragment, boolean expected) throws FileNotFoundException {
+            boolean fragment, boolean expected) {
 
         Digester d;
         if (fragment) {
@@ -137,11 +133,10 @@ public class TestWebRuleSet {
         d.push(webXml);
 
         File f = new File("test/org/apache/catalina/startup/" + target);
-        InputStream is = new FileInputStream(f);
 
         boolean result = true;
 
-        try {
+        try (InputStream is = new FileInputStream(f)) {
             d.parse(is);
         } catch (Exception e) {
             if (expected) {
@@ -152,9 +147,9 @@ public class TestWebRuleSet {
         }
 
         if (expected) {
-            assertTrue(result);
+            Assert.assertTrue(result);
         } else {
-            assertFalse(result);
+            Assert.assertFalse(result);
         }
     }
 }

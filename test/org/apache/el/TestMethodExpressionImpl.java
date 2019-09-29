@@ -20,13 +20,10 @@ package org.apache.el;
 import javax.el.ELContext;
 import javax.el.ExpressionFactory;
 import javax.el.MethodExpression;
+import javax.el.MethodNotFoundException;
 import javax.el.ValueExpression;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -92,8 +89,8 @@ public class TestMethodExpressionImpl {
                 context, "${beanB.sayHello('JUnit')}", String.class,
                 new Class<?>[] { String.class });
 
-        assertFalse(me1.isParametersProvided());
-        assertTrue(me2.isParametersProvided());
+        Assert.assertFalse(me1.isParametersProvided());
+        Assert.assertTrue(me2.isParametersProvided());
     }
 
     @Test
@@ -107,15 +104,15 @@ public class TestMethodExpressionImpl {
                 context, "${beanB.sayHello}", String.class,
                 new Class<?>[] { String.class });
 
-        assertEquals("B", me1.invoke(context, null));
-        assertEquals("Hello JUnit from B", me2.invoke(context, null));
-        assertEquals("Hello JUnit from B",
+        Assert.assertEquals("B", me1.invoke(context, null));
+        Assert.assertEquals("Hello JUnit from B", me2.invoke(context, null));
+        Assert.assertEquals("Hello JUnit from B",
                 me2.invoke(context, new Object[] { "JUnit2" }));
-        assertEquals("Hello JUnit2 from B",
+        Assert.assertEquals("Hello JUnit2 from B",
                 me3.invoke(context, new Object[] { "JUnit2" }));
-        assertEquals("Hello JUnit from B",
+        Assert.assertEquals("Hello JUnit from B",
                 me2.invoke(context, new Object[] { null }));
-        assertEquals("Hello  from B",
+        Assert.assertEquals("Hello  from B",
                 me3.invoke(context, new Object[] { null }));
     }
 
@@ -128,7 +125,7 @@ public class TestMethodExpressionImpl {
         ValueExpression ve = factory.createValueExpression(context,
                 "${beanA.bean.name}", String.class);
         Object r = ve.getValue(context);
-        assertEquals("BB", r);
+        Assert.assertEquals("BB", r);
     }
 
     @Test
@@ -136,7 +133,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me2 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanA,beanB)}", null , null);
         Object r2 = me2.invoke(context, null);
-        assertEquals("AB: Hello A from B", r2.toString());
+        Assert.assertEquals("AB: Hello A from B", r2.toString());
     }
 
     @Test
@@ -144,7 +141,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me3 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanA,beanB)}", String.class , null);
         Object r3 = me3.invoke(context, null);
-        assertEquals("AB: Hello A from B", r3.toString());
+        Assert.assertEquals("AB: Hello A from B", r3.toString());
     }
 
     @Test
@@ -153,7 +150,7 @@ public class TestMethodExpressionImpl {
                 "${beanC.sayHello(beanA,beanB)}", null ,
                 new Class<?>[] {TesterBeanA.class, TesterBeanB.class});
         Object r4 = me4.invoke(context, null);
-        assertEquals("AB: Hello A from B", r4.toString());
+        Assert.assertEquals("AB: Hello A from B", r4.toString());
     }
 
     @Test
@@ -162,7 +159,7 @@ public class TestMethodExpressionImpl {
                 "${beanC.sayHello(beanA,beanB)}", String.class ,
                 new Class<?>[] {TesterBeanA.class, TesterBeanB.class});
         Object r5 = me5.invoke(context, null);
-        assertEquals("AB: Hello A from B", r5.toString());
+        Assert.assertEquals("AB: Hello A from B", r5.toString());
     }
 
     @Test
@@ -170,7 +167,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me6 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanA,beanBB)}", null , null);
         Object r6 = me6.invoke(context, null);
-        assertEquals("ABB: Hello A from BB", r6.toString());
+        Assert.assertEquals("ABB: Hello A from BB", r6.toString());
     }
 
     @Test
@@ -178,7 +175,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me7 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanA,beanBBB)}", null , null);
         Object r7 = me7.invoke(context, null);
-        assertEquals("ABB: Hello A from BBB", r7.toString());
+        Assert.assertEquals("ABB: Hello A from BBB", r7.toString());
     }
 
     @Test
@@ -186,7 +183,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me8 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAA,beanB)}", null , null);
         Object r8 = me8.invoke(context, null);
-        assertEquals("AAB: Hello AA from B", r8.toString());
+        Assert.assertEquals("AAB: Hello AA from B", r8.toString());
     }
 
     @Test
@@ -200,7 +197,7 @@ public class TestMethodExpressionImpl {
             e = e1;
         }
         // Expected to fail
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
     @Test
@@ -211,7 +208,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me10 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAA,beanBBB)}", null , null);
         Object r10 = me10.invoke(context, null);
-        assertEquals("AAB: Hello AA from BBB", r10.toString());
+        Assert.assertEquals("AAB: Hello AA from BBB", r10.toString());
     }
 
     @Test
@@ -219,7 +216,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me11 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAAA,beanB)}", null , null);
         Object r11 = me11.invoke(context, null);
-        assertEquals("AAB: Hello AAA from B", r11.toString());
+        Assert.assertEquals("AAB: Hello AAA from B", r11.toString());
     }
 
     @Test
@@ -230,7 +227,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me12 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAAA,beanBB)}", null , null);
         Object r12 = me12.invoke(context, null);
-        assertEquals("ABB: Hello AAA from BB", r12.toString());
+        Assert.assertEquals("ABB: Hello AAA from BB", r12.toString());
     }
 
     @Test
@@ -244,7 +241,7 @@ public class TestMethodExpressionImpl {
             e = e1;
         }
         // Expected to fail
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
     @Test
@@ -258,7 +255,7 @@ public class TestMethodExpressionImpl {
             e = e1;
         }
         // Expected to fail
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
     @Test
@@ -266,7 +263,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me2 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanA,beanBB,beanBB)}", null , null);
         Object r2 = me2.invoke(context, null);
-        assertEquals("ABB[]: Hello A from BB, BB", r2.toString());
+        Assert.assertEquals("ABB[]: Hello A from BB, BB", r2.toString());
     }
 
     @Test
@@ -274,7 +271,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me3 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanA,beanBBB,beanBBB)}", null , null);
         Object r3 = me3.invoke(context, null);
-        assertEquals("ABB[]: Hello A from BBB, BBB", r3.toString());
+        Assert.assertEquals("ABB[]: Hello A from BBB, BBB", r3.toString());
     }
 
     @Test
@@ -288,7 +285,7 @@ public class TestMethodExpressionImpl {
             e = e1;
         }
         // Expected to fail
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
     @Test
@@ -296,7 +293,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me5 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAA,beanBB,beanBB)}", null , null);
         Object r5 = me5.invoke(context, null);
-        assertEquals("ABB[]: Hello AA from BB, BB", r5.toString());
+        Assert.assertEquals("ABB[]: Hello AA from BB, BB", r5.toString());
     }
 
     @Test
@@ -304,7 +301,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me6 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAA,beanBBB,beanBBB)}", null , null);
         Object r6 = me6.invoke(context, null);
-        assertEquals("ABB[]: Hello AA from BBB, BBB", r6.toString());
+        Assert.assertEquals("ABB[]: Hello AA from BBB, BBB", r6.toString());
     }
 
     @Test
@@ -318,7 +315,7 @@ public class TestMethodExpressionImpl {
             e = e1;
         }
         // Expected to fail
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
     @Test
@@ -326,7 +323,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me8 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAAA,beanBB,beanBB)}", null , null);
         Object r8 = me8.invoke(context, null);
-        assertEquals("ABB[]: Hello AAA from BB, BB", r8.toString());
+        Assert.assertEquals("ABB[]: Hello AAA from BB, BB", r8.toString());
     }
 
     @Test
@@ -334,7 +331,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me9 = factory.createMethodExpression(context,
                 "${beanC.sayHello(beanAAA,beanBBB,beanBBB)}", null , null);
         Object r9 = me9.invoke(context, null);
-        assertEquals("ABB[]: Hello AAA from BBB, BBB", r9.toString());
+        Assert.assertEquals("ABB[]: Hello AAA from BBB, BBB", r9.toString());
     }
 
     /*
@@ -350,7 +347,7 @@ public class TestMethodExpressionImpl {
         me.invoke(context, null);
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanA.name}", java.lang.String.class);
-        assertEquals("New value", ve.getValue(context));
+        Assert.assertEquals("New value", ve.getValue(context));
     }
 
     @Test
@@ -360,7 +357,7 @@ public class TestMethodExpressionImpl {
         me.invoke(context, null);
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanA.valLong}", java.lang.String.class);
-        assertEquals("5", ve.getValue(context));
+        Assert.assertEquals("5", ve.getValue(context));
     }
 
     @Test
@@ -368,7 +365,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me1 = factory.createMethodExpression(context,
                 "${beanB.sayHello()}", null, null);
         String actual = (String) me1.invoke(context, null);
-        assertEquals("Hello from B", actual);
+        Assert.assertEquals("Hello from B", actual);
     }
 
     @Test
@@ -376,7 +373,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me1 = factory.createMethodExpression(context,
                 "${beanB.sayHello('Tomcat')}", null, null);
         String actual = (String) me1.invoke(context, null);
-        assertEquals("Hello Tomcat from B", actual);
+        Assert.assertEquals("Hello Tomcat from B", actual);
     }
 
     @Test
@@ -384,7 +381,7 @@ public class TestMethodExpressionImpl {
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanAA.name.contains(beanA.name)}", java.lang.Boolean.class);
         Boolean actual = (Boolean) ve.getValue(context);
-        assertEquals(Boolean.TRUE, actual);
+        Assert.assertEquals(Boolean.TRUE, actual);
     }
 
     @Test
@@ -392,7 +389,7 @@ public class TestMethodExpressionImpl {
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanA.name.contains(beanAA.name)}", java.lang.Boolean.class);
         Boolean actual = (Boolean) ve.getValue(context);
-        assertEquals(Boolean.FALSE, actual);
+        Assert.assertEquals(Boolean.FALSE, actual);
     }
 
     @Test
@@ -405,7 +402,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me1 = factory.createMethodExpression(context,
                 "${beanA.bean.sayHello()}", null, null);
         String actual = (String) me1.invoke(context, null);
-        assertEquals("Hello from BB", actual);
+        Assert.assertEquals("Hello from BB", actual);
     }
 
     @Test
@@ -418,7 +415,7 @@ public class TestMethodExpressionImpl {
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanEnum.lastSubmitted}", TesterEnum.class);
         TesterEnum actual = (TesterEnum) ve.getValue(context);
-        assertEquals(TesterEnum.APPLE, actual);
+        Assert.assertEquals(TesterEnum.APPLE, actual);
 
     }
 
@@ -436,7 +433,7 @@ public class TestMethodExpressionImpl {
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanA.getBean().name}", java.lang.String.class);
         String actual = (String) ve.getValue(context);
-        assertEquals(BUG53792, actual);
+        Assert.assertEquals(BUG53792, actual);
     }
 
     @Test
@@ -453,7 +450,7 @@ public class TestMethodExpressionImpl {
         ValueExpression ve = factory.createValueExpression(context,
                 "#{beanA.getBean().name.length()}", java.lang.Integer.class);
         Integer actual = (Integer) ve.getValue(context);
-        assertEquals(Integer.valueOf(BUG53792.length()), actual);
+        Assert.assertEquals(Integer.valueOf(BUG53792.length()), actual);
     }
 
 
@@ -462,7 +459,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me = factory.createMethodExpression(context,
                 "#{beanB.sayHello().length()}", null, new Class<?>[] {});
         Integer result = (Integer) me.invoke(context, null);
-        assertEquals(beanB.sayHello().length(), result.intValue());
+        Assert.assertEquals(beanB.sayHello().length(), result.intValue());
     }
 
 
@@ -471,7 +468,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me = factory.createMethodExpression(context,
                 "#{beanB.sayHello().length()}", null, new Class<?>[] {});
         Integer result = (Integer) me.invoke(context, new Object[] { "foo" });
-        assertEquals(beanB.sayHello().length(), result.intValue());
+        Assert.assertEquals(beanB.sayHello().length(), result.intValue());
     }
 
 
@@ -480,7 +477,7 @@ public class TestMethodExpressionImpl {
         MethodExpression me = factory.createMethodExpression(context,
                 "${beanAA.echo1('Hello World!')}", null , null);
         Object r = me.invoke(context, null);
-        assertEquals("AA1Hello World!", r.toString());
+        Assert.assertEquals("AA1Hello World!", r.toString());
     }
 
 
@@ -489,11 +486,11 @@ public class TestMethodExpressionImpl {
         MethodExpression me = factory.createMethodExpression(context,
                 "${beanAA.echo2('Hello World!')}", null , null);
         Object r = me.invoke(context, null);
-        assertEquals("AA2Hello World!", r.toString());
+        Assert.assertEquals("AA2Hello World!", r.toString());
     }
 
 
-    @Test(expected=IllegalArgumentException.class)
+    @Test(expected=MethodNotFoundException.class)
     public void testBug57855a() {
         MethodExpression me = factory.createMethodExpression(context,
                 "${beanAA.echo2}", null , new Class[]{String.class});
@@ -521,14 +518,22 @@ public class TestMethodExpressionImpl {
         MethodExpression me = factory.createMethodExpression(context,
                 "${beanB.echo}", null , new Class[]{String.class});
         Object r = me.invoke(context, new String[] { "aaa" });
-        assertEquals("aaa", r.toString());
+        Assert.assertEquals("aaa", r.toString());
     }
-    @Test
+
+    @Test(expected=MethodNotFoundException.class)
     public void testBug57855e() {
         MethodExpression me = factory.createMethodExpression(context,
                 "${beanB.echo}", null , new Class[]{String.class});
         Object r = me.invoke(context, new String[] { "aaa", "bbb" });
-        assertEquals("aaa, bbb", r.toString());
+        Assert.assertEquals("aaa, bbb", r.toString());
     }
 
+
+    @Test(expected=IllegalArgumentException.class)
+    public void testBug60844() {
+        MethodExpression me2 = factory.createMethodExpression(context,
+                "${beanC.sayHello}", null , new Class[]{ TesterBeanA.class, TesterBeanB.class});
+        me2.invoke(context, new Object[] { new Object() });
+    }
 }

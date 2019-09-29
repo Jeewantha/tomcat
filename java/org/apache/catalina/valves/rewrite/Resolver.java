@@ -17,6 +17,8 @@
 
 package org.apache.catalina.valves.rewrite;
 
+import java.nio.charset.Charset;
+
 /**
  * Resolver abstract class.
  */
@@ -33,4 +35,6 @@ public abstract class Resolver {
     public abstract String resolveHttp(String key);
 
     public abstract boolean resolveResource(int type, String name);
+
+    public abstract Charset getUriCharset();
 }

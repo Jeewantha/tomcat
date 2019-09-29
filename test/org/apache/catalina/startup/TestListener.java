@@ -24,9 +24,7 @@ import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 import javax.servlet.ServletException;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -42,12 +40,12 @@ public class TestListener extends TomcatBaseTest {
     public void testServletContainerInitializer() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        Context context = tomcat.addContext("",
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context context = tomcat.addContext("", null);
 
         context.addServletContainerInitializer(new SCI(), null);
         tomcat.start();
-        assertTrue(SCL.initialized);
+        Assert.assertTrue(SCL.initialized);
     }
 
     /*
@@ -59,16 +57,16 @@ public class TestListener extends TomcatBaseTest {
     public void testServletContextListener() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        Context context = tomcat.addContext("",
-                System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context context = tomcat.addContext("", null);
 
         // SCL2 pretends to be in web.xml, and tries to install a
-        // ServletContextInitializer.
+        // ServletContainerInitializer.
         context.addApplicationListener(SCL2.class.getName());
         tomcat.start();
 
-        //check that the ServletContextInitializer wasn't initialized.
-        assertFalse(SCL3.initialized);
+        //check that the ServletContainerInitializer wasn't initialized.
+        Assert.assertFalse(SCL3.initialized);
     }
 
     public static class SCI implements ServletContainerInitializer {
@@ -88,11 +86,6 @@ public class TestListener extends TomcatBaseTest {
         public void contextInitialized(ServletContextEvent sce) {
             initialized = true;
         }
-
-        @Override
-        public void contextDestroyed(ServletContextEvent sce) {
-            // NOOP
-        }
     }
 
     public static class SCL2 implements ServletContextListener {
@@ -101,11 +94,6 @@ public class TestListener extends TomcatBaseTest {
         public void contextInitialized(ServletContextEvent sce) {
             ServletContext sc = sce.getServletContext();
             sc.addListener(SCL3.class.getName());
-        }
-
-        @Override
-        public void contextDestroyed(ServletContextEvent sce) {
-            // NOOP
         }
     }
 
@@ -116,11 +104,6 @@ public class TestListener extends TomcatBaseTest {
         @Override
         public void contextInitialized(ServletContextEvent sce) {
             initialized = true;
-        }
-
-        @Override
-        public void contextDestroyed(ServletContextEvent sce) {
-            // NOOP
         }
     }
 }

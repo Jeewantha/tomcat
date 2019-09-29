@@ -30,7 +30,8 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public abstract class DigestCredentialHandlerBase implements CredentialHandler {
 
-    protected static final StringManager sm = StringManager.getManager(Constants.Package);
+    protected static final StringManager sm =
+            StringManager.getManager(DigestCredentialHandlerBase.class);
 
     public static final int DEFAULT_SALT_LENGTH = 32;
 
@@ -42,7 +43,7 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
 
 
     /**
-     * Return the number of iterations of the associated algorithm that will be
+     * @return the number of iterations of the associated algorithm that will be
      * used when creating a new stored credential for a given input credential.
      */
     public int getIterations() {
@@ -53,6 +54,7 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
     /**
      * Set the number of iterations of the associated algorithm that will be
      * used when creating a new stored credential for a given input credential.
+     * @param iterations the iterations count
      */
     public void setIterations(int iterations) {
         this.iterations = iterations;
@@ -60,7 +62,7 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
 
 
     /**
-     * Return the salt length that will be used when creating a new stored
+     * @return the salt length that will be used when creating a new stored
      * credential for a given input credential.
      */
     public int getSaltLength() {
@@ -71,6 +73,7 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
     /**
      * Set the salt length that will be used when creating a new stored
      * credential for a given input credential.
+     * @param saltLength the salt length
      */
     public void setSaltLength(int saltLength) {
         this.saltLength = saltLength;
@@ -80,6 +83,7 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
     /**
      * When checking input credentials against stored credentials will a warning
      * message be logged if invalid stored credentials are discovered?
+     * @return <code>true</code> if logging will occur
      */
     public boolean getLogInvalidStoredCredentials() {
         return logInvalidStoredCredentials;
@@ -90,6 +94,8 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
      * Set whether a warning message will be logged if invalid stored
      * credentials are discovered while checking input credentials against
      * stored credentials?
+     * @param logInvalidStoredCredentials <code>true</code> to log, the
+     *   default value is <code>false</code>
      */
     public void setLogInvalidStoredCredentials(boolean logInvalidStoredCredentials) {
         this.logInvalidStoredCredentials = logInvalidStoredCredentials;
@@ -120,6 +126,13 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
 
         String serverCredential = mutate(userCredential, salt, iterations);
 
+        // Failed to generate server credential from user credential. Points to
+        // a configuration issue. The root cause should have been logged in the
+        // mutate() method.
+        if (serverCredential == null) {
+            return null;
+        }
+
         if (saltLength == 0 && iterations == 1) {
             // Output the simple/old format for backwards compatibility
             return serverCredential;
@@ -149,6 +162,13 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
     protected boolean matchesSaltIterationsEncoded(String inputCredentials,
             String storedCredentials) {
 
+        if (storedCredentials == null) {
+            // Stored credentials are invalid
+            // This may be expected if nested credential handlers are being used
+            logInvalidStoredCredentials(null);
+            return false;
+        }
+
         int sep1 = storedCredentials.indexOf('$');
         int sep2 = storedCredentials.indexOf('$', sep1 + 1);
 
@@ -172,7 +192,13 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
             return false;
         }
 
-        String inputHexEncoded = mutate(inputCredentials, salt, iterations);
+        String inputHexEncoded = mutate(inputCredentials, salt, iterations,
+                HexUtils.fromHexString(storedHexEncoded).length * Byte.SIZE);
+        if (inputHexEncoded == null) {
+            // Failed to mutate user credentials. Automatic fail.
+            // Root cause should be logged by mutate()
+            return false;
+        }
 
         return storedHexEncoded.equalsIgnoreCase(inputHexEncoded);
     }
@@ -189,7 +215,7 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
 
 
     /**
-     * Get the default salt length used by the {@link CredentialHandler}.
+     * @return the default salt length used by the {@link CredentialHandler}.
      */
     protected int getDefaultSaltLength() {
         return DEFAULT_SALT_LENGTH;
@@ -198,7 +224,8 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
 
     /**
      * Generates the equivalent stored credentials for the given input
-     * credentials, salt and iterations.
+     * credentials, salt and iterations. If the algorithm requires a key length,
+     * the default will be used.
      *
      * @param inputCredentials  User provided credentials
      * @param salt              Salt, if any
@@ -208,33 +235,61 @@ public abstract class DigestCredentialHandlerBase implements CredentialHandler {
      *                          stored credentials
      *
      * @return  The equivalent stored credentials for the given input
-     *          credentials
+     *          credentials or <code>null</code> if the generation fails
      */
     protected abstract String mutate(String inputCredentials, byte[] salt, int iterations);
+
+
+    /**
+     * Generates the equivalent stored credentials for the given input
+     * credentials, salt, iterations and key length. The default implementation
+     * calls ignores the key length and calls
+     * {@link #mutate(String, byte[], int)}. Sub-classes that use the key length
+     * should override this method.
+     *
+     * @param inputCredentials  User provided credentials
+     * @param salt              Salt, if any
+     * @param iterations        Number of iterations of the algorithm associated
+     *                          with this CredentialHandler applied to the
+     *                          inputCredentials to generate the equivalent
+     *                          stored credentials
+     * @param keyLength         Length of the produced digest in bits for
+     *                          implementations where it's applicable
+     *
+     * @return  The equivalent stored credentials for the given input
+     *          credentials or <code>null</code> if the generation fails
+     */
+    protected String mutate(String inputCredentials, byte[] salt, int iterations, int keyLength) {
+        return mutate(inputCredentials, salt, iterations);
+    }
+
 
     /**
      * Set the algorithm used to convert input credentials to stored
      * credentials.
+     * @param algorithm the algorithm
+     * @throws NoSuchAlgorithmException if the specified algorithm
+     *  is not supported
      */
     public abstract void setAlgorithm(String algorithm) throws NoSuchAlgorithmException;
 
 
     /**
-     * Get the algorithm used to convert input credentials to stored
+     * @return the algorithm used to convert input credentials to stored
      * credentials.
      */
     public abstract String getAlgorithm();
 
 
     /**
-     * Get the default number of iterations used by the
+     * @return the default number of iterations used by the
      * {@link CredentialHandler}.
      */
     protected abstract int getDefaultIterations();
 
 
     /**
-     * Obtain the logger for the CredentialHandler instance.
+     * @return the logger for the CredentialHandler instance.
      */
     protected abstract Log getLog();
 }

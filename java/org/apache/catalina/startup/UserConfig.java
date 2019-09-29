@@ -102,23 +102,21 @@ public final class UserConfig
     /**
      * A regular expression defining user who deployment is allowed.
      */
-    protected Pattern allow = null;
+    Pattern allow = null;
 
     /**
      * A regular expression defining user who deployment is denied.
      */
-    protected Pattern deny = null;
+    Pattern deny = null;
 
     // ------------------------------------------------------------- Properties
 
 
     /**
-     * Return the Context configuration class name.
+     * @return the Context configuration class name.
      */
     public String getConfigClass() {
-
-        return (this.configClass);
-
+        return this.configClass;
     }
 
 
@@ -128,19 +126,15 @@ public final class UserConfig
      * @param configClass The new Context configuration class name.
      */
     public void setConfigClass(String configClass) {
-
         this.configClass = configClass;
-
     }
 
 
     /**
-     * Return the Context implementation class name.
+     * @return the Context implementation class name.
      */
     public String getContextClass() {
-
-        return (this.contextClass);
-
+        return this.contextClass;
     }
 
 
@@ -150,19 +144,15 @@ public final class UserConfig
      * @param contextClass The new Context implementation class name.
      */
     public void setContextClass(String contextClass) {
-
         this.contextClass = contextClass;
-
     }
 
 
     /**
-     * Return the directory name for user web applications.
+     * @return the directory name for user web applications.
      */
     public String getDirectoryName() {
-
-        return (this.directoryName);
-
+        return this.directoryName;
     }
 
 
@@ -172,19 +162,15 @@ public final class UserConfig
      * @param directoryName The new directory name
      */
     public void setDirectoryName(String directoryName) {
-
         this.directoryName = directoryName;
-
     }
 
 
     /**
-     * Return the base directory containing user home directories.
+     * @return the base directory containing user home directories.
      */
     public String getHomeBase() {
-
-        return (this.homeBase);
-
+        return this.homeBase;
     }
 
 
@@ -194,33 +180,28 @@ public final class UserConfig
      * @param homeBase The new base directory
      */
     public void setHomeBase(String homeBase) {
-
         this.homeBase = homeBase;
-
     }
 
 
     /**
-     * Return the user database class name for this component.
+     * @return the user database class name for this component.
      */
     public String getUserClass() {
-
-        return (this.userClass);
-
+        return this.userClass;
     }
 
 
     /**
      * Set the user database class name for this component.
+     * @param userClass The user database class name
      */
     public void setUserClass(String userClass) {
-
         this.userClass = userClass;
-
     }
 
     /**
-     * Return the regular expression used to test for user who deployment is allowed.
+     * @return the regular expression used to test for user who deployment is allowed.
      */
     public String getAllow() {
         if (allow == null) return null;
@@ -243,7 +224,7 @@ public final class UserConfig
 
 
     /**
-     * Return the regular expression used to test for user who deployment is denied.
+     * @return the regular expression used to test for user who deployment is denied.
      */
     public String getDeny() {
         if (deny == null) return null;
@@ -308,7 +289,7 @@ public final class UserConfig
         UserDatabase database = null;
         try {
             Class<?> clazz = Class.forName(userClass);
-            database = (UserDatabase) clazz.newInstance();
+            database = (UserDatabase) clazz.getConstructor().newInstance();
             database.setUserConfig(this);
         } catch (Exception e) {
             host.getLogger().error(sm.getString("userConfig.database"), e);
@@ -353,23 +334,17 @@ public final class UserConfig
         File app = new File(home, directoryName);
         if (!app.exists() || !app.isDirectory())
             return;
-        /*
-        File dd = new File(app, "/WEB-INF/web.xml");
-        if (!dd.exists() || !dd.isFile() || !dd.canRead())
-            return;
-        */
+
         host.getLogger().info(sm.getString("userConfig.deploy", user));
 
         // Deploy the web application for this user
         try {
             Class<?> clazz = Class.forName(contextClass);
-            Context context =
-              (Context) clazz.newInstance();
+            Context context = (Context) clazz.getConstructor().newInstance();
             context.setPath(contextPath);
             context.setDocBase(app.toString());
             clazz = Class.forName(configClass);
-            LifecycleListener listener =
-                (LifecycleListener) clazz.newInstance();
+            LifecycleListener listener = (LifecycleListener) clazz.getConstructor().newInstance();
             context.addLifecycleListener(listener);
             host.addChild(context);
         } catch (Exception e) {

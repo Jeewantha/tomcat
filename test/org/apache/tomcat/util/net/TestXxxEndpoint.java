@@ -14,24 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.net;
 
 import java.io.File;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.jni.Address;
 import org.apache.tomcat.jni.Error;
 import org.apache.tomcat.jni.Library;
@@ -44,8 +38,6 @@ import org.apache.tomcat.jni.Socket;
  * that each implementation is tested.
  */
 public class TestXxxEndpoint extends TomcatBaseTest {
-
-    private static Log log = LogFactory.getLog(TestXxxEndpoint.class);
 
     private long createAprPool() {
 
@@ -134,9 +126,9 @@ public class TestXxxEndpoint extends TomcatBaseTest {
             // This should throw an Exception
             if (isApr) {
                 pool = createAprPool();
-                assertTrue(pool != 0);
+                Assert.assertTrue(pool != 0);
                 nativeSocket = createAprSocket(port, pool);
-                assertTrue(nativeSocket != 0);
+                Assert.assertTrue(nativeSocket != 0);
             } else {
                 s = new ServerSocket(port, 100,
                         InetAddress.getByName("localhost"));
@@ -155,7 +147,7 @@ public class TestXxxEndpoint extends TomcatBaseTest {
         if (e != null) {
             log.info("Exception was", e);
         }
-        assertNotNull(e);
+        Assert.assertNotNull(e);
         tomcat.getConnector().start();
     }
 
@@ -182,9 +174,9 @@ public class TestXxxEndpoint extends TomcatBaseTest {
             // This should not throw an Exception
             if (isApr) {
                 pool = createAprPool();
-                assertTrue(pool != 0);
+                Assert.assertTrue(pool != 0);
                 nativeSocket = createAprSocket(port, pool);
-                assertTrue(nativeSocket != 0);
+                Assert.assertTrue(nativeSocket != 0);
             } else {
                 s = new ServerSocket(port, 100,
                         InetAddress.getByName("localhost"));
@@ -200,7 +192,7 @@ public class TestXxxEndpoint extends TomcatBaseTest {
                 }
             } catch (Exception e2) { /* Ignore */ }
         }
-        assertNull(e);
+        Assert.assertNull(e);
         tomcat.getConnector().start();
     }
 }

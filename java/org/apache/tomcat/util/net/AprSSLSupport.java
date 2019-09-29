@@ -22,7 +22,6 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
 import org.apache.tomcat.jni.SSL;
-import org.apache.tomcat.jni.SSLSocket;
 
 /**
  * Implementation of SSLSupport for APR.
@@ -32,11 +31,11 @@ import org.apache.tomcat.jni.SSLSocket;
  */
 public class AprSSLSupport implements SSLSupport {
 
-    private final SocketWrapperBase<Long> socketWrapper;
+    private final AprEndpoint.AprSocketWrapper socketWrapper;
     private final String clientCertProvider;
 
 
-    public AprSSLSupport(SocketWrapperBase<Long> socketWrapper, String clientCertProvider) {
+    public AprSSLSupport(AprEndpoint.AprSocketWrapper socketWrapper, String clientCertProvider) {
         this.socketWrapper = socketWrapper;
         this.clientCertProvider = clientCertProvider;
     }
@@ -44,12 +43,8 @@ public class AprSSLSupport implements SSLSupport {
 
     @Override
     public String getCipherSuite() throws IOException {
-        long socketRef = socketWrapper.getSocket().longValue();
-        if (socketRef == 0) {
-            return null;
-        }
         try {
-            return SSLSocket.getInfoS(socketRef, SSL.SSL_INFO_CIPHER);
+            return socketWrapper.getSSLInfoS(SSL.SSL_INFO_CIPHER);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -58,17 +53,18 @@ public class AprSSLSupport implements SSLSupport {
 
     @Override
     public X509Certificate[] getPeerCertificateChain() throws IOException {
-        long socketRef = socketWrapper.getSocket().longValue();
-        if (socketRef == 0) {
-            return null;
-        }
-
         try {
-            // certLength == -1 indicates an error
-            int certLength = SSLSocket.getInfoI(socketRef, SSL.SSL_INFO_CLIENT_CERT_CHAIN);
-            byte[] clientCert = SSLSocket.getInfoB(socketRef, SSL.SSL_INFO_CLIENT_CERT);
+            // certLength == -1 indicates an error unless TLS session tickets
+            // are in use in which case OpenSSL won't store the chain in the
+            // ticket.
+            int certLength = socketWrapper.getSSLInfoI(SSL.SSL_INFO_CLIENT_CERT_CHAIN);
+            byte[] clientCert = socketWrapper.getSSLInfoB(SSL.SSL_INFO_CLIENT_CERT);
             X509Certificate[] certs = null;
-            if (clientCert != null  && certLength > -1) {
+
+            if (clientCert != null) {
+                if (certLength < 0) {
+                    certLength = 0;
+                }
                 certs = new X509Certificate[certLength + 1];
                 CertificateFactory cf;
                 if (clientCertProvider == null) {
@@ -78,7 +74,7 @@ public class AprSSLSupport implements SSLSupport {
                 }
                 certs[0] = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(clientCert));
                 for (int i = 0; i < certLength; i++) {
-                    byte[] data = SSLSocket.getInfoB(socketRef, SSL.SSL_INFO_CLIENT_CERT_CHAIN + i);
+                    byte[] data = socketWrapper.getSSLInfoB(SSL.SSL_INFO_CLIENT_CERT_CHAIN + i);
                     certs[i+1] = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(data));
                 }
             }
@@ -91,13 +87,8 @@ public class AprSSLSupport implements SSLSupport {
 
     @Override
     public Integer getKeySize() throws IOException {
-        long socketRef = socketWrapper.getSocket().longValue();
-        if (socketRef == 0) {
-            return null;
-        }
-
         try {
-            return Integer.valueOf(SSLSocket.getInfoI(socketRef, SSL.SSL_INFO_CIPHER_USEKEYSIZE));
+            return Integer.valueOf(socketWrapper.getSSLInfoI(SSL.SSL_INFO_CIPHER_USEKEYSIZE));
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -106,13 +97,8 @@ public class AprSSLSupport implements SSLSupport {
 
     @Override
     public String getSessionId() throws IOException {
-        long socketRef = socketWrapper.getSocket().longValue();
-        if (socketRef == 0) {
-            return null;
-        }
-
         try {
-            return SSLSocket.getInfoS(socketRef, SSL.SSL_INFO_SESSION_ID);
+            return socketWrapper.getSSLInfoS(SSL.SSL_INFO_SESSION_ID);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -120,13 +106,8 @@ public class AprSSLSupport implements SSLSupport {
 
     @Override
     public String getProtocol() throws IOException {
-        long socketRef = socketWrapper.getSocket().longValue();
-        if (socketRef == 0) {
-            return null;
-        }
-
         try {
-            return SSLSocket.getInfoS(socketRef, SSL.SSL_INFO_PROTOCOL);
+            return socketWrapper.getSSLInfoS(SSL.SSL_INFO_PROTOCOL);
         } catch (Exception e) {
             throw new IOException(e);
         }

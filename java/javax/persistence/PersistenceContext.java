@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package javax.persistence;
 
 import java.lang.annotation.ElementType;
@@ -31,4 +29,5 @@ public @interface PersistenceContext {
    String unitName() default "";
    PersistenceContextType type() default PersistenceContextType.TRANSACTION;
    PersistenceProperty[] properties() default {};
+   SynchronizationType synchronization() default SynchronizationType.SYNCHRONIZED;
 }

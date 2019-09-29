@@ -16,294 +16,144 @@
  */
 package org.apache.catalina.session;
 
-import java.beans.PropertyChangeListener;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
+import javax.servlet.http.HttpSessionEvent;
+import javax.servlet.http.HttpSessionListener;
 
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
-import org.apache.catalina.LifecycleException;
+import org.apache.catalina.Host;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Session;
 import org.apache.catalina.Store;
-import org.apache.catalina.core.StandardContext;
-import org.apache.catalina.startup.Tomcat;
-import org.apache.catalina.startup.TomcatBaseTest;
-import org.apache.catalina.valves.PersistentValve;
+import org.apache.catalina.connector.Connector;
+import org.apache.catalina.connector.Request;
+import org.apache.catalina.connector.RequestFacade;
+import org.apache.tomcat.unittest.TesterContext;
+import org.apache.tomcat.unittest.TesterHost;
+import org.easymock.EasyMock;
+import org.easymock.IAnswer;
 
-public class TestPersistentManager extends TomcatBaseTest {
+public class TestPersistentManager {
 
-    private final String ACTIVITY_CHECK = "org.apache.catalina.session.StandardSession.ACTIVITY_CHECK";
+    @Test
+    public void testMinIdleSwap() throws Exception {
+        PersistentManager manager = new PersistentManager();
+        manager.setStore(new TesterStore());
 
-    private String oldActivityCheck;
+        Host host = new TesterHost();
+        Context context = new TesterContext();
+        context.setParent(host);
 
-    /**
-     * As documented in config/manager.html, the "ACTIVITY_CHECK" property must
-     * be set to "true" for PersistentManager to function correctly.
-     */
-    @Before
-    public void setActivityCheck() {
-        oldActivityCheck = System.setProperty(ACTIVITY_CHECK, "true");
-    }
+        manager.setContext(context);
 
-    @After
-    public void resetActivityCheck() {
-        if (oldActivityCheck != null) {
-            System.setProperty(ACTIVITY_CHECK, oldActivityCheck);
-        } else {
-            System.clearProperty(ACTIVITY_CHECK);
-        }
-    }
+        manager.setMaxActiveSessions(2);
+        manager.setMinIdleSwap(0);
 
-    /**
-     * Wait enough for the system clock to update its value. On some systems
-     * (e.g. old Windows) the clock granularity is tens of milliseconds.
-     */
-    private void waitForClockUpdate() throws InterruptedException {
-        long startTime = System.currentTimeMillis();
-        int waitTime = 1;
-        do {
-            Thread.sleep(waitTime);
-            waitTime *= 10;
-        } while (System.currentTimeMillis() == startTime);
-    }
+        manager.start();
 
-    /**
-     * Wait while session access counter has a positive value.
-     */
-    private void waitWhileSessionIsActive(StandardSession session)
-            throws InterruptedException {
-        long maxWaitTime = System.currentTimeMillis() + 60000;
-        AtomicInteger accessCount = session.accessCount;
-        while (accessCount.get() > 0) {
-            // Wait until o.a.c.connector.Request.recycle() completes,
-            // as it updates lastAccessedTime.
-            Assert.assertTrue(System.currentTimeMillis() < maxWaitTime);
-            Thread.sleep(200);
-        }
+        // Create the maximum number of sessions
+        manager.createSession(null);
+        manager.createSession(null);
+
+        // Given the minIdleSwap settings, this should swap one out to get below
+        // the limit
+        manager.processPersistenceChecks();
+        Assert.assertEquals(1, manager.getActiveSessions());
+        Assert.assertEquals(2, manager.getActiveSessionsFull());
+
+        manager.createSession(null);
+        Assert.assertEquals(2, manager.getActiveSessions());
+        Assert.assertEquals(3, manager.getActiveSessionsFull());
     }
 
     @Test
-    public void noSessionCreate_57637() throws IOException, LifecycleException {
-
-        // Setup Tomcat instance
-        Tomcat tomcat = getTomcatInstance();
-
-        // No file system docBase required
-        StandardContext ctx = (StandardContext) tomcat.addContext("", null);
-
-        Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMapping("/dummy", "DummyServlet");
-
+    public void testBug62175() throws Exception {
         PersistentManager manager = new PersistentManager();
-        DummyStore store = new DummyStore();
+        AtomicInteger sessionExpireCounter = new AtomicInteger();
 
-        manager.setStore(store);
-        manager.setMaxIdleBackup(0);
-        manager.setDistributable(true);
-        ctx.setManager(manager);
-        ctx.addValve(new PersistentValve());
-        tomcat.start();
-        Assert.assertEquals(manager.getActiveSessions(), 0);
-        Assert.assertTrue("No sessions managed", manager.getSessionIdsFull().isEmpty());
-        Assert.assertEquals(
-                "NO_SESSION",
-                getUrl(
-                        "http://localhost:" + getPort()
-                                + "/dummy?no_create_session=true").toString());
-        Assert.assertEquals(manager.getActiveSessions(), 0);
-        Assert.assertTrue("No sessions where created", manager.getSessionIdsFull().isEmpty());
-    }
+        Store mockStore = EasyMock.createNiceMock(Store.class);
+        EasyMock.expect(mockStore.load(EasyMock.anyString())).andAnswer(new IAnswer<Session>() {
 
-    @Test
-    public void testCreateSessionAndPassivate() throws IOException, LifecycleException, ClassNotFoundException {
-
-        // Setup Tomcat instance
-        Tomcat tomcat = getTomcatInstance();
-
-        // No file system docBase required
-        StandardContext ctx = (StandardContext) tomcat.addContext("", null);
-
-        Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMapping("/dummy", "DummyServlet");
-
-        PersistentManager manager = new PersistentManager();
-        DummyStore store = new DummyStore();
-
-        manager.setStore(store);
-        manager.setMaxIdleBackup(0);
-        manager.setDistributable(true);
-        ctx.setManager(manager);
-        ctx.addValve(new PersistentValve());
-        tomcat.start();
-        Assert.assertEquals("No active sessions", manager.getActiveSessions(), 0);
-        Assert.assertTrue("No sessions managed", manager.getSessionIdsFull().isEmpty());
-        String sessionId = getUrl(
-                "http://localhost:" + getPort()
-                        + "/dummy?no_create_session=false").toString();
-        Assert.assertNotNull("Session is stored", store.load(sessionId));
-        Assert.assertEquals("All sessions are passivated", manager.getActiveSessions(), 0);
-        Assert.assertTrue("One session was created", !manager.getSessionIdsFull().isEmpty());
-    }
-
-    @Test
-    public void backsUpOnce_56698() throws IOException, LifecycleException,
-            InterruptedException {
-
-        // Setup Tomcat instance
-        Tomcat tomcat = getTomcatInstance();
-
-        // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
-
-        Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMapping("/dummy", "DummyServlet");
-
-        PersistentManager manager = new PersistentManager();
-        DummyStore store = new DummyStore();
-
-        manager.setStore(store);
-        manager.setMaxIdleBackup(0);
-        manager.setDistributable(true);
-        ctx.setManager(manager);
-        tomcat.start();
-        String sessionId = getUrl("http://localhost:" + getPort() + "/dummy")
-                .toString();
-
-        // Note: PersistenceManager.findSession() silently updates
-        // session.lastAccessedTime, so call it only once before other work.
-        Session session = manager.findSession(sessionId);
-
-        // Wait until request processing ends, as Request.recycle() updates
-        // session.lastAccessedTime via session.endAccess().
-        waitWhileSessionIsActive((StandardSession) session);
-
-        long lastAccessedTime = session.getLastAccessedTimeInternal();
-
-        // Session should be idle at least for 0 second (maxIdleBackup)
-        // to be eligible for persistence, thus no need to wait.
-
-        // Waiting a bit, to catch changes in last accessed time of a session
-        waitForClockUpdate();
-
-        manager.processPersistenceChecks();
-        Assert.assertEquals(Arrays.asList(sessionId), store.getSavedIds());
-        Assert.assertEquals(lastAccessedTime, session.getLastAccessedTimeInternal());
-
-        // session was not accessed, so no save will be performed
-        waitForClockUpdate();
-        manager.processPersistenceChecks();
-        Assert.assertEquals(Arrays.asList(sessionId), store.getSavedIds());
-        Assert.assertEquals(lastAccessedTime, session.getLastAccessedTimeInternal());
-
-        // access session
-        session.access();
-        session.endAccess();
-
-        // session was accessed, so it will be saved once again
-        manager.processPersistenceChecks();
-        Assert.assertEquals(Arrays.asList(sessionId, sessionId),
-                store.getSavedIds());
-
-        // session was not accessed, so once again no save will happen
-        manager.processPersistenceChecks();
-        Assert.assertEquals(Arrays.asList(sessionId, sessionId),
-                store.getSavedIds());
-    }
-
-    private static class DummyServlet extends HttpServlet {
-
-        private static final long serialVersionUID = -3696433049266123995L;
-
-        @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
-            boolean createSession = !Boolean.parseBoolean(req
-                            .getParameter("no_create_session"));
-            HttpSession session = req.getSession(createSession);
-            if (session == null) {
-                resp.getWriter().print("NO_SESSION");
-            } else {
-                String id = session.getId();
-                resp.getWriter().print(id);
+            @Override
+            public Session answer() throws Throwable {
+                return timedOutSession(manager, sessionExpireCounter);
             }
-        }
+        }).anyTimes();
+
+        EasyMock.replay(mockStore);
+
+        manager.setStore(mockStore);
+
+        Host host = new TesterHost();
+
+        RequestCachingSessionListener requestCachingSessionListener = new RequestCachingSessionListener();
+
+        Context context = new TesterContext() {
+
+            @Override
+            public Object[] getApplicationLifecycleListeners() {
+                return new Object[] { requestCachingSessionListener };
+            }
+
+            @Override
+            public Manager getManager() {
+                return manager;
+            }
+        };
+        context.setParent(host);
+
+        Connector connector = EasyMock.createNiceMock(Connector.class);
+        Request req = new Request(connector) {
+            @Override
+            public Context getContext() {
+                return context;
+            }
+        };
+        req.setRequestedSessionId("invalidSession");
+        HttpServletRequest request = new RequestFacade(req);
+        EasyMock.replay(connector);
+        requestCachingSessionListener.request = request;
+
+        manager.setContext(context);
+
+        manager.start();
+
+        Assert.assertNull(request.getSession(false));
+        Assert.assertEquals(1, sessionExpireCounter.get());
 
     }
 
-    private static class DummyStore implements Store {
+    private static class RequestCachingSessionListener implements HttpSessionListener {
 
-        private Manager manager;
-        private Map<String, Session> sessions = new HashMap<>();
-        private List<String> savedIds = new ArrayList<>();
-
-        List<String> getSavedIds() {
-            return savedIds;
-        }
+        private HttpServletRequest request;
 
         @Override
-        public Manager getManager() {
-            return this.manager;
+        public void sessionDestroyed(HttpSessionEvent se) {
+            request.getSession(false);
         }
+    }
 
-        @Override
-        public void setManager(Manager manager) {
-            this.manager = manager;
-        }
+    private StandardSession timedOutSession(PersistentManager manager, AtomicInteger counter) {
+        StandardSession timedOutSession = new StandardSession(manager) {
+            private static final long serialVersionUID = -5910605558747844210L;
 
-        @Override
-        public int getSize() throws IOException {
-            return 0;
-        }
-
-        @Override
-        public void addPropertyChangeListener(PropertyChangeListener listener) {
-        }
-
-        @Override
-        public String[] keys() throws IOException {
-            return new ArrayList<>(sessions.keySet()).toArray(new String[] {});
-        }
-
-        @Override
-        public Session load(String id) throws ClassNotFoundException,
-                IOException {
-            return sessions.get(id);
-        }
-
-        @Override
-        public void remove(String id) throws IOException {
-            sessions.remove(id);
-        }
-
-        @Override
-        public void clear() throws IOException {
-        }
-
-        @Override
-        public void removePropertyChangeListener(PropertyChangeListener listener) {
-        }
-
-        @Override
-        public void save(Session session) throws IOException {
-            sessions.put(session.getId(), session);
-            savedIds.add(session.getId());
-        }
-
+            @Override
+            public void expire() {
+                counter.incrementAndGet();
+                super.expire();
+            }
+        };
+        timedOutSession.isValid = true;
+        timedOutSession.expiring = false;
+        timedOutSession.maxInactiveInterval = 1;
+        timedOutSession.lastAccessedTime = 0;
+        timedOutSession.id = "invalidSession";
+        return timedOutSession;
     }
 }
+

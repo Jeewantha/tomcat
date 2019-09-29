@@ -24,6 +24,8 @@ import java.net.StandardSocketOptions;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 
+import javax.management.ObjectName;
+
 /**
  * Properties that can be set in the &lt;Connector&gt; element
  * in server.xml. All properties are prefixed with &quot;socket.&quot;
@@ -52,13 +54,13 @@ public class SocketProperties {
 
     /**
      * Enable/disable direct buffers for the network buffers
-     * Default value is enabled
+     * Default value is disabled
      */
     protected boolean directBuffer = false;
 
     /**
      * Enable/disable direct buffers for the network buffers for SSL
-     * Default value is enabled
+     * Default value is disabled
      */
     protected boolean directSslBuffer = false;
 
@@ -136,7 +138,7 @@ public class SocketProperties {
     /**
      * SO_TIMEOUT option. default is 20000.
      */
-    protected Integer soTimeout = new Integer(20000);
+    protected Integer soTimeout = Integer.valueOf(20000);
 
     /**
      * Performance preferences according to
@@ -173,6 +175,9 @@ public class SocketProperties {
      */
     protected int unlockTimeout = 250;
 
+    private ObjectName oname = null;
+
+
     public void setProperties(Socket socket) throws SocketException{
         if (rxBufSize != null)
             socket.setReceiveBufferSize(rxBufSize.intValue());
@@ -195,8 +200,13 @@ public class SocketProperties {
                     soLingerTime.intValue());
         if (soTimeout != null && soTimeout.intValue() >= 0)
             socket.setSoTimeout(soTimeout.intValue());
-        if (tcpNoDelay != null)
-            socket.setTcpNoDelay(tcpNoDelay.booleanValue());
+        if (tcpNoDelay != null) {
+            try {
+                socket.setTcpNoDelay(tcpNoDelay.booleanValue());
+            } catch (SocketException e) {
+                // Some socket types may not support this option which is set by default
+            }
+        }
     }
 
     public void setProperties(ServerSocket socket) throws SocketException{
@@ -421,5 +431,11 @@ public class SocketProperties {
         this.unlockTimeout = unlockTimeout;
     }
 
+    void setObjectName(ObjectName oname) {
+        this.oname = oname;
+    }
 
+    ObjectName getObjectName() {
+        return oname;
+    }
 }

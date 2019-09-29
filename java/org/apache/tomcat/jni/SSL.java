@@ -73,7 +73,18 @@ public final class SSL {
     public static final int SSL_PROTOCOL_TLSV1 = (1<<2);
     public static final int SSL_PROTOCOL_TLSV1_1 = (1<<3);
     public static final int SSL_PROTOCOL_TLSV1_2 = (1<<4);
-    public static final int SSL_PROTOCOL_ALL   = (SSL_PROTOCOL_TLSV1 | SSL_PROTOCOL_TLSV1_1 | SSL_PROTOCOL_TLSV1_2);
+    public static final int SSL_PROTOCOL_TLSV1_3 = (1<<5);
+    public static final int SSL_PROTOCOL_ALL;
+
+    static {
+        if (SSL.version() >= 0x1010100f) {
+            SSL_PROTOCOL_ALL = (SSL_PROTOCOL_TLSV1 | SSL_PROTOCOL_TLSV1_1 | SSL_PROTOCOL_TLSV1_2 |
+                    SSL_PROTOCOL_TLSV1_3);
+        } else {
+            SSL_PROTOCOL_ALL = (SSL_PROTOCOL_TLSV1 | SSL_PROTOCOL_TLSV1_1 | SSL_PROTOCOL_TLSV1_2);
+        }
+    }
+
 
     /*
      * Define the SSL verify levels
@@ -129,7 +140,7 @@ public final class SSL {
     /* Set on servers to choose the cipher according to the server's
      * preferences */
     public static final int SSL_OP_CIPHER_SERVER_PREFERENCE         = 0x00400000;
-    /* If set, a server will allow a client to issue a SSLv3.0 version number
+    /* If set, a server will allow a client to issue an SSLv3.0 version number
      * as latest version supported in the premaster secret, even when TLSv1.0
      * (version 3.1) was announced in the client hello. Normally this is
      * forbidden to prevent version rollback attacks. */
@@ -171,6 +182,18 @@ public final class SSL {
     public static final int SSL_MODE_CLIENT         = 0;
     public static final int SSL_MODE_SERVER         = 1;
     public static final int SSL_MODE_COMBINED       = 2;
+
+    public static final int SSL_CONF_FLAG_CMDLINE       = 0x0001;
+    public static final int SSL_CONF_FLAG_FILE          = 0x0002;
+    public static final int SSL_CONF_FLAG_CLIENT        = 0x0004;
+    public static final int SSL_CONF_FLAG_SERVER        = 0x0008;
+    public static final int SSL_CONF_FLAG_SHOW_ERRORS   = 0x0010;
+    public static final int SSL_CONF_FLAG_CERTIFICATE   = 0x0020;
+
+    public static final int SSL_CONF_TYPE_UNKNOWN   = 0x0000;
+    public static final int SSL_CONF_TYPE_STRING    = 0x0001;
+    public static final int SSL_CONF_TYPE_FILE      = 0x0002;
+    public static final int SSL_CONF_TYPE_DIR       = 0x0003;
 
     public static final int SSL_SHUTDOWN_TYPE_UNSET    = 0;
     public static final int SSL_SHUTDOWN_TYPE_STANDARD = 1;
@@ -235,10 +258,10 @@ public final class SSL {
     public static final int SSL_SELECTOR_FAILURE_NO_ADVERTISE = 0;
     public static final int SSL_SELECTOR_FAILURE_CHOOSE_MY_LAST_PROTOCOL = 1;
 
-    /* Return OpenSSL version number */
+    /* Return OpenSSL version number (compile time version, if version < 1.1.0) */
     public static native int version();
 
-    /* Return OpenSSL version string */
+    /* Return OpenSSL version string (run time version) */
     public static native String versionString();
 
     /**
@@ -282,6 +305,7 @@ public final class SSL {
      *        set, $HOME/.rnd otherwise.
      *        In case both files are unavailable builtin
      *        random seed generator is used.
+     * @return <code>true</code> if the operation was successful
      */
     public static native boolean randLoad(String filename);
 
@@ -290,6 +314,7 @@ public final class SSL {
      * file <code>filename</code> which can be used to initialize the PRNG
      * by calling randLoad in a later session.
      * @param filename Filename to save the data
+     * @return <code>true</code> if the operation was successful
      */
     public static native boolean randSave(String filename);
 
@@ -298,6 +323,7 @@ public final class SSL {
      * @param filename Filename to save the data
      * @param len The length of random sequence in bytes
      * @param base64 Output the data in Base64 encoded format
+     * @return <code>true</code> if the operation was successful
      */
     public static native boolean randMake(String filename, int len,
                                           boolean base64);
@@ -315,6 +341,7 @@ public final class SSL {
      * @param pool The pool to use.
      * @param callback BIOCallback to use
      * @return New BIO handle
+     * @throws Exception An error occurred
      */
      public static native long newBIO(long pool, BIOCallback callback)
             throws Exception;
@@ -340,6 +367,7 @@ public final class SSL {
 
     /**
      * Return last SSL error string
+     * @return the error string
      */
     public static native String getLastError();
 
@@ -356,6 +384,13 @@ public final class SSL {
      * @return true if all SSL_OP_* are supported by OpenSSL library.
      */
     public static native boolean hasOp(int op);
+
+    /**
+     * Return the handshake completed count.
+     * @param ssl SSL pointer
+     * @return the count
+     */
+    public static native int getHandshakeCount(long ssl);
 
     /*
      * Begin Twitter API additions
@@ -395,63 +430,71 @@ public final class SSL {
      * SSL_get_error
      * @param ssl SSL pointer (SSL *)
      * @param ret TLS/SSL I/O return value
+     * @return the error status
      */
     public static native int getError(long ssl, int ret);
 
     /**
      * BIO_ctrl_pending.
      * @param bio BIO pointer (BIO *)
+     * @return the pending bytes count
      */
     public static native int pendingWrittenBytesInBIO(long bio);
 
     /**
      * SSL_pending.
      * @param ssl SSL pointer (SSL *)
+     * @return the pending bytes count
      */
     public static native int pendingReadableBytesInSSL(long ssl);
 
     /**
      * BIO_write.
-     * @param bio
-     * @param wbuf
-     * @param wlen
+     * @param bio BIO pointer
+     * @param wbuf Buffer pointer
+     * @param wlen Write length
+     * @return the bytes count written
      */
     public static native int writeToBIO(long bio, long wbuf, int wlen);
 
     /**
      * BIO_read.
-     * @param bio
-     * @param rbuf
-     * @param rlen
+     * @param bio BIO pointer
+     * @param rbuf Buffer pointer
+     * @param rlen Read length
+     * @return the bytes count read
      */
     public static native int readFromBIO(long bio, long rbuf, int rlen);
 
     /**
      * SSL_write.
      * @param ssl the SSL instance (SSL *)
-     * @param wbuf
-     * @param wlen
+     * @param wbuf Buffer pointer
+     * @param wlen Write length
+     * @return the bytes count written
      */
     public static native int writeToSSL(long ssl, long wbuf, int wlen);
 
     /**
      * SSL_read
      * @param ssl the SSL instance (SSL *)
-     * @param rbuf
-     * @param rlen
+     * @param rbuf Buffer pointer
+     * @param rlen Read length
+     * @return the bytes count read
      */
     public static native int readFromSSL(long ssl, long rbuf, int rlen);
 
     /**
      * SSL_get_shutdown
      * @param ssl the SSL instance (SSL *)
+     * @return the operation status
      */
     public static native int getShutdown(long ssl);
 
     /**
      * SSL_set_shutdown
      * @param ssl the SSL instance (SSL *)
-     * @param mode
+     * @param mode Shutdown mode
      */
     public static native void setShutdown(long ssl, int mode);
 
@@ -476,55 +519,84 @@ public final class SSL {
 
     /**
      * BIO_free
-     * @param bio
+     * @param bio BIO pointer
      */
     public static native void freeBIO(long bio);
 
     /**
-     * BIO_flush
-     * @param bio
-     */
-    public static native void flushBIO(long bio);
-
-    /**
      * SSL_shutdown
      * @param ssl the SSL instance (SSL *)
+     * @return the operation status
      */
     public static native int shutdownSSL(long ssl);
 
     /**
      * Get the error number representing the last error OpenSSL encountered on
      * this thread.
+     * @return the last error number
      */
     public static native int getLastErrorNumber();
 
     /**
      * SSL_get_cipher.
      * @param ssl the SSL instance (SSL *)
+     * @return the cipher name
      */
     public static native String getCipherForSSL(long ssl);
 
     /**
      * SSL_get_version
      * @param ssl the SSL instance (SSL *)
+     * @return the SSL version in use
      */
     public static native String getVersion(long ssl);
 
     /**
      * SSL_do_handshake
      * @param ssl the SSL instance (SSL *)
+     * @return the handshake status
      */
     public static native int doHandshake(long ssl);
 
     /**
-     * SSL_in_init.
-     * @param SSL
+     * SSL_renegotiate
+     * @param ssl the SSL instance (SSL *)
+     * @return the operation status
      */
-    public static native int isInInit(long SSL);
+    public static native int renegotiate(long ssl);
+
+    /**
+     * SSL_renegotiate_pending
+     * @param ssl the SSL instance (SSL *)
+     * @return the operation status
+     */
+    public static native int renegotiatePending(long ssl);
+
+    /**
+     * SSL_verify_client_post_handshake
+     * @param ssl the SSL instance (SSL *)
+     * @return the operation status
+     */
+    public static native int verifyClientPostHandshake(long ssl);
+
+    /**
+     * Is post handshake authentication in progress on this connection?
+     * @param ssl the SSL instance (SSL *)
+     * @return the operation status
+     */
+    public static native int getPostHandshakeAuthInProgress(long ssl);
+
+    /**
+     * SSL_in_init.
+     * @param ssl the SSL instance (SSL *)
+     * @return the status
+     */
+    public static native int isInInit(long ssl);
 
     /**
      * SSL_get0_next_proto_negotiated
      * @param ssl the SSL instance (SSL *)
+     * @return the NPN protocol negotiated
      */
     public static native String getNextProtoNegotiated(long ssl);
 
@@ -535,20 +607,28 @@ public final class SSL {
     /**
      * SSL_get0_alpn_selected
      * @param ssl the SSL instance (SSL *)
+     * @return the ALPN protocol negotiated
      */
     public static native String getAlpnSelected(long ssl);
 
     /**
      * Get the peer certificate chain or {@code null} if non was send.
+     * @param ssl the SSL instance (SSL *)
+     * @return the certificate chain bytes
      */
     public static native byte[][] getPeerCertChain(long ssl);
 
     /**
      * Get the peer certificate or {@code null} if non was send.
+     * @param ssl the SSL instance (SSL *)
+     * @return the certificate bytes
      */
     public static native byte[] getPeerCertificate(long ssl);
-    /*
+
+    /**
      * Get the error number representing for the given {@code errorNumber}.
+     * @param errorNumber The error code
+     * @return an error message
      */
     public static native String getErrorString(long errorNumber);
 
@@ -562,15 +642,15 @@ public final class SSL {
     /**
      * Set Type of Client Certificate verification and Maximum depth of CA Certificates
      * in Client Certificate verification.
-     * <br />
+     * <br>
      * This directive sets the Certificate verification level for the Client
      * Authentication. Notice that this directive can be used both in per-server
      * and per-directory context. In per-server context it applies to the client
      * authentication process used in the standard SSL handshake when a connection
-     * is established. In per-directory context it forces a SSL renegotiation with
+     * is established. In per-directory context it forces an SSL renegotiation with
      * the reconfigured client verification level after the HTTP request was read
      * but before the HTTP response is sent.
-     * <br />
+     * <br>
      * The following levels are available for level:
      * <pre>
      * SSL_CVERIFY_NONE           - No client Certificate is required at all
@@ -579,7 +659,7 @@ public final class SSL {
      * SSL_CVERIFY_OPTIONAL_NO_CA - The client may present a valid Certificate
      *                              but it need not to be (successfully) verifiable
      * </pre>
-     * <br />
+     * <br>
      * The depth actually is the maximum number of intermediate certificate issuers,
      * i.e. the number of CA certificates which are max allowed to be followed while
      * verifying the client certificate. A depth of 0 means that self-signed client
@@ -610,7 +690,7 @@ public final class SSL {
     public static native int getOptions(long ssl);
 
     /**
-     * Returns all Returns the cipher suites that are available for negotiation in an SSL handshake.
+     * Returns all cipher suites that are enabled for negotiation in an SSL handshake.
      * @param ssl the SSL instance (SSL *)
      * @return ciphers
      */
@@ -618,17 +698,19 @@ public final class SSL {
 
     /**
      * Returns the cipher suites available for negotiation in SSL handshake.
-     * <br />
+     * <br>
      * This complex directive uses a colon-separated cipher-spec string consisting
      * of OpenSSL cipher specifications to configure the Cipher Suite the client
      * is permitted to negotiate in the SSL handshake phase. Notice that this
      * directive can be used both in per-server and per-directory context.
      * In per-server context it applies to the standard SSL handshake when a
-     * connection is established. In per-directory context it forces a SSL
+     * connection is established. In per-directory context it forces an SSL
      * renegotiation with the reconfigured Cipher Suite after the HTTP request
      * was read but before the HTTP response is sent.
      * @param ssl the SSL instance (SSL *)
      * @param ciphers an SSL cipher specification
+     * @return <code>true</code> if the operation was successful
+     * @throws Exception An error occurred
      */
     public static native boolean setCipherSuites(long ssl, String ciphers)
             throws Exception;

@@ -17,7 +17,7 @@
 package org.apache.catalina.startup;
 
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSetBase;
+import org.apache.tomcat.util.digester.RuleSet;
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a
@@ -25,7 +25,7 @@ import org.apache.tomcat.util.digester.RuleSetBase;
  * CredentialHandler such as the <code>NestedCredentialHandler</code> that used
  * nested CredentialHandlers.</p>
  */
-public class CredentialHandlerRuleSet extends RuleSetBase {
+public class CredentialHandlerRuleSet implements RuleSet {
 
 
     private static final int MAX_NESTED_LEVELS = Integer.getInteger(
@@ -61,7 +61,6 @@ public class CredentialHandlerRuleSet extends RuleSetBase {
      *  trailing slash character)
      */
     public CredentialHandlerRuleSet(String prefix) {
-        this.namespaceURI = null;
         this.prefix = prefix;
     }
 
@@ -80,29 +79,21 @@ public class CredentialHandlerRuleSet extends RuleSetBase {
      */
     @Override
     public void addRuleInstances(Digester digester) {
-
-        String pattern = prefix;
-
+        StringBuilder pattern = new StringBuilder(prefix);
         for (int i = 0; i < MAX_NESTED_LEVELS; i++) {
-
             if (i > 0) {
-                pattern += "/";
+                pattern.append('/');
             }
-            pattern += "CredentialHandler";
-
-            digester.addObjectCreate(pattern,
-                                     null, // MUST be specified in the element,
-                                     "className");
-            digester.addSetProperties(pattern);
-            if (i == 0) {
-                digester.addSetNext(pattern,
-                                    "setCredentialHandler",
-                                    "org.apache.catalina.CredentialHandler");
-            } else {
-                digester.addSetNext(pattern,
-                                    "addCredentialHandler",
-                                    "org.apache.catalina.CredentialHandler");
-            }
+            pattern.append("CredentialHandler");
+            addRuleInstances(digester, pattern.toString(), i == 0 ? "setCredentialHandler"
+                    : "addCredentialHandler");
         }
+    }
+
+    private void addRuleInstances(Digester digester, String pattern, String methodName) {
+        digester.addObjectCreate(pattern, null /* MUST be specified in the element */,
+                "className");
+        digester.addSetProperties(pattern);
+        digester.addSetNext(pattern, methodName, "org.apache.catalina.CredentialHandler");
     }
 }

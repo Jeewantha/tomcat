@@ -26,7 +26,7 @@ import org.apache.catalina.tribes.transport.DataSender;
 import org.apache.catalina.tribes.transport.PooledSender;
 import org.apache.catalina.tribes.util.StringManager;
 
-public class PooledParallelSender extends PooledSender {
+public class PooledParallelSender extends PooledSender implements PooledParallelSenderMBean {
     protected static final StringManager sm = StringManager.getManager(PooledParallelSender.class);
 
     @Override
@@ -44,6 +44,7 @@ public class PooledParallelSender extends PooledSender {
             throw cx;
         } else {
             try {
+                if (!sender.isConnected()) sender.connect();
                 sender.sendMessage(destination, message);
                 sender.keepalive();
             } catch (ChannelException x) {

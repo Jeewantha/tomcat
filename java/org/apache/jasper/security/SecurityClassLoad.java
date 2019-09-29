@@ -14,10 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.security;
 
+import org.apache.jasper.compiler.Localizer;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
@@ -26,10 +25,7 @@ import org.apache.juli.logging.LogFactory;
  * Java SecurityManager so that the defineClassInPackage
  * RuntimePermission does not trigger an AccessControlException.
  */
-
 public final class SecurityClassLoad {
-
-    private static final Log log = LogFactory.getLog(SecurityClassLoad.class);
 
     public static void securityClassLoad(ClassLoader loader){
 
@@ -39,66 +35,26 @@ public final class SecurityClassLoad {
 
         final String basePackage = "org.apache.jasper.";
         try {
-            loader.loadClass( basePackage +
-                "runtime.JspFactoryImpl$PrivilegedGetPageContext");
-            loader.loadClass( basePackage +
-                "runtime.JspFactoryImpl$PrivilegedReleasePageContext");
+            // Ensure XMLInputFactory is loaded with Tomcat's class loader
+            loader.loadClass( basePackage + "compiler.EncodingDetector");
 
-            loader.loadClass( basePackage +
-                "runtime.JspRuntimeLibrary");
-            loader.loadClass( basePackage +
-                "runtime.JspRuntimeLibrary$PrivilegedIntrospectHelper");
-
-            loader.loadClass( basePackage +
-                "runtime.ServletResponseWrapperInclude");
-            loader.loadClass( basePackage +
-                "runtime.TagHandlerPool");
-            loader.loadClass( basePackage +
-                "runtime.JspFragmentHelper");
-
-            loader.loadClass( basePackage +
-                "runtime.ProtectedFunctionMapper");
-
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$1");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$2");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$3");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$4");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$5");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$6");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$7");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$8");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$9");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$10");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$11");
-            loader.loadClass( basePackage +
-                "runtime.PageContextImpl$12");
-
-            loader.loadClass( basePackage +
-                "runtime.JspContextWrapper");
+            loader.loadClass( basePackage + "runtime.JspContextWrapper");
+            loader.loadClass( basePackage + "runtime.JspFactoryImpl$PrivilegedGetPageContext");
+            loader.loadClass( basePackage + "runtime.JspFactoryImpl$PrivilegedReleasePageContext");
+            loader.loadClass( basePackage + "runtime.JspFragmentHelper");
+            loader.loadClass( basePackage + "runtime.JspRuntimeLibrary");
+            loader.loadClass( basePackage + "runtime.PageContextImpl");
+            loader.loadClass( basePackage + "runtime.ProtectedFunctionMapper");
+            loader.loadClass( basePackage + "runtime.ServletResponseWrapperInclude");
+            loader.loadClass( basePackage + "runtime.TagHandlerPool");
 
             // Trigger loading of class and reading of property
             SecurityUtil.isPackageProtectionEnabled();
 
-            loader.loadClass( basePackage +
-                "servlet.JspServletWrapper");
-
-            loader.loadClass( basePackage +
-                "runtime.JspWriterImpl$1");
+            loader.loadClass( basePackage + "servlet.JspServletWrapper");
         } catch (ClassNotFoundException ex) {
-            log.error("SecurityClassLoad", ex);
+            Log log = LogFactory.getLog(SecurityClassLoad.class);
+            log.error(Localizer.getMessage("jsp.error.securityPreload"), ex);
         }
     }
 }

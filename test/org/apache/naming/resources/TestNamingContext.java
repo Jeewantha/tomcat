@@ -31,9 +31,6 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -74,7 +71,7 @@ public class TestNamingContext extends TomcatBaseTest {
         // Map the test Servlet
         Bug49994Servlet bug49994Servlet = new Bug49994Servlet();
         Tomcat.addServlet(ctx, "bug49994Servlet", bug49994Servlet);
-        ctx.addServletMapping("/", "bug49994Servlet");
+        ctx.addServletMappingDecoded("/", "bug49994Servlet");
 
         tomcat.start();
 
@@ -86,7 +83,7 @@ public class TestNamingContext extends TomcatBaseTest {
         } else {
             expected = "NOTEQUAL";
         }
-        assertEquals(expected, bc.toString());
+        Assert.assertEquals(expected, bc.toString());
 
     }
 
@@ -134,12 +131,12 @@ public class TestNamingContext extends TomcatBaseTest {
         // Map the test Servlet
         Bug23950Servlet bug23950Servlet = new Bug23950Servlet();
         Tomcat.addServlet(ctx, "bug23950Servlet", bug23950Servlet);
-        ctx.addServletMapping("/", "bug23950Servlet");
+        ctx.addServletMappingDecoded("/", "bug23950Servlet");
 
         tomcat.start();
 
         ByteChunk bc = getUrl("http://localhost:" + getPort() + "/");
-        assertEquals("org.apache.naming.resources.TesterObject", bc.toString());
+        Assert.assertEquals("org.apache.naming.resources.TesterObject", bc.toString());
     }
 
     public static final class Bug23950Servlet extends HttpServlet {
@@ -186,12 +183,12 @@ public class TestNamingContext extends TomcatBaseTest {
         // Map the test Servlet
         Bug50351Servlet bug50351Servlet = new Bug50351Servlet();
         Tomcat.addServlet(ctx, "bug50351Servlet", bug50351Servlet);
-        ctx.addServletMapping("/", "bug50351Servlet");
+        ctx.addServletMappingDecoded("/", "bug50351Servlet");
 
         tomcat.start();
 
         ByteChunk bc = getUrl("http://localhost:" + getPort() + "/");
-        assertEquals("value", bc.toString());
+        Assert.assertEquals("value", bc.toString());
     }
 
     public static final class Bug50351Servlet extends HttpServlet {
@@ -239,16 +236,16 @@ public class TestNamingContext extends TomcatBaseTest {
         // Map the test Servlet
         Bug51744Servlet bug51744Servlet = new Bug51744Servlet();
         Tomcat.addServlet(ctx, "bug51744Servlet", bug51744Servlet);
-        ctx.addServletMapping("/", "bug51744Servlet");
+        ctx.addServletMappingDecoded("/", "bug51744Servlet");
 
         tomcat.start();
 
         ByteChunk bc = new ByteChunk();
         int rc = getUrl("http://localhost:" + getPort() + "/", bc, null);
-        assertEquals(200, rc);
-        assertTrue(bc.toString().contains(Bug51744Servlet.EXPECTED));
+        Assert.assertEquals(200, rc);
+        Assert.assertTrue(bc.toString().contains(Bug51744Servlet.EXPECTED));
         if (exceptionOnFailedWrite) {
-            assertTrue(bc.toString().contains(Bug51744Servlet.ERROR_MESSAGE));
+            Assert.assertTrue(bc.toString().contains(Bug51744Servlet.ERROR_MESSAGE));
         }
     }
 
@@ -302,14 +299,14 @@ public class TestNamingContext extends TomcatBaseTest {
         // Map the test Servlet
         Bug52830Servlet bug52830Servlet = new Bug52830Servlet();
         Tomcat.addServlet(ctx, "bug52830Servlet", bug52830Servlet);
-        ctx.addServletMapping("/", "bug52830Servlet");
+        ctx.addServletMappingDecoded("/", "bug52830Servlet");
 
         tomcat.start();
 
         ByteChunk bc = new ByteChunk();
         int rc = getUrl("http://localhost:" + getPort() + "/", bc, null);
-        assertEquals(200, rc);
-        assertTrue(bc.toString().contains("truetrue"));
+        Assert.assertEquals(200, rc);
+        Assert.assertTrue(bc.toString().contains("truetrue"));
     }
 
     public static final class Bug52830Servlet extends HttpServlet {

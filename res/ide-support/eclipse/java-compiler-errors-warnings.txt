@@ -18,7 +18,7 @@
 # Java -> Compiler -> Errors/Warnings
 =======================================
 
-The following settings are for Mars (Eclipse 4.5)
+The following settings are for Oxygen (Eclipse 4.7)
 W = Warning
 I = Ignore
 E = Error
@@ -89,12 +89,29 @@ Eclipse IDE is documented here:
  4.2: http://help.eclipse.org/juno/topic/org.eclipse.jdt.doc.user/tasks/task-suppress_warnings.htm
 
 
+# Java -> Compiler -> Javadoc
+=============================
+
+Enable 'Process Javadoc comments'
+  - Malformed Javadoc comments          - W
+    - Only consider members visible as  - Public
+    [X] Validate tag arguments
+        [ ] Report non-visible references
+        [X] Report deprecated references
+    - Missing tag descriptions          - Validate all standard tags
+  - Missing Javadoc tags                - W
+    - Only consider members visible as  - Public
+    [X] - Ignore in overriding and implementing methods
+    [ ] - Ignore method type parameters
+  - Missing Javadoc comments            - I
+
+
 # Java -> Code Style -> Organize Imports
 ==========================================
 
 The following configuration of "Organize Imports" setting can be
 recommended for a quick setup. The order is enforced by checkstyle, so for
-the authorative definition look at <module name="ImportOrder"> in
+the authoritative definition look at <module name="ImportOrder"> in
 res/checkstyle/checkstyle.xml
 
  - java

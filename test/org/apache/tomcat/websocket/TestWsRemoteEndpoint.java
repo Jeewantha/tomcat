@@ -38,7 +38,6 @@ import org.junit.Test;
 import org.apache.catalina.Context;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
-import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.websocket.TesterMessageCountClient.AsyncBinary;
 import org.apache.tomcat.websocket.TesterMessageCountClient.AsyncHandler;
 import org.apache.tomcat.websocket.TesterMessageCountClient.AsyncText;
@@ -46,7 +45,7 @@ import org.apache.tomcat.websocket.TesterMessageCountClient.TesterAnnotatedEndpo
 import org.apache.tomcat.websocket.TesterMessageCountClient.TesterEndpoint;
 import org.apache.tomcat.websocket.TesterMessageCountClient.TesterProgrammaticEndpoint;
 
-public class TestWsRemoteEndpoint extends TomcatBaseTest {
+public class TestWsRemoteEndpoint extends WebSocketBaseTest {
 
     private static final String SEQUENCE = "ABCDE";
     private static final int S_LEN = SEQUENCE.length();
@@ -96,7 +95,7 @@ public class TestWsRemoteEndpoint extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer =
                 ContainerProvider.getWebSocketContainer();
@@ -209,7 +208,7 @@ public class TestWsRemoteEndpoint extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", null);
         ctx.addApplicationListener(TesterEchoServer.Config.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMapping("/", "default");
+        ctx.addServletMappingDecoded("/", "default");
 
         WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 

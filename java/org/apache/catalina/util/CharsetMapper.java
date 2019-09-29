@@ -23,6 +23,7 @@ import java.util.Locale;
 import java.util.Properties;
 
 import org.apache.tomcat.util.ExceptionUtils;
+import org.apache.tomcat.util.compat.JreCompat;
 
 
 
@@ -69,11 +70,15 @@ public class CharsetMapper {
      *  resource could not be loaded for any reason.
      */
     public CharsetMapper(String name) {
-        try (InputStream stream = this.getClass().getResourceAsStream(name)) {
-            map.load(stream);
-        } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
-            throw new IllegalArgumentException(t.toString());
+        if (JreCompat.isGraalAvailable()) {
+            map.put("en", "ISO-8859-1");
+        } else {
+            try (InputStream stream = this.getClass().getResourceAsStream(name)) {
+                map.load(stream);
+            } catch (Throwable t) {
+                ExceptionUtils.handleThrowable(t);
+                throw new IllegalArgumentException(t);
+            }
         }
     }
 
@@ -97,6 +102,7 @@ public class CharsetMapper {
      * content type header.
      *
      * @param locale The locale for which to calculate a character set
+     * @return the charset name
      */
     public String getCharset(Locale locale) {
         // Match full language_country_variant first, then language_country,
@@ -109,7 +115,7 @@ public class CharsetMapper {
                 charset = map.getProperty(locale.getLanguage());
             }
         }
-        return (charset);
+        return charset;
     }
 
 

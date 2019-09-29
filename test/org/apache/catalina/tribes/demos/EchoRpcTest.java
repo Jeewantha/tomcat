@@ -17,6 +17,7 @@
 package org.apache.catalina.tribes.demos;
 
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.ManagedChannel;
@@ -42,7 +43,7 @@ public class EchoRpcTest implements RpcCallback, Runnable {
         this.message = message;
         this.pause = pause;
         this.options = options;
-        this.rpc = new RpcChannel(name.getBytes(),channel,this);
+        this.rpc = new RpcChannel(name.getBytes(StandardCharsets.UTF_8),channel,this);
         this.timeout = timeout;
         this.name = name;
     }
@@ -53,8 +54,6 @@ public class EchoRpcTest implements RpcCallback, Runnable {
      *
      * @param msg Serializable
      * @param sender Member
-     * TODO Implement this org.apache.catalina.tribes.tipis.RpcCallback
-     *   method
      */
     @Override
     public void leftOver(Serializable msg, Member sender) {
@@ -66,8 +65,6 @@ public class EchoRpcTest implements RpcCallback, Runnable {
      * @param msg Serializable
      * @param sender Member
      * @return Serializable - null if no reply should be sent
-     * TODO Implement this org.apache.catalina.tribes.tipis.RpcCallback
-     *   method
      */
     @Override
     public Serializable replyRequest(Serializable msg, Member sender) {

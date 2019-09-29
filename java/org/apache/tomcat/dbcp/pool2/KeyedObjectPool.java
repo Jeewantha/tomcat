@@ -16,14 +16,17 @@
  */
 package org.apache.tomcat.dbcp.pool2;
 
+import java.io.Closeable;
 import java.util.NoSuchElementException;
 
 /**
  * A "keyed" pooling interface.
  * <p>
  * A keyed pool maintains a pool of instances for each key value.
+ * </p>
  * <p>
  * Example of use:
+ * </p>
  * <pre style="border:solid thin; padding: 1ex;"
  * > Object obj = <code style="color:#00C">null</code>;
  * Object key = <code style="color:#C00">"Key"</code>;
@@ -47,9 +50,11 @@ import java.util.NoSuchElementException;
  * one instance per key value, or may choose to maintain a pool of instances
  * for each key (essentially creating a {@link java.util.Map Map} of
  * {@link ObjectPool pools}).
+ * </p>
  * <p>
  * See {@link org.apache.tomcat.dbcp.pool2.impl.GenericKeyedObjectPool
  * GenericKeyedObjectPool} for an implementation.
+ * </p>
  *
  * @param <K> The type of keys maintained by this pool.
  * @param <V> Type of element pooled in this pool.
@@ -60,7 +65,7 @@ import java.util.NoSuchElementException;
  *
  * @since 2.0
  */
-public interface KeyedObjectPool<K,V> {
+public interface KeyedObjectPool<K, V> extends Closeable {
     /**
      * Obtains an instance from this pool for the specified <code>key</code>.
      * <p>
@@ -70,6 +75,7 @@ public interface KeyedObjectPool<K,V> {
      * {@link KeyedPooledObjectFactory#activateObject activateObject} and then
      * (optionally) validated with
      * {@link KeyedPooledObjectFactory#validateObject validateObject}.
+     * </p>
      * <p>
      * By contract, clients <strong>must</strong> return the borrowed object
      * using {@link #returnObject returnObject},
@@ -77,9 +83,11 @@ public interface KeyedObjectPool<K,V> {
      * defined in an implementation or sub-interface, using a <code>key</code>
      * that is {@link Object#equals equivalent} to the one used to borrow the
      * instance in the first place.
+     * </p>
      * <p>
      * The behaviour of this method when the pool has been exhausted is not
      * strictly specified (although it may be specified by implementations).
+     * </p>
      *
      * @param key the key used to obtain the object
      *
@@ -125,9 +133,11 @@ public interface KeyedObjectPool<K,V> {
      * in an implementation or sub-interface using a <code>key</code> that is
      * equivalent to the one used to borrow the <code>Object</code> in the first
      * place.
+     * </p>
      * <p>
      * This method should be used when an object that has been borrowed is
      * determined (due to an exception or other problem) to be invalid.
+     * </p>
      *
      * @param key the key used to obtain the object
      * @param obj a {@link #borrowObject borrowed} instance to be returned.
@@ -173,21 +183,21 @@ public interface KeyedObjectPool<K,V> {
      * @param key the key to query
      * @return the number of instances currently borrowed from but not yet
      * returned to the pool corresponding to the given <code>key</code>.
-=     */
+     */
     int getNumActive(K key);
 
     /**
      * Returns the total number of instances currently idle in this pool.
      * Returns a negative value if this information is not available.
      * @return the total number of instances currently idle in this pool.
- =    */
+     */
     int getNumIdle();
 
     /**
-     * Returns the total number of instances current borrowed from this pool but
+     * Returns the total number of instances currently borrowed from this pool but
      * not yet returned. Returns a negative value if this information is not
      * available.
-     * @return the total number of instances current borrowed from this pool but
+     * @return the total number of instances currently borrowed from this pool but
      * not yet returned.
      */
     int getNumActive();
@@ -221,8 +231,11 @@ public interface KeyedObjectPool<K,V> {
      * Calling {@link #addObject addObject} or
      * {@link #borrowObject borrowObject} after invoking this method on a pool
      * will cause them to throw an {@link IllegalStateException}.
+     * </p>
      * <p>
      * Implementations should silently fail if not all resources can be freed.
+     * </p>
      */
+    @Override
     void close();
 }

@@ -42,8 +42,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-import static org.junit.Assert.fail;
-
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -55,28 +53,45 @@ import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Server;
 import org.apache.catalina.Service;
+import org.apache.catalina.Session;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.AprLifecycleListener;
 import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.session.StandardManager;
+import org.apache.catalina.util.IOTools;
 import org.apache.catalina.valves.AccessLogValve;
 import org.apache.catalina.webresources.StandardRoot;
 import org.apache.coyote.http11.Http11NioProtocol;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.websocket.CaseInsensitiveKeyMap;
+import org.apache.tomcat.util.collections.CaseInsensitiveKeyMap;
+import org.apache.tomcat.util.net.TesterSupport;
+import org.apache.tomcat.util.scan.StandardJarScanFilter;
+import org.apache.tomcat.util.scan.StandardJarScanner;
 
 /**
  * Base test case that provides a Tomcat instance for each test - mainly so we
  * don't have to keep writing the cleanup code.
  */
 public abstract class TomcatBaseTest extends LoggingBaseTest {
-    private static final int DEFAULT_CLIENT_TIMEOUT_MS = 300_000;
-    private Tomcat tomcat;
-    private boolean accessLogEnabled = false;
+
+    /*
+     * Ensures APR Library.initialize() and Library.terminate() don't interfere
+     * with the calls from the Lifecycle listener and trigger a JVM crash
+     */
+    @SuppressWarnings("unused")
+    private static final boolean ignored = TesterSupport.OPENSSL_AVAILABLE;
+
+    // Used by parameterized tests. Defined here to reduce duplication.
+    protected static final Boolean[] booleans = new Boolean[] { Boolean.FALSE, Boolean.TRUE };
+
+    protected static final int DEFAULT_CLIENT_TIMEOUT_MS = 300_000;
 
     public static final String TEMP_DIR = System.getProperty("java.io.tmpdir");
+
+    private Tomcat tomcat;
+    private boolean accessLogEnabled = false;
 
     /**
      * Make the Tomcat instance available to sub-classes.
@@ -103,6 +118,11 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
             throws LifecycleException {
         File appDir = new File("test/webapp");
         Context ctx = tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
+
+        StandardJarScanner scanner = (StandardJarScanner) ctx.getJarScanner();
+        StandardJarScanFilter filter = (StandardJarScanFilter) scanner.getJarScanFilter();
+        filter.setTldSkip(filter.getTldSkip() + ",testclasses");
+        filter.setPluggabilitySkip(filter.getPluggabilitySkip() + ",testclasses");
 
         if (addJstl) {
             File lib = new File("webapps/examples/WEB-INF/lib");
@@ -142,7 +162,7 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
 
         File appBase = new File(getTemporaryDirectory(), "webapps");
         if (!appBase.exists() && !appBase.mkdir()) {
-            fail("Unable to create appBase for test");
+            Assert.fail("Unable to create appBase for test");
         }
 
         tomcat = new TomcatWithFastSessionIDs();
@@ -444,11 +464,12 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
             StringBuilder value;
             Object attribute;
 
+            response.setContentType("text/plain");
+            response.setCharacterEncoding("UTF-8");
+
             ServletContext ctx = this.getServletContext();
             HttpSession session = request.getSession(false);
             PrintWriter out = response.getWriter();
-
-            response.setContentType("text/plain");
 
             out.println("CONTEXT-NAME: " + ctx.getServletContextName());
             out.println("CONTEXT-PATH: " + ctx.getContextPath());
@@ -494,7 +515,7 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
             out.println("REQUEST-CHARACTER-ENCODING: " +
                         request.getCharacterEncoding());
             out.println("REQUEST-CONTENT-LENGTH: " +
-                        request.getContentLength());
+                        request.getContentLengthLong());
             out.println("REQUEST-CONTENT-TYPE: " + request.getContentType());
             out.println("REQUEST-LOCALE: " + request.getLocale());
 
@@ -597,14 +618,9 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
                 throws ServletException, IOException {
             // Beware of clients that try to send the whole request body before
             // reading any of the response. They may cause this test to lock up.
-            byte[] buffer = new byte[8096];
-            int read = 0;
             try (InputStream is = req.getInputStream();
                     OutputStream os = resp.getOutputStream()) {
-                while (read > -1) {
-                    os.write(buffer, 0, read);
-                    read = is.read(buffer);
-                }
+                IOTools.flow(is, os);
             }
         }
     }
@@ -619,39 +635,48 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
         return out;
     }
 
-    public static int getUrl(String path, ByteChunk out,
-            Map<String, List<String>> resHead) throws IOException {
+    public static int getUrl(String path, ByteChunk out, Map<String, List<String>> resHead)
+            throws IOException {
         return getUrl(path, out, null, resHead);
     }
 
-    public static int headUrl(String path, ByteChunk out,
-            Map<String, List<String>> resHead) throws IOException {
+    public static int getUrl(String path, ByteChunk out, boolean followRedirects)
+            throws IOException {
+        return methodUrl(path, out, DEFAULT_CLIENT_TIMEOUT_MS, null, null, "GET", followRedirects);
+    }
+
+    public static int headUrl(String path, ByteChunk out, Map<String, List<String>> resHead)
+            throws IOException {
         return methodUrl(path, out, DEFAULT_CLIENT_TIMEOUT_MS, null, resHead, "HEAD");
     }
 
-    public static int getUrl(String path, ByteChunk out,
-            Map<String, List<String>> reqHead,
+    public static int getUrl(String path, ByteChunk out, Map<String, List<String>> reqHead,
             Map<String, List<String>> resHead) throws IOException {
         return getUrl(path, out, DEFAULT_CLIENT_TIMEOUT_MS, reqHead, resHead);
     }
 
     public static int getUrl(String path, ByteChunk out, int readTimeout,
-            Map<String, List<String>> reqHead,
-            Map<String, List<String>> resHead) throws IOException {
+            Map<String, List<String>> reqHead, Map<String, List<String>> resHead)
+            throws IOException {
         return methodUrl(path, out, readTimeout, reqHead, resHead, "GET");
     }
 
     public static int methodUrl(String path, ByteChunk out, int readTimeout,
-            Map<String, List<String>> reqHead,
-            Map<String, List<String>> resHead,
-            String method) throws IOException {
+            Map<String, List<String>> reqHead, Map<String, List<String>> resHead, String method)
+            throws IOException {
+        return methodUrl(path, out, readTimeout, reqHead, resHead, method, true);
+    }
+
+    public static int methodUrl(String path, ByteChunk out, int readTimeout,
+                Map<String, List<String>> reqHead, Map<String, List<String>> resHead, String method,
+                boolean followRedirects) throws IOException {
 
         URL url = new URL(path);
-        HttpURLConnection connection =
-            (HttpURLConnection) url.openConnection();
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setUseCaches(false);
         connection.setReadTimeout(readTimeout);
         connection.setRequestMethod(method);
+        connection.setInstanceFollowRedirects(followRedirects);
         if (reqHead != null) {
             for (Map.Entry<String, List<String>> entry : reqHead.entrySet()) {
                 StringBuilder valueList = new StringBuilder();
@@ -844,8 +869,9 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
                 Files.copy(file, destPath);
                 // Make sure that HostConfig thinks all newly copied files have
                 // been modified.
-                destPath.toFile().setLastModified(
-                        System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS);
+                Assert.assertTrue("Failed to set last modified for [" + destPath + "]",
+                        destPath.toFile().setLastModified(
+                        System.currentTimeMillis() - 2 * HostConfig.FILE_MODIFICATION_RESOLUTION_MS));
                 return FileVisitResult.CONTINUE;
             }
 
@@ -861,5 +887,20 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
                 // NO-OP
                 return FileVisitResult.CONTINUE;
             }});
+    }
+
+
+    public static void skipTldsForResourceJars(Context context) {
+        StandardJarScanner scanner = (StandardJarScanner) context.getJarScanner();
+        StandardJarScanFilter filter = (StandardJarScanFilter) scanner.getJarScanFilter();
+        filter.setTldSkip(filter.getTldSkip() + ",resources*.jar");
+    }
+
+
+    public static void forceSessionMaxInactiveInterval(Context context, int newIntervalSecs) {
+        Session[] sessions = context.getManager().findSessions();
+        for (Session session : sessions) {
+            session.setMaxInactiveInterval(newIntervalSecs);
+        }
     }
 }

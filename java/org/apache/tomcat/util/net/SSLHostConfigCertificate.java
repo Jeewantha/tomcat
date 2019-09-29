@@ -16,14 +16,26 @@
  */
 package org.apache.tomcat.util.net;
 
+import java.io.IOException;
+import java.io.Serializable;
+import java.security.KeyStore;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.apache.tomcat.util.net.AbstractJsseEndpoint.SSLContextWrapper;
-import org.apache.tomcat.util.net.jsse.openssl.Authentication;
+import javax.management.ObjectName;
+import javax.net.ssl.X509KeyManager;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
+import org.apache.tomcat.util.res.StringManager;
 
-public class SSLHostConfigCertificate {
+public class SSLHostConfigCertificate implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    private static final Log log = LogFactory.getLog(SSLHostConfigCertificate.class);
+    private static final StringManager sm = StringManager.getManager(SSLHostConfigCertificate.class);
 
     public static final Type DEFAULT_TYPE = Type.UNDEFINED;
 
@@ -32,10 +44,13 @@ public class SSLHostConfigCertificate {
     static final String DEFAULT_KEYSTORE_TYPE =
             System.getProperty("javax.net.ssl.keyStoreType", "JKS");
 
+    // Internal
+    private ObjectName oname;
+
     // OpenSSL can handle multiple certs in a single config so the reference to
     // the context is at the virtual host level. JSSE can't so the reference is
     // held here on the certificate.
-    private SSLContextWrapper sslContextWrapper;
+    private transient SSLContext sslContext;
 
     // Common
     private final SSLHostConfig sslHostConfig;
@@ -48,11 +63,16 @@ public class SSLHostConfigCertificate {
     private String certificateKeystoreFile = System.getProperty("user.home")+"/.keystore";
     private String certificateKeystoreProvider = DEFAULT_KEYSTORE_PROVIDER;
     private String certificateKeystoreType = DEFAULT_KEYSTORE_TYPE;
+    private transient KeyStore certificateKeystore = null;
+    private transient X509KeyManager certificateKeyManager = null;
 
     // OpenSSL
+    private String certificateChainFile;
     private String certificateFile;
     private String certificateKeyFile;
 
+    // Certificate store type
+    private StoreType storeType = null;
 
     public SSLHostConfigCertificate() {
         this(null, Type.UNDEFINED);
@@ -64,13 +84,30 @@ public class SSLHostConfigCertificate {
     }
 
 
-    public SSLContextWrapper getSslContextWrapper() {
-        return sslContextWrapper;
+    public SSLContext getSslContext() {
+        return sslContext;
     }
 
 
-    public void setSslContextWrapper(SSLContextWrapper sslContextWrapper) {
-        this.sslContextWrapper = sslContextWrapper;
+    public void setSslContext(SSLContext sslContext) {
+        this.sslContext = sslContext;
+    }
+
+
+    public SSLHostConfig getSSLHostConfig() {
+        return sslHostConfig;
+    }
+
+
+    // Internal
+
+    public ObjectName getObjectName() {
+        return oname;
+    }
+
+
+    public void setObjectName(ObjectName oname) {
+        this.oname = oname;
     }
 
 
@@ -108,6 +145,7 @@ public class SSLHostConfigCertificate {
     public void setCertificateKeystoreFile(String certificateKeystoreFile) {
         sslHostConfig.setProperty(
                 "Certificate.certificateKeystoreFile", SSLHostConfig.Type.JSSE);
+        setStoreType("Certificate.certificateKeystoreFile", StoreType.KEYSTORE);
         this.certificateKeystoreFile = certificateKeystoreFile;
     }
 
@@ -120,6 +158,7 @@ public class SSLHostConfigCertificate {
     public void setCertificateKeystorePassword(String certificateKeystorePassword) {
         sslHostConfig.setProperty(
                 "Certificate.certificateKeystorePassword", SSLHostConfig.Type.JSSE);
+        setStoreType("Certificate.certificateKeystorePassword", StoreType.KEYSTORE);
         this.certificateKeystorePassword = certificateKeystorePassword;
     }
 
@@ -132,6 +171,7 @@ public class SSLHostConfigCertificate {
     public void setCertificateKeystoreProvider(String certificateKeystoreProvider) {
         sslHostConfig.setProperty(
                 "Certificate.certificateKeystoreProvider", SSLHostConfig.Type.JSSE);
+        setStoreType("Certificate.certificateKeystoreProvider", StoreType.KEYSTORE);
         this.certificateKeystoreProvider = certificateKeystoreProvider;
     }
 
@@ -144,6 +184,7 @@ public class SSLHostConfigCertificate {
     public void setCertificateKeystoreType(String certificateKeystoreType) {
         sslHostConfig.setProperty(
                 "Certificate.certificateKeystoreType", SSLHostConfig.Type.JSSE);
+        setStoreType("Certificate.certificateKeystoreType", StoreType.KEYSTORE);
         this.certificateKeystoreType = certificateKeystoreType;
     }
 
@@ -153,11 +194,49 @@ public class SSLHostConfigCertificate {
     }
 
 
+    public void setCertificateKeystore(KeyStore certificateKeystore) {
+        this.certificateKeystore = certificateKeystore;
+    }
+
+
+    public KeyStore getCertificateKeystore() throws IOException {
+        KeyStore result = certificateKeystore;
+
+        if (result == null && storeType == StoreType.KEYSTORE) {
+            result = SSLUtilBase.getStore(getCertificateKeystoreType(),
+                    getCertificateKeystoreProvider(), getCertificateKeystoreFile(),
+                    getCertificateKeystorePassword());
+        }
+
+        return result;
+    }
+
+
+    public void setCertificateKeyManager(X509KeyManager certificateKeyManager) {
+        this.certificateKeyManager = certificateKeyManager;
+    }
+
+
+    public X509KeyManager getCertificateKeyManager() {
+        return certificateKeyManager;
+    }
+
+
     // OpenSSL
 
+    public void setCertificateChainFile(String certificateChainFile) {
+        setStoreType("Certificate.certificateChainFile", StoreType.PEM);
+        this.certificateChainFile = certificateChainFile;
+    }
+
+
+    public String getCertificateChainFile() {
+        return certificateChainFile;
+    }
+
+
     public void setCertificateFile(String certificateFile) {
-        sslHostConfig.setProperty(
-                "Certificate.certificateFile", SSLHostConfig.Type.OPENSSL);
+        setStoreType("Certificate.certificateFile", StoreType.PEM);
         this.certificateFile = certificateFile;
     }
 
@@ -168,8 +247,7 @@ public class SSLHostConfigCertificate {
 
 
     public void setCertificateKeyFile(String certificateKeyFile) {
-        sslHostConfig.setProperty(
-                "Certificate.certificateKeyFile", SSLHostConfig.Type.OPENSSL);
+        setStoreType("Certificate.certificateKeyFile", StoreType.PEM);
         this.certificateKeyFile = certificateKeyFile;
     }
 
@@ -179,9 +257,18 @@ public class SSLHostConfigCertificate {
     }
 
 
+    private void setStoreType(String name, StoreType type) {
+        if (storeType == null) {
+            storeType = type;
+        } else if (storeType != type) {
+            log.warn(sm.getString("sslHostConfigCertificate.mismatch",
+                    name, sslHostConfig.getHostName(), type, this.storeType));
+        }
+    }
+
     // Nested types
 
-    public static enum Type {
+    public enum Type {
 
         UNDEFINED,
         RSA(Authentication.RSA),
@@ -202,5 +289,10 @@ public class SSLHostConfigCertificate {
         public boolean isCompatibleWith(Authentication au) {
             return compatibleAuthentications.contains(au);
         }
+    }
+
+    enum StoreType {
+        KEYSTORE,
+        PEM
     }
 }

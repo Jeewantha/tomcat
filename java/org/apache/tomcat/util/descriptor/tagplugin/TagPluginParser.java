@@ -29,7 +29,7 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.descriptor.DigesterFactory;
 import org.apache.tomcat.util.descriptor.XmlErrorHandler;
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSetBase;
+import org.apache.tomcat.util.digester.RuleSet;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
@@ -37,7 +37,7 @@ import org.xml.sax.SAXException;
  * Parser for Tag Plugin descriptors.
  */
 public class TagPluginParser {
-    private static final Log log = LogFactory.getLog(TagPluginParser.class);
+    private final Log log = LogFactory.getLog(TagPluginParser.class); // must not be static
     private static final String PREFIX = "tag-plugins/tag-plugin";
     private final Digester digester;
     private final Map<String, String> plugins = new HashMap<>();
@@ -61,7 +61,7 @@ public class TagPluginParser {
             if (!handler.getWarnings().isEmpty() || !handler.getErrors().isEmpty()) {
                 handler.logFindings(log, source.getSystemId());
                 if (!handler.getErrors().isEmpty()) {
-                    // throw the first to indicate there was a error during processing
+                    // throw the first to indicate there was an error during processing
                     throw handler.getErrors().iterator().next();
                 }
             }
@@ -78,7 +78,7 @@ public class TagPluginParser {
         return plugins;
     }
 
-    private static class TagPluginRuleSet extends RuleSetBase {
+    private static class TagPluginRuleSet implements RuleSet {
         @Override
         public void addRuleInstances(Digester digester) {
             digester.addCallMethod(PREFIX, "addPlugin", 2);

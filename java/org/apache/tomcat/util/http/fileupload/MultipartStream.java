@@ -87,6 +87,7 @@ public class MultipartStream {
      * {@link ProgressListener}.
      */
     public static class ProgressNotifier {
+
         /**
          * The listener to invoke.
          */
@@ -226,6 +227,11 @@ public class MultipartStream {
     private final byte[] boundary;
 
     /**
+     * The table for Knuth-Morris-Pratt search algorithm.
+     */
+    private final int[] boundaryTable;
+
+    /**
      * The length of the buffer used for processing the request.
      */
     private final int bufSize;
@@ -288,12 +294,6 @@ public class MultipartStream {
         if (boundary == null) {
             throw new IllegalArgumentException("boundary may not be null");
         }
-
-        this.input = input;
-        this.bufSize = bufSize;
-        this.buffer = new byte[bufSize];
-        this.notifier = pNotifier;
-
         // We prepend CR/LF to the boundary to chop trailing CR/LF from
         // body-data tokens.
         this.boundaryLength = boundary.length + BOUNDARY_PREFIX.length;
@@ -301,13 +301,21 @@ public class MultipartStream {
             throw new IllegalArgumentException(
                     "The buffer size specified for the MultipartStream is too small");
         }
+
+        this.input = input;
+        this.bufSize = Math.max(bufSize, boundaryLength * 2);
+        this.buffer = new byte[this.bufSize];
+        this.notifier = pNotifier;
+
         this.boundary = new byte[this.boundaryLength];
+        this.boundaryTable = new int[this.boundaryLength + 1];
         this.keepRegion = this.boundary.length;
 
         System.arraycopy(BOUNDARY_PREFIX, 0, this.boundary, 0,
                 BOUNDARY_PREFIX.length);
         System.arraycopy(boundary, 0, this.boundary, BOUNDARY_PREFIX.length,
                 boundary.length);
+        computeBoundaryTable();
 
         head = 0;
         tail = 0;
@@ -453,6 +461,31 @@ public class MultipartStream {
         }
         System.arraycopy(boundary, 0, this.boundary, BOUNDARY_PREFIX.length,
                 boundary.length);
+        computeBoundaryTable();
+    }
+
+    /**
+     * Compute the table used for Knuth-Morris-Pratt search algorithm.
+     */
+    private void computeBoundaryTable() {
+        int position = 2;
+        int candidate = 0;
+
+        boundaryTable[0] = -1;
+        boundaryTable[1] = 0;
+
+        while (position <= boundaryLength) {
+            if (boundary[position - 1] == boundary[candidate]) {
+                boundaryTable[position] = candidate + 1;
+                candidate++;
+                position++;
+            } else if (candidate > 0) {
+                candidate = boundaryTable[candidate];
+            } else {
+                boundaryTable[position] = 0;
+                position++;
+            }
+        }
     }
 
     /**
@@ -572,9 +605,10 @@ public class MultipartStream {
      * @throws IOException if an i/o error occurs.
      */
     public boolean skipPreamble() throws IOException {
-        // First delimiter may be not preceeded with a CRLF.
+        // First delimiter may be not preceded with a CRLF.
         System.arraycopy(boundary, 2, boundary, 0, boundary.length - 2);
         boundaryLength = boundary.length - 2;
+        computeBoundaryTable();
         try {
             // Discard all data up to the delimiter.
             discardBodyData();
@@ -590,6 +624,7 @@ public class MultipartStream {
             boundaryLength = boundary.length;
             boundary[0] = CR;
             boundary[1] = LF;
+            computeBoundaryTable();
         }
     }
 
@@ -645,22 +680,19 @@ public class MultipartStream {
      *         not found.
      */
     protected int findSeparator() {
-        int first;
-        int match = 0;
-        int maxpos = tail - boundaryLength;
-        for (first = head; first <= maxpos && match != boundaryLength; first++) {
-            first = findByte(boundary[0], first);
-            if (first == -1 || first > maxpos) {
-                return -1;
+
+        int bufferPos = this.head;
+        int tablePos = 0;
+
+        while (bufferPos < this.tail) {
+            while (tablePos >= 0 && buffer[bufferPos] != boundary[tablePos]) {
+                tablePos = boundaryTable[tablePos];
             }
-            for (match = 1; match < boundaryLength; match++) {
-                if (buffer[first + match] != boundary[match]) {
-                    break;
-                }
+            bufferPos++;
+            tablePos++;
+            if (tablePos == boundaryLength) {
+                return bufferPos - boundaryLength;
             }
-        }
-        if (match == boundaryLength) {
-            return first - 1;
         }
         return -1;
     }
@@ -700,7 +732,6 @@ public class MultipartStream {
      * Thrown upon attempt of setting an invalid boundary token.
      */
     public static class IllegalBoundaryException extends IOException {
-
 
         /**
          * The UID to use when serializing this instance.

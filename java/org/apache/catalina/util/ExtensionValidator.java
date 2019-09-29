@@ -21,7 +21,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.jar.JarInputStream;
@@ -56,9 +56,8 @@ public final class ExtensionValidator {
     private static final StringManager sm =
             StringManager.getManager("org.apache.catalina.util");
 
-    private static volatile ArrayList<Extension> containerAvailableExtensions =
-            null;
-    private static final ArrayList<ManifestResource> containerManifestResources =
+    private static volatile List<Extension> containerAvailableExtensions = null;
+    private static final List<ManifestResource> containerManifestResources =
             new ArrayList<>();
 
 
@@ -113,7 +112,7 @@ public final class ExtensionValidator {
      * file in the /META-INF/ directory of the application and all
      * MANIFEST.MF files in each JAR file located in the WEB-INF/lib
      * directory and creates an <code>ArrayList</code> of
-     * <code>ManifestResorce</code> objects. These objects are then passed
+     * <code>ManifestResource</code> objects. These objects are then passed
      * to the validateManifestResources method for validation.
      *
      * @param resources The resources configured for this Web Application
@@ -121,6 +120,7 @@ public final class ExtensionValidator {
      *                  application
      *
      * @return true if all required extensions satisfied
+     * @throws IOException Error reading resources needed for validation
      */
     public static synchronized boolean validateApplication(
                                            WebResourceRoot resources,
@@ -128,7 +128,7 @@ public final class ExtensionValidator {
                     throws IOException {
 
         String appName = context.getName();
-        ArrayList<ManifestResource> appManifestResources = new ArrayList<>();
+        List<ManifestResource> appManifestResources = new ArrayList<>();
 
         // Web application manifest
         WebResource resource = resources.getResource("/META-INF/MANIFEST.MF");
@@ -149,9 +149,8 @@ public final class ExtensionValidator {
             if (manifestResource.isFile()) {
                 // Primarily used for error reporting
                 String jarName = manifestResource.getURL().toExternalForm();
-                Manifest jmanifest = null;
-                try (InputStream is = manifestResource.getInputStream()) {
-                    jmanifest = new Manifest(is);
+                Manifest jmanifest = manifestResource.getManifest();
+                if (jmanifest != null) {
                     ManifestResource mre = new ManifestResource(jarName,
                             jmanifest, ManifestResource.APPLICATION);
                     appManifestResources.add(mre);
@@ -168,6 +167,7 @@ public final class ExtensionValidator {
      * it to the container's manifest resources.
      *
      * @param jarFile The system JAR whose manifest to add
+     * @throws IOException Error reading JAR file
      */
     public static void addSystemResource(File jarFile) throws IOException {
         try (InputStream is = new FileInputStream(jarFile)) {
@@ -204,14 +204,12 @@ public final class ExtensionValidator {
      * @return true if manifest resource file requirements are met
      */
     private static boolean validateManifestResources(String appName,
-            ArrayList<ManifestResource> resources) {
+            List<ManifestResource> resources) {
         boolean passes = true;
         int failureCount = 0;
-        ArrayList<Extension> availableExtensions = null;
+        List<Extension> availableExtensions = null;
 
-        Iterator<ManifestResource> it = resources.iterator();
-        while (it.hasNext()) {
-            ManifestResource mre = it.next();
+        for (ManifestResource mre : resources) {
             ArrayList<Extension> requiredList = mre.getRequiredExtensions();
             if (requiredList == null) {
                 continue;
@@ -230,15 +228,11 @@ public final class ExtensionValidator {
             }
 
             // iterate through the list of required extensions
-            Iterator<Extension> rit = requiredList.iterator();
-            while (rit.hasNext()) {
+            for (Extension requiredExt : requiredList) {
                 boolean found = false;
-                Extension requiredExt = rit.next();
                 // check the application itself for the extension
                 if (availableExtensions != null) {
-                    Iterator<Extension> ait = availableExtensions.iterator();
-                    while (ait.hasNext()) {
-                        Extension targetExt = ait.next();
+                    for (Extension targetExt : availableExtensions) {
                         if (targetExt.isCompatibleWith(requiredExt)) {
                             requiredExt.setFulfilled(true);
                             found = true;
@@ -248,10 +242,7 @@ public final class ExtensionValidator {
                 }
                 // check the container level list for the extension
                 if (!found && containerAvailableExtensions != null) {
-                    Iterator<Extension> cit =
-                        containerAvailableExtensions.iterator();
-                    while (cit.hasNext()) {
-                        Extension targetExt = cit.next();
+                    for (Extension targetExt : containerAvailableExtensions) {
                         if (targetExt.isCompatibleWith(requiredExt)) {
                             requiredExt.setFulfilled(true);
                             found = true;
@@ -284,7 +275,7 @@ public final class ExtensionValidator {
     * Build this list of available extensions so that we do not have to
     * re-build this list every time we iterate through the list of required
     * extensions. All available extensions in all of the
-    * <code>MainfestResource</code> objects will be added to a
+    * <code>ManifestResource</code> objects will be added to a
     * <code>HashMap</code> which is returned on the first dependency list
     * processing pass.
     *
@@ -297,19 +288,15 @@ public final class ExtensionValidator {
     *
     * @return HashMap Map of available extensions
     */
-    private static ArrayList<Extension> buildAvailableExtensionsList(
-            ArrayList<ManifestResource> resources) {
+    private static List<Extension> buildAvailableExtensionsList(
+            List<ManifestResource> resources) {
 
-        ArrayList<Extension> availableList = null;
+        List<Extension> availableList = null;
 
-        Iterator<ManifestResource> it = resources.iterator();
-        while (it.hasNext()) {
-            ManifestResource mre = it.next();
+        for (ManifestResource mre : resources) {
             ArrayList<Extension> list = mre.getAvailableExtensions();
             if (list != null) {
-                Iterator<Extension> values = list.iterator();
-                while (values.hasNext()) {
-                    Extension ext = values.next();
+                for (Extension ext : list) {
                     if (availableList == null) {
                         availableList = new ArrayList<>();
                         availableList.add(ext);
@@ -354,6 +341,9 @@ public final class ExtensionValidator {
                     continue;
                 }
                 File[] files = targetDir.listFiles();
+                if (files == null) {
+                    continue;
+                }
                 for (int i = 0; i < files.length; i++) {
                     if (files[i].getName().toLowerCase(Locale.ENGLISH).endsWith(".jar") &&
                             files[i].isFile()) {

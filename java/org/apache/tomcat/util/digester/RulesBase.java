@@ -14,16 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
-
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
-
 
 /**
  * <p>Default implementation of the <code>Rules</code> interface that supports
@@ -41,12 +36,9 @@ import java.util.List;
  *      element, no matter how deeply the pair is nested.</li>
  * </ul>
  */
-
 public class RulesBase implements Rules {
 
-
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * The set of registered Rule instances, keyed by the matching pattern.
@@ -63,14 +55,6 @@ public class RulesBase implements Rules {
 
 
     /**
-     * The namespace URI for which subsequently added <code>Rule</code>
-     * objects are relevant, or <code>null</code> for matching independent
-     * of namespaces.
-     */
-    protected String namespaceURI = null;
-
-
-    /**
      * The set of registered Rule instances, in the order that they were
      * originally registered.
      */
@@ -79,16 +63,13 @@ public class RulesBase implements Rules {
 
     // ------------------------------------------------------------- Properties
 
-
     /**
      * Return the Digester instance with which this Rules instance is
      * associated.
      */
     @Override
     public Digester getDigester() {
-
-        return (this.digester);
-
+        return this.digester;
     }
 
 
@@ -99,47 +80,14 @@ public class RulesBase implements Rules {
      */
     @Override
     public void setDigester(Digester digester) {
-
         this.digester = digester;
-        Iterator<Rule> items = rules.iterator();
-        while (items.hasNext()) {
-            Rule item = items.next();
+        for (Rule item : rules) {
             item.setDigester(digester);
         }
-
-    }
-
-
-    /**
-     * Return the namespace URI that will be applied to all subsequently
-     * added <code>Rule</code> objects.
-     */
-    @Override
-    public String getNamespaceURI() {
-
-        return (this.namespaceURI);
-
-    }
-
-
-    /**
-     * Set the namespace URI that will be applied to all subsequently
-     * added <code>Rule</code> objects.
-     *
-     * @param namespaceURI Namespace URI that must match on all
-     *  subsequently added rules, or <code>null</code> for matching
-     *  regardless of the current namespace URI
-     */
-    @Override
-    public void setNamespaceURI(String namespaceURI) {
-
-        this.namespaceURI = namespaceURI;
-
     }
 
 
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * Register a new Rule instance matching the specified pattern.
@@ -149,12 +97,11 @@ public class RulesBase implements Rules {
      */
     @Override
     public void add(String pattern, Rule rule) {
-        // to help users who accidently add '/' to the end of their patterns
+        // to help users who accidentally add '/' to the end of their patterns
         int patternLength = pattern.length();
         if (patternLength>1 && pattern.endsWith("/")) {
             pattern = pattern.substring(0, patternLength-1);
         }
-
 
         List<Rule> list = cache.get(pattern);
         if (list == null) {
@@ -166,10 +113,6 @@ public class RulesBase implements Rules {
         if (this.digester != null) {
             rule.setDigester(this.digester);
         }
-        if (this.namespaceURI != null) {
-            rule.setNamespaceURI(this.namespaceURI);
-        }
-
     }
 
 
@@ -178,10 +121,8 @@ public class RulesBase implements Rules {
      */
     @Override
     public void clear() {
-
         cache.clear();
         rules.clear();
-
     }
 
 
@@ -204,9 +145,7 @@ public class RulesBase implements Rules {
         if ((rulesList == null) || (rulesList.size() < 1)) {
             // Find the longest key, ie more discriminant
             String longKey = "";
-            Iterator<String> keys = this.cache.keySet().iterator();
-            while (keys.hasNext()) {
-                String key = keys.next();
+            for (String key : this.cache.keySet()) {
                 if (key.startsWith("*/")) {
                     if (pattern.equals(key.substring(2)) ||
                         pattern.endsWith(key.substring(1))) {
@@ -222,8 +161,7 @@ public class RulesBase implements Rules {
         if (rulesList == null) {
             rulesList = new ArrayList<>();
         }
-        return (rulesList);
-
+        return rulesList;
     }
 
 
@@ -236,14 +174,11 @@ public class RulesBase implements Rules {
      */
     @Override
     public List<Rule> rules() {
-
-        return (this.rules);
-
+        return this.rules;
     }
 
 
     // ------------------------------------------------------ Protected Methods
-
 
     /**
      * Return a List of Rule instances for the specified pattern that also
@@ -253,31 +188,26 @@ public class RulesBase implements Rules {
      * @param namespaceURI Namespace URI to match, or <code>null</code> to
      *  select matching rules regardless of namespace URI
      * @param pattern Pattern to be matched
+     * @return a rules list
      */
     protected List<Rule> lookup(String namespaceURI, String pattern) {
-
         // Optimize when no namespace URI is specified
         List<Rule> list = this.cache.get(pattern);
         if (list == null) {
-            return (null);
+            return null;
         }
         if ((namespaceURI == null) || (namespaceURI.length() == 0)) {
-            return (list);
+            return list;
         }
 
         // Select only Rules that match on the specified namespace URI
-        ArrayList<Rule> results = new ArrayList<>();
-        Iterator<Rule> items = list.iterator();
-        while (items.hasNext()) {
-            Rule item = items.next();
+        List<Rule> results = new ArrayList<>();
+        for (Rule item : list) {
             if ((namespaceURI.equals(item.getNamespaceURI())) ||
                     (item.getNamespaceURI() == null)) {
                 results.add(item);
             }
         }
-        return (results);
-
+        return results;
     }
-
-
 }

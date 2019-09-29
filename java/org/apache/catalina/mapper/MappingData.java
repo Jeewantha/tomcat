@@ -17,6 +17,8 @@
 
 package org.apache.catalina.mapper;
 
+import javax.servlet.http.MappingMatch;
+
 import org.apache.catalina.Context;
 import org.apache.catalina.Host;
 import org.apache.catalina.Wrapper;
@@ -43,6 +45,9 @@ public class MappingData {
 
     public final MessageBytes redirectPath = MessageBytes.newInstance();
 
+    // Fields used by ApplicationMapping to implement javax.servlet.http.HttpServletMapping
+    public MappingMatch matchType = null;
+
     public void recycle() {
         host = null;
         context = null;
@@ -55,6 +60,6 @@ public class MappingData {
         wrapperPath.recycle();
         pathInfo.recycle();
         redirectPath.recycle();
+        matchType = null;
     }
-
 }

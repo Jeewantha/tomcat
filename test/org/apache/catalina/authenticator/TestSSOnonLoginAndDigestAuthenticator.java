@@ -16,14 +16,13 @@
  */
 package org.apache.catalina.authenticator;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -215,12 +214,12 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
                 respHeaders);
 
         if (expectedReject) {
-            assertEquals(expectedRC, rc);
-            assertTrue(bc.getLength() > 0);
+            Assert.assertEquals(expectedRC, rc);
+            Assert.assertTrue(bc.getLength() > 0);
         }
         else {
-            assertEquals(200, rc);
-            assertEquals("OK", bc.toString());
+            Assert.assertEquals(200, rc);
+            Assert.assertEquals("OK", bc.toString());
             saveCookies(respHeaders);
         }
 }
@@ -248,12 +247,12 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
                 respHeaders1);
 
         if (expectedReject1) {
-            assertEquals(expectedRC1, rc);
-            assertTrue(bc.getLength() > 0);
+            Assert.assertEquals(expectedRC1, rc);
+            Assert.assertTrue(bc.getLength() > 0);
         }
         else {
-            assertEquals(200, rc);
-            assertEquals("OK", bc.toString());
+            Assert.assertEquals(200, rc);
+            Assert.assertEquals("OK", bc.toString());
             saveCookies(respHeaders1);
             return;
         }
@@ -289,12 +288,12 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
                 respHeaders2);
 
         if (req2expect200) {
-            assertEquals(200, rc);
-            assertEquals("OK", bc.toString());
+            Assert.assertEquals(200, rc);
+            Assert.assertEquals("OK", bc.toString());
             saveCookies(respHeaders2);
         } else {
-            assertEquals(401, rc);
-            assertTrue((bc.getLength() > 0));
+            Assert.assertEquals(401, rc);
+            Assert.assertTrue((bc.getLength() > 0));
         }
     }
 
@@ -330,9 +329,9 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
         // Add protected servlet
         Tomcat.addServlet(ctxt, "TesterServlet1", new TesterServlet());
-        ctxt.addServletMapping(URI_PROTECTED, "TesterServlet1");
+        ctxt.addServletMappingDecoded(URI_PROTECTED, "TesterServlet1");
         SecurityCollection collection1 = new SecurityCollection();
-        collection1.addPattern(URI_PROTECTED);
+        collection1.addPatternDecoded(URI_PROTECTED);
         SecurityConstraint sc1 = new SecurityConstraint();
         sc1.addAuthRole(ROLE);
         sc1.addCollection(collection1);
@@ -340,9 +339,9 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
         // Add unprotected servlet
         Tomcat.addServlet(ctxt, "TesterServlet2", new TesterServlet());
-        ctxt.addServletMapping(URI_PUBLIC, "TesterServlet2");
+        ctxt.addServletMappingDecoded(URI_PUBLIC, "TesterServlet2");
         SecurityCollection collection2 = new SecurityCollection();
-        collection2.addPattern(URI_PUBLIC);
+        collection2.addPatternDecoded(URI_PUBLIC);
         SecurityConstraint sc2 = new SecurityConstraint();
         // do not add a role - which signals access permitted without one
         sc2.addCollection(collection2);
@@ -364,9 +363,9 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
 
         // Add protected servlet
         Tomcat.addServlet(ctxt, "TesterServlet3", new TesterServlet());
-        ctxt.addServletMapping(URI_PROTECTED, "TesterServlet3");
+        ctxt.addServletMappingDecoded(URI_PROTECTED, "TesterServlet3");
         SecurityCollection collection = new SecurityCollection();
-        collection.addPattern(URI_PROTECTED);
+        collection.addPatternDecoded(URI_PROTECTED);
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
         sc.addCollection(collection);
@@ -460,8 +459,8 @@ public class TestSSOnonLoginAndDigestAuthenticator extends TomcatBaseTest {
     }
 
     private static String digest(String input) {
-        return MD5Encoder.encode(
-                ConcurrentMessageDigest.digestMD5(input.getBytes()));
+        return MD5Encoder.encode(ConcurrentMessageDigest.digestMD5(
+                input.getBytes(StandardCharsets.UTF_8)));
     }
 
     /*

@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -23,11 +23,15 @@
   <!-- 'Standard Checks' in the Checkstyle documentation:                    -->
   <!-- http://checkstyle.sourceforge.net/config_coding.html                  -->
 
+  <!-- Cache what has passed checkstyle -->
+  <property name="cacheFile"
+            value="${tomcat.output}/res/checkstyle/cachefile-checkstyle.xml"/>
+
   <!-- Headers -->
   <module name="RegexpHeader">
     <property name="headerFile" value="${basedir}/res/checkstyle/header-al2.txt"/>
     <property name="multiLines" value="1, 2, 3, 4"/>
-    <property name="fileExtensions" value="java,xml,jsp,txt,sh,bat"/>
+    <property name="fileExtensions" value="java,xml,jsp,txt,sh,bat,properties"/>
   </module>
 
   <!-- Whitespace -->
@@ -38,14 +42,20 @@
   </module>
 
   <module name="TreeWalker">
-    <!-- Cache what has passed checkstyle -->
-    <property name="cacheFile"
-              value="${tomcat.output}/res/checkstyle/cachefile-checkstyle.xml"/>
+
+    <!-- Annotations -->
+    <module name="AnnotationLocation"/>
+    <module name="AnnotationUseStyle"/>
+    <module name="MissingOverride"/>
+    <module name="PackageAnnotation"/>
 
     <!-- Block Checks -->
     <module name="AvoidNestedBlocks">
       <property name="allowInSwitchCase" value="true"/>
     </module>
+    <!-- ~2800 errors
+    <module name="NeedBraces"/>
+    -->
 
     <!-- Coding -->
     <module name="IllegalInstantiation"/>
@@ -55,7 +65,6 @@
     <module name="AvoidStaticImport">
         <property name="excludes"
                   value="org.apache.catalina.startup.SimpleHttpClient.CRLF"/>
-        <property name="excludes" value="org.junit.Assert.*"/>
     </module>
     <module name="IllegalImport">
         <property name="illegalPkgs" value="sun,junit.framework"/>
@@ -69,7 +78,14 @@
     <module name="RedundantImport"/>
     <module name="UnusedImports"/>
 
-    <!--  Modifiers -->
+    <!-- Miscellaneous -->
+    <!-- ~5000 errors
+    <module name="Indentation">
+        <property name="lineWrappingIndentation" value="8"/>
+    </module>
+    -->
+
+    <!-- Modifiers -->
     <module name="ModifierOrder"/>
     <!-- ~1750 errors
     <module name="RedundantModifier"/>
@@ -79,7 +95,7 @@
     <module name="GenericWhitespace"/>
     <module name="EmptyForInitializerPad"/>
     <module name="EmptyForIteratorPad"/>
-    <!--  ~ 1200 errors
+    <!--  ~ 1100 errors
     <module name="OperatorWrap">
       <property name="option" value="eol"/>
     </module>

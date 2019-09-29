@@ -34,18 +34,18 @@
 
 <section name="Overview">
 <p>Tomcat provides support for WebSocket as defined by
-   <a href="http://tools.ietf.org/html/rfc6455">RFC 6455</a>.</p>
+   <a href="https://tools.ietf.org/html/rfc6455">RFC 6455</a>.</p>
 </section>
 
 <section name="Application development">
 <p>Tomcat implements the Java WebSocket 1.1 API defined by <a
-   href="http://www.jcp.org/en/jsr/detail?id=356">JSR-356</a>.</p>
+   href="https://www.jcp.org/en/jsr/detail?id=356">JSR-356</a>.</p>
 
 <p>There are several example applications that demonstrate how the WebSocket API
    can be used. You will need to look at both the client side <a
-   href="http://svn.apache.org/viewvc/tomcat/trunk/webapps/examples/websocket/">
+   href="https://svn.apache.org/viewvc/tomcat/trunk/webapps/examples/websocket/">
    HTML</a> and the server side <a
-   href="http://svn.apache.org/viewvc/tomcat/trunk/webapps/examples/WEB-INF/classes/websocket/">
+   href="https://svn.apache.org/viewvc/tomcat/trunk/webapps/examples/WEB-INF/classes/websocket/">
    code</a>.</p>
 </section>
 
@@ -91,24 +91,6 @@
    property to <code>true</code> but any explicit setting on the servlet context
    will always take priority.</p>
 
-<p>The Java WebSocket 1.0 specification requires that callbacks for
-   asynchronous writes are performed on a different thread to the thread that
-   initiated the write. Since the container thread pool is not exposed via the
-   Servlet API, the WebSocket implementation has to provide its own thread pool.
-   This thread pool is controlled by the following servlet context
-   initialization parameters:</p>
-   <ul>
-     <li><code>org.apache.tomcat.websocket.executorCoreSize</code>: The core
-         size of the executor thread pool. If not set, the default of 0 (zero)
-         is used. Note that the maximum permitted size of the executor thread
-         pool is hard coded to <code>Integer.MAX_VALUE</code> which effectively
-         means it is unlimited.</li>
-     <li><code>org.apache.tomcat.websocket.executorKeepAliveTimeSeconds</code>:
-         The maximum time an idle thread will remain in the executor thread pool
-         until it is terminated. If not specified, the default of 60 seconds is
-         used.</li>
-   </ul>
-
 <p>When using the WebSocket client to connect to server endpoints, the timeout
    for IO operations while establishing the connection is controlled by the
    <code>userProperties</code> of the provided
@@ -128,10 +110,29 @@
      <li><code>org.apache.tomcat.websocket.SSL_TRUSTSTORE_PWD</code></li>
    </ul>
    <p>The default truststore password is <code>changeit</code>.</p>
-   <p>If the <code>org.apache.tomcat.websocket.SSL_CONTEXT</code> property is
-      set then the <code>org.apache.tomcat.websocket.SSL_TRUSTSTORE</code> and
-      <code>org.apache.tomcat.websocket.SSL_TRUSTSTORE_PWD</code> properties
-      will be ignored.</p>
+
+<p>If the <code>org.apache.tomcat.websocket.SSL_CONTEXT</code> property is
+   set then the <code>org.apache.tomcat.websocket.SSL_TRUSTSTORE</code> and
+   <code>org.apache.tomcat.websocket.SSL_TRUSTSTORE_PWD</code> properties
+   will be ignored.</p>
+
+<p>For secure server end points, host name verification is enabled by default.
+   To bypass this verification (not recommended), it is necessary to provide a
+   custom <code>SSLContext</code> via the
+   <code>org.apache.tomcat.websocket.SSL_CONTEXT</code> user property. The
+   custom <code>SSLContext</code> must be configured with a custom
+   <code>TrustManager</code> that extends
+   <code>javax.net.ssl.X509ExtendedTrustManager</code>. The desired verification
+   (or lack of verification) can then be controlled by appropriate
+   implementations of the individual abstract methods.</p>
+
+<p>When using the WebSocket client to connect to server endpoints, the number of
+   HTTP redirects that the client will follow is controlled by the
+   <code>userProperties</code> of the provided
+   <code>javax.websocket.ClientEndpointConfig</code>. The property is
+   <ocde>org.apache.tomcat.websocket.MAX_REDIRECTIONS</ocde>. The default value
+   is 20. Redirection support can be disabled by configuring a value of zero.</p>
+
 </section>
 
 </body>

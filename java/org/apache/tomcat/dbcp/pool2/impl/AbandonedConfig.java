@@ -55,7 +55,7 @@ public class AbandonedConfig {
      *   removed by borrowObject
      * @see #getRemoveAbandonedOnBorrow()
      */
-    public void setRemoveAbandonedOnBorrow(boolean removeAbandonedOnBorrow) {
+    public void setRemoveAbandonedOnBorrow(final boolean removeAbandonedOnBorrow) {
         this.removeAbandonedOnBorrow = removeAbandonedOnBorrow;
     }
 
@@ -92,7 +92,7 @@ public class AbandonedConfig {
      *   removed by pool maintenance
      * @see #getRemoveAbandonedOnMaintenance
      */
-    public void setRemoveAbandonedOnMaintenance(boolean removeAbandonedOnMaintenance) {
+    public void setRemoveAbandonedOnMaintenance(final boolean removeAbandonedOnMaintenance) {
         this.removeAbandonedOnMaintenance = removeAbandonedOnMaintenance;
     }
 
@@ -129,7 +129,7 @@ public class AbandonedConfig {
      * @param removeAbandonedTimeout new abandoned timeout in seconds
      * @see #getRemoveAbandonedTimeout()
      */
-    public void setRemoveAbandonedTimeout(int removeAbandonedTimeout) {
+    public void setRemoveAbandonedTimeout(final int removeAbandonedTimeout) {
         this.removeAbandonedTimeout = removeAbandonedTimeout;
     }
 
@@ -163,8 +163,45 @@ public class AbandonedConfig {
      * @see #getLogAbandoned()
      *
      */
-    public void setLogAbandoned(boolean logAbandoned) {
+    public void setLogAbandoned(final boolean logAbandoned) {
         this.logAbandoned = logAbandoned;
+    }
+
+    /**
+     * Determines whether or not to log full stack traces when logAbandoned is true.
+     * If disabled, then a faster method for logging stack traces with only class data
+     * may be used if possible.
+     *
+     * @since 2.5
+     */
+    private boolean requireFullStackTrace = true;
+
+    /**
+     * Indicates if full stack traces are required when {@link #getLogAbandoned() logAbandoned}
+     * is true. Defaults to true. Logging of abandoned objects requiring a full stack trace will
+     * generate an entire stack trace to generate for every object created. If this is disabled,
+     * a faster but less informative stack walking mechanism may be used if available.
+     *
+     * @return true if full stack traces are required for logging abandoned connections, or false
+     * if abbreviated stack traces are acceptable
+     * @see CallStack
+     * @since 2.5
+     */
+    public boolean getRequireFullStackTrace() {
+        return requireFullStackTrace;
+    }
+
+    /**
+     * Sets the flag to require full stack traces for logging abandoned connections when enabled.
+     *
+     * @param requireFullStackTrace indicates whether or not full stack traces are required in
+     *                              abandoned connection logs
+     * @see CallStack
+     * @see #getRequireFullStackTrace()
+     * @since 2.5
+     */
+    public void setRequireFullStackTrace(final boolean requireFullStackTrace) {
+        this.requireFullStackTrace = requireFullStackTrace;
     }
 
     /**
@@ -190,14 +227,15 @@ public class AbandonedConfig {
      *
      * @param logWriter The new log writer
      */
-    public void setLogWriter(PrintWriter logWriter) {
+    public void setLogWriter(final PrintWriter logWriter) {
         this.logWriter = logWriter;
     }
 
     /**
-     * If the pool implements {@link UsageTracking}, should the pool record a
-     * stack trace every time a method is called on a pooled object and retain
-     * the most recent stack trace to aid debugging of abandoned objects?
+     * If the pool implements
+     * {@link org.apache.tomcat.dbcp.pool2.UsageTracking}, should the pool
+     * record a stack trace every time a method is called on a pooled object and
+     * retain the most recent stack trace to aid debugging of abandoned objects?
      */
     private boolean useUsageTracking = false;
 
@@ -226,7 +264,29 @@ public class AbandonedConfig {
      *                              the recording of a stack trace on every use
      *                              of a pooled object
      */
-    public void setUseUsageTracking(boolean useUsageTracking) {
+    public void setUseUsageTracking(final boolean useUsageTracking) {
         this.useUsageTracking = useUsageTracking;
+    }
+
+    /**
+     * @since 2.4.3
+     */
+    @Override
+    public String toString() {
+        final StringBuilder builder = new StringBuilder();
+        builder.append("AbandonedConfig [removeAbandonedOnBorrow=");
+        builder.append(removeAbandonedOnBorrow);
+        builder.append(", removeAbandonedOnMaintenance=");
+        builder.append(removeAbandonedOnMaintenance);
+        builder.append(", removeAbandonedTimeout=");
+        builder.append(removeAbandonedTimeout);
+        builder.append(", logAbandoned=");
+        builder.append(logAbandoned);
+        builder.append(", logWriter=");
+        builder.append(logWriter);
+        builder.append(", useUsageTracking=");
+        builder.append(useUsageTracking);
+        builder.append("]");
+        return builder.toString();
     }
 }

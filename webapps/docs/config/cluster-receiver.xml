@@ -103,13 +103,16 @@
       The default value is a very high <code>5000</code> milliseconds.
     </attribute>
     <attribute name="maxThreads" required="false">
-      The maximum number of threads in the receiver thread pool. The default value is <code>6</code>
+      The maximum number of threads in the receiver thread pool. The default value is <code>15</code>
       Adjust this value relative to the number of nodes in the cluster, the number of messages being exchanged and
       the hardware you are running on. A higher value doesn't mean more efficiency, tune this value according to your
       own test results.
     </attribute>
     <attribute name="minThreads" required="false">
       Minimum number of threads to be created when the receiver is started up. Default value is <code>6</code>
+    </attribute>
+    <attribute name="maxIdleTime" required="false">
+      Maximum number of milliseconds of until Idle thread terminates. Default value is <code>60000</code> milliseconds.
     </attribute>
     <attribute name="ooBInline" required="false">
       Boolean value for the socket OOBINLINE option. Possible values are <code>true</code> or <code>false</code>.

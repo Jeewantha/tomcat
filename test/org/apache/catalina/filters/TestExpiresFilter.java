@@ -32,7 +32,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -75,7 +74,7 @@ public class TestExpiresFilter extends TomcatBaseTest {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName(ExpiresFilter.class.getName());
-        filterMap.addURLPattern("*");
+        filterMap.addURLPatternDecoded("*");
 
         tomcat.start();
         try {
@@ -396,11 +395,11 @@ public class TestExpiresFilter extends TomcatBaseTest {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName(ExpiresFilter.class.getName());
-        filterMap.addURLPattern("*");
+        filterMap.addURLPatternDecoded("*");
         root.addFilterMap(filterMap);
 
         Tomcat.addServlet(root, servlet.getClass().getName(), servlet);
-        root.addServletMapping("/test", servlet.getClass().getName());
+        root.addServletMappingDecoded("/test", servlet.getClass().getName());
 
         tomcat.start();
 

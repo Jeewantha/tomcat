@@ -23,10 +23,10 @@ import java.io.InputStreamReader;
 
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
-import org.apache.jasper.util.ExceptionUtils;
+import org.apache.jasper.runtime.ExceptionUtils;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.scan.Jar;
+import org.apache.tomcat.Jar;
 
 /**
  * JspReader is an input buffer for the JSP parser. It should allow
@@ -49,7 +49,7 @@ class JspReader {
     /**
      * Logger.
      */
-    private final Log log = LogFactory.getLog(JspReader.class);
+    private final Log log = LogFactory.getLog(JspReader.class); // must not be static
 
     /**
      * The current spot in the file.
@@ -118,7 +118,7 @@ class JspReader {
             current = new Mark(this, caw.toCharArray(), fname);
         } catch (Throwable ex) {
             ExceptionUtils.handleThrowable(ex);
-            log.error("Exception parsing file ", ex);
+            log.error(Localizer.getMessage("jsp.error.file.cannot.read", fname), ex);
             err.jspError("jsp.error.file.cannot.read", fname);
         } finally {
             if (reader != null) {
@@ -400,7 +400,7 @@ class JspReader {
      * Skip until the given string is matched in the stream.
      * When returned, the context is positioned past the end of the match.
      *
-     * @param s The String to match.
+     * @param limit The String to match.
      * @return A non-null <code>Mark</code> instance (positioned immediately
      *         before the search string) if found, <strong>null</strong>
      *         otherwise.
@@ -439,7 +439,7 @@ class JspReader {
      * chars initially escaped by a '\' and any EL expressions.
      * When returned, the context is positioned past the end of the match.
      *
-     * @param s The String to match.
+     * @param limit    The String to match.
      * @param ignoreEL <code>true</code> if something that looks like EL should
      *                 not be treated as EL.
      * @return A non-null <code>Mark</code> instance (positioned immediately
@@ -462,7 +462,7 @@ class JspReader {
                 // Move beyond the '{'
                 nextChar();
                 skipELExpression();
-            } else if (ch == firstChar && prev != '\\') {
+            } else if (ch == firstChar) {
                 for (int i = 1 ; i < limlen ; i++) {
                     if (peekChar() == limit.charAt(i))
                         nextChar();

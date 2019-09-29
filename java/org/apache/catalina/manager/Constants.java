@@ -23,6 +23,8 @@ public class Constants {
 
     public static final String Package = "org.apache.catalina.manager";
 
+    public static final String REL_EXTERNAL = "rel=\"noopener noreferrer\"";
+
     public static final String HTML_HEADER_SECTION;
     public static final String BODY_HEADER_SECTION;
     public static final String MESSAGE_SECTION;
@@ -118,13 +120,13 @@ public class Constants {
             "<table cellspacing=\"4\" border=\"0\">\n" +
             " <tr>\n" +
             "  <td colspan=\"2\">\n" +
-            "   <a href=\"http://www.apache.org/\">\n" +
-            "    <img border=\"0\" alt=\"The Apache Software Foundation\" align=\"left\"\n" +
-            "         src=\"{0}/images/asf-logo.gif\">\n" +
-            "   </a>\n" +
-            "   <a href=\"http://tomcat.apache.org/\">\n" +
+            "   <a href=\"https://tomcat.apache.org/\" " + REL_EXTERNAL + ">\n" +
             "    <img border=\"0\" alt=\"The Tomcat Servlet/JSP Container\"\n" +
-            "         align=\"right\" src=\"{0}/images/tomcat.gif\">\n" +
+            "         align=\"left\" src=\"{0}/images/tomcat.gif\">\n" +
+            "   </a>\n" +
+            "   <a href=\"https://www.apache.org/\" " + REL_EXTERNAL + ">\n" +
+            "    <img border=\"0\" alt=\"The Apache Software Foundation\" align=\"right\"\n" +
+            "         src=\"{0}/images/asf-logo.svg\" style=\"width: 266px; height: 83px;\">\n" +
             "   </a>\n" +
             "  </td>\n" +
             " </tr>\n" +
@@ -159,8 +161,8 @@ public class Constants {
             "</tr>\n" +
             " <tr>\n" +
             "  <td class=\"row-left\"><a href=\"{1}\">{2}</a></td>\n" +
-            "  <td class=\"row-center\"><a href=\"{3}\">{4}</a></td>\n" +
-            "  <td class=\"row-center\"><a href=\"{5}\">{6}</a></td>\n" +
+            "  <td class=\"row-center\"><a href=\"{3}\" " + REL_EXTERNAL + ">{4}</a></td>\n" +
+            "  <td class=\"row-center\"><a href=\"{5}\" " + REL_EXTERNAL + ">{6}</a></td>\n" +
             "  <td class=\"row-right\"><a href=\"{7}\">{8}</a></td>\n" +
             " </tr>\n" +
             "</table>\n" +
@@ -201,7 +203,7 @@ public class Constants {
         HTML_TAIL_SECTION =
             "<hr size=\"1\" noshade=\"noshade\">\n" +
             "<center><font size=\"-1\" color=\"#525D76\">\n" +
-            " <em>Copyright &copy; 1999-2015, Apache Software Foundation</em>" +
+            " <em>Copyright &copy; 1999-2019, Apache Software Foundation</em>" +
             "</font></center>\n" +
             "\n" +
             "</body>\n" +
@@ -215,6 +217,5 @@ public class Constants {
 
     public static final String XML_STYLE =
         "<?xml-stylesheet type=\"text/xsl\" href=\"{0}/xform.xsl\" ?>\n";
-
 }
 

@@ -28,7 +28,7 @@ import javax.servlet.ServletContext;
 /**
  * Facade for the <b>StandardWrapper</b> object.
  *
- * @author Remy Maucharat
+ * @author Remy Maucherat
  */
 public final class StandardWrapperFacade
     implements ServletConfig {
@@ -39,6 +39,7 @@ public final class StandardWrapperFacade
 
     /**
      * Create a new facade around a StandardWrapper.
+     * @param config the associated wrapper
      */
     public StandardWrapperFacade(StandardWrapper config) {
 
@@ -80,7 +81,7 @@ public final class StandardWrapperFacade
                 context = ((ApplicationContext) context).getFacade();
             }
         }
-        return (context);
+        return context;
     }
 
 

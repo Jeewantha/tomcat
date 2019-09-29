@@ -25,7 +25,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import static org.junit.Assert.assertEquals;
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -50,7 +50,7 @@ public class TestStandardContextValve extends TomcatBaseTest {
 
         //Add the error page
         Tomcat.addServlet(ctx, "errorPage", new Bug51653ErrorPage(trace));
-        ctx.addServletMapping("/error", "errorPage");
+        ctx.addServletMappingDecoded("/error", "errorPage");
         // And the handling for 404 responses
         ErrorPage errorPage = new ErrorPage();
         errorPage.setErrorCode(Response.SC_NOT_FOUND);
@@ -79,8 +79,8 @@ public class TestStandardContextValve extends TomcatBaseTest {
             i--;
         }
 
-        assertEquals(Response.SC_NOT_FOUND, rc);
-        assertEquals("InitErrorDestroy", trace.toString());
+        Assert.assertEquals(Response.SC_NOT_FOUND, rc);
+        Assert.assertEquals("InitErrorDestroy", trace.toString());
     }
 
     @Test
@@ -96,11 +96,11 @@ public class TestStandardContextValve extends TomcatBaseTest {
 
         // Add the page that generates the error
         Tomcat.addServlet(ctx, "test", new Bug51653ErrorTrigger());
-        ctx.addServletMapping("/test", "test");
+        ctx.addServletMappingDecoded("/test", "test");
 
         // Add the error page
         Tomcat.addServlet(ctx, "errorPage", new Bug51653ErrorPage(trace));
-        ctx.addServletMapping("/error", "errorPage");
+        ctx.addServletMappingDecoded("/error", "errorPage");
         // And the handling for 404 responses
         ErrorPage errorPage = new ErrorPage();
         errorPage.setErrorCode(Response.SC_NOT_FOUND);
@@ -129,8 +129,8 @@ public class TestStandardContextValve extends TomcatBaseTest {
             i--;
         }
 
-        assertEquals(Response.SC_NOT_FOUND, rc);
-        assertEquals("InitErrorDestroy", trace.toString());
+        Assert.assertEquals(Response.SC_NOT_FOUND, rc);
+        Assert.assertEquals("InitErrorDestroy", trace.toString());
     }
 
     private static class Bug51653ErrorTrigger extends HttpServlet {

@@ -15,13 +15,16 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+  http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.apache.tomcat</groupId>
   <artifactId>tomcat-el-api</artifactId>
   <version>@MAVEN.DEPLOY.VERSION@</version>
   <description>Expression language package</description>
-  <url>http://tomcat.apache.org/</url>
+  <url>https://tomcat.apache.org/</url>
   <licenses>
     <license>
       <name>Apache License, Version 2.0</name>

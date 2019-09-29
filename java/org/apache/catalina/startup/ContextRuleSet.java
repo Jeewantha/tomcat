@@ -14,14 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
-
 import org.apache.tomcat.util.digester.Digester;
-import org.apache.tomcat.util.digester.RuleSetBase;
-
+import org.apache.tomcat.util.digester.RuleSet;
 
 /**
  * <p><strong>RuleSet</strong> for processing the contents of a
@@ -29,11 +25,9 @@ import org.apache.tomcat.util.digester.RuleSetBase;
  *
  * @author Craig R. McClanahan
  */
-public class ContextRuleSet extends RuleSetBase {
-
+public class ContextRuleSet implements RuleSet {
 
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * The matching pattern prefix to use for recognizing our elements.
@@ -48,7 +42,6 @@ public class ContextRuleSet extends RuleSetBase {
 
 
     // ------------------------------------------------------------ Constructor
-
 
     /**
      * Construct an instance of this <code>RuleSet</code> with the default
@@ -77,16 +70,16 @@ public class ContextRuleSet extends RuleSetBase {
      *
      * @param prefix Prefix for matching pattern rules (including the
      *  trailing slash character)
+     * @param create <code>true</code> if the main context instance should be
+     *  created
      */
     public ContextRuleSet(String prefix, boolean create) {
-        this.namespaceURI = null;
         this.prefix = prefix;
         this.create = create;
     }
 
 
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * <p>Add the set of Rule instances defined in this RuleSet to the
@@ -117,8 +110,6 @@ public class ContextRuleSet extends RuleSetBase {
                                 "addChild",
                                 "org.apache.catalina.Container");
         }
-        digester.addCallMethod(prefix + "Context/InstanceListener",
-                               "addInstanceListener", 0);
 
         digester.addObjectCreate(prefix + "Context/Listener",
                                  null, // MUST be specified in the element
@@ -243,12 +234,11 @@ public class ContextRuleSet extends RuleSetBase {
                             "org.apache.tomcat.JarScanFilter");
 
         digester.addObjectCreate(prefix + "Context/CookieProcessor",
-                                 "org.apache.tomcat.util.http.LegacyCookieProcessor",
+                                 "org.apache.tomcat.util.http.Rfc6265CookieProcessor",
                                  "className");
         digester.addSetProperties(prefix + "Context/CookieProcessor");
         digester.addSetNext(prefix + "Context/CookieProcessor",
                             "setCookieProcessor",
                             "org.apache.tomcat.util.http.CookieProcessor");
     }
-
 }
